@@ -114,8 +114,10 @@ export function FinancialReportsView({ venueId }: { venueId: string }) {
           title: "مشاركة تقرير الإكسيل",
           url: savedFile.uri,
         });
-      } catch (error) {
-        toast.error("حدث خطأ أثناء حفظ الملف");
+      } catch (error: unknown) {
+        // التعديل هنا: إظهار الخطأ الفعلي
+        const message = error instanceof Error ? error.message : String(error);
+        toast.error(message || "حدث خطأ أثناء حفظ الملف");
       }
     } else {
       const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -158,9 +160,11 @@ export function FinancialReportsView({ venueId }: { venueId: string }) {
         link.click();
         toast.success("تم تحميل الصورة بنجاح", { id: toastId });
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Error generating image:", error);
-      toast.error("حدث خطأ أثناء استخراج الصورة", { id: toastId });
+      // التعديل هنا: إظهار الخطأ الفعلي
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(message || "حدث خطأ أثناء حفظ الملف");
     }
   };
 

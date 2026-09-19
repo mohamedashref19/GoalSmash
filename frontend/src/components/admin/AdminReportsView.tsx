@@ -103,25 +103,29 @@ export function AdminReportsView() {
     }
   };
 
-  const handlePrint = () => window.print();
+  const handlePrint = () => {
+    window.print();
+  };
 
   const handleExportCSV = async () => {
     if (!report) return;
-    let csvContent = "\uFEFFتقرير تصفية الحسابات والعمولات\n\n";
-    csvContent += `من تاريخ:, ${startDate}\nإلى تاريخ:, ${endDate}\n`;
-    csvContent += `النادي:, ${selectedVenue === "all" ? "جميع الأندية" : venuesList.find((v) => v._id === selectedVenue)?.name}\n\n`;
+
+    let csvContent = "\uFEFF";
+    csvContent += "تقرير تصفية الحسابات\n\n";
+    csvContent += `من تاريخ:, ${startDate}\n`;
+    csvContent += `إلى تاريخ:, ${endDate}\n\n`;
 
     csvContent += "--- الإجماليات ---\n";
-    csvContent += "الإجمالي الكلي,إيرادات أونلاين,إيرادات الكاش,عمولة المنصة\n";
-    csvContent += `${report.totalOverall} ج.م,${report.totalOnline} ج.م,${report.totalCash} ج.م,${report.totalCommission} ج.م\n\n`;
+    csvContent += "الإجمالي الكلي,إيرادات أونلاين,إيرادات الكاش\n";
+    csvContent += `${report.totalOverall} ج.م,${report.totalOnline} ج.م,${report.totalCash} ج.م\n\n`;
 
     csvContent += "--- تفصيل الملاعب ---\n";
-    csvContent += "اسم النادي,اسم الملعب,عدد الحجوزات,إجمالي الإيرادات,عمولة المنصة\n";
+    csvContent += "اسم الملعب,عدد الحجوزات الناجحة,إجمالي الإيرادات\n";
     report.courtsBreakdown.forEach((court) => {
-      csvContent += `${court.venueName || "---"},${court.courtName || "---"},${court.bookingsCount},${Number(court.totalRevenue).toFixed(2)} ج.م,${Number(court.totalCommission).toFixed(2)} ج.م\n`;
+      csvContent += `${court.courtName || "غير محدد"},${court.bookingsCount},${Number(court.totalRevenue).toFixed(2)} ج.م\n`;
     });
 
-    const fileName = `Admin_Report_${startDate}_${endDate}.csv`;
+    const fileName = `Financial_Report_${startDate}_${endDate}.csv`;
 
     if (Capacitor.isNativePlatform()) {
       try {
@@ -135,8 +139,10 @@ export function AdminReportsView() {
           title: "مشاركة تقرير الإكسيل",
           url: savedFile.uri,
         });
-      } catch (error) {
-        toast.error("حدث خطأ أثناء حفظ الملف");
+      } catch (error: unknown) {
+        // التعديل هنا: إظهار الخطأ الفعلي
+        const message = error instanceof Error ? error.message : String(error);
+        toast.error(message || "حدث خطأ أثناء حفظ الملف");
       }
     } else {
       const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -151,11 +157,17 @@ export function AdminReportsView() {
     if (!reportRef.current) return;
     const toastId = toast.loading("جاري تجهيز الصورة...");
     try {
-      const dataUrl = await domToPng(reportRef.current, { backgroundColor: "#ffffff", scale: 2 });
-      const fileName = `Admin_Report_${startDate}_${endDate}.png`;
+      const dataUrl = await domToPng(reportRef.current, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+      });
+      const fileName = `Financial_Report_${startDate}_${endDate}.png`;
 
       if (Capacitor.isNativePlatform()) {
-        const base64Data = dataUrl.split(",")[1] ?? "";
+        const base64Data = dataUrl.split(",")[1];
+        if (!base64Data) {
+          throw new Error("Invalid image data");
+        }
         const savedFile = await Filesystem.writeFile({
           path: fileName,
           data: base64Data,
@@ -173,8 +185,11 @@ export function AdminReportsView() {
         link.click();
         toast.success("تم تحميل الصورة بنجاح", { id: toastId });
       }
-    } catch {
-      toast.error("حدث خطأ أثناء استخراج الصورة", { id: toastId });
+    } catch (error: unknown) {
+      console.error("Error generating image:", error);
+      // التعديل هنا: إظهار الخطأ الفعلي
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(message || "حدث خطأ أثناء حفظ الملف");
     }
   };
 

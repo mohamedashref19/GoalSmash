@@ -1,9 +1,16 @@
 const multer = require("multer");
 const AppError = require("./appError");
+const fs = require("fs");
 
 const multerStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, "public/uploads/venues");
+    const dir = "public/uploads/venues";
+
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    cb(null, dir);
   },
   filename: (req, file, cb) => {
     const ext = file.mimetype.split("/")[1];
