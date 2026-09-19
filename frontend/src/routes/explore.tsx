@@ -22,6 +22,8 @@ import { Header } from "@/components/venue/Header";
 import { cn } from "@/lib/utils";
 // @ts-expect-error - venueApi module type definitions not available
 import { fetchAllVenues } from "@/api/venueApi";
+// @ts-expect-error API has no TypeScript declaration
+import { BACKEND_URL } from "@/api/axiosConfig";
 
 interface CourtType {
   _id: string;
@@ -389,7 +391,14 @@ function ExplorePage() {
                     <div className="relative h-48 w-full bg-muted overflow-hidden">
                       {venue.image ? (
                         <img
-                          src={venue.image ? venue.image.replace("127.0.0.1", "192.168.1.4") : ""}
+                          src={
+                            venue.image
+                              ? venue.image.replace(
+                                  /http:\/\/(127\.0\.0\.1|192\.168\.1\.4)(:\d+)?/g,
+                                  BACKEND_URL,
+                                )
+                              : ""
+                          }
                           alt={venue.name}
                           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                         />

@@ -29,6 +29,8 @@ import { fetchVenueById } from "@/api/venueApi";
 // @ts-expect-error APIs without TS definitions
 import { fetchBookedSlots, createBooking } from "@/api/bookingApi";
 import { PaymentModal } from "@/components/venue/PaymentModal";
+// @ts-expect-error API has no TypeScript declaration
+import { BACKEND_URL } from "@/api/axiosConfig";
 
 interface CourtType {
   _id: string;
@@ -359,7 +361,14 @@ function VenueDetailsPage() {
       <div className="relative flex h-52 items-center justify-center bg-muted overflow-hidden sm:h-72">
         {displayImage ? (
           <img
-            src={displayImage ? displayImage.replace("127.0.0.1", "192.168.1.4") : ""}
+            src={
+              displayImage
+                ? displayImage.replace(
+                    /http:\/\/(127\.0\.0\.1|192\.168\.1\.4)(:\d+)?/g,
+                    BACKEND_URL,
+                  )
+                : ""
+            }
             alt={selectedCourt?.name || venue.name}
             className="absolute inset-0 h-full w-full object-cover animate-in fade-in duration-500"
             key={displayImage}

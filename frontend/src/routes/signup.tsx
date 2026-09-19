@@ -219,14 +219,6 @@ function SignUpPage() {
             </Link>
           </p>
         </div>
-
-        <Link
-          to="/"
-          className="mt-5 flex items-center justify-center gap-1.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowRight className="h-4 w-4" />
-          العودة إلى لوحة التحكم
-        </Link>
       </div>
       <Toaster position="top-center" />
     </div>
