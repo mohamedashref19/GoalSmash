@@ -1,22 +1,16 @@
 import { useState, type FormEvent } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Trophy, Phone, ArrowRight, Send } from "lucide-react";
+import { Trophy, Mail, Send } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
+// @ts-expect-error: authApi is a JavaScript module without TypeScript declarations
+import { forgetPassword } from "@/api/authApi";
 
 export const Route = createFileRoute("/forgot-password")({
   head: () => ({
     meta: [
       { title: "نسيت كلمة المرور | GoalSmash" },
-      {
-        name: "description",
-        content: "أدخل رقم هاتفك لإرسال رمز إعادة تعيين كلمة المرور.",
-      },
-      { property: "og:title", content: "نسيت كلمة المرور | GoalSmash" },
-      {
-        property: "og:description",
-        content: "أدخل رقم هاتفك لإرسال رمز إعادة تعيين كلمة المرور.",
-      },
+      { name: "description", content: "أدخل بريدك الإلكتروني لإرسال رمز إعادة تعيين كلمة المرور." },
     ],
   }),
   component: ForgotPasswordPage,
@@ -27,22 +21,30 @@ const field =
 
 function ForgotPasswordPage() {
   const navigate = useNavigate();
-  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const onSubmit = (e: FormEvent) => {
+  const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!/^[0-9]{8,15}$/.test(phone.trim())) {
-      toast.error("أدخل رقم هاتف صحيح من 8 إلى 15 رقمًا.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      toast.error("أدخل بريدًا إلكترونيًا صحيحًا.");
       return;
     }
     setLoading(true);
-    // واجهة تجريبية — لا يوجد خادم فعلي بعد
-    setTimeout(() => {
-      setLoading(false);
-      toast.success("تم إرسال رمز التحقق إلى هاتفك");
+
+    try {
+      await forgetPassword(email);
+      // حفظ الإيميل وعلامة الاسترجاع عشان صفحة الـ OTP تستخدمهم
+      sessionStorage.setItem("verifyEmail", email);
+      sessionStorage.setItem("isResetFlow", "true");
+
+      toast.success("تم إرسال رمز التحقق إلى بريدك الإلكتروني");
       navigate({ to: "/verify-otp" });
-    }, 700);
+    } catch (error) {
+      toast.error((error as string) || "حدث خطأ أثناء إرسال الكود، تأكد من صحة البريد.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -63,24 +65,24 @@ function ForgotPasswordPage() {
           </div>
           <h1 className="mt-4 font-display text-2xl font-extrabold">نسيت كلمة المرور</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            أدخل رقم هاتفك وسنرسل لك رمز تحقق لإعادة التعيين
+            أدخل بريدك الإلكتروني وسنرسل لك رمز تحقق
           </p>
         </div>
 
         <div className="card-surface p-6 sm:p-7">
           <form className="flex flex-col gap-4" onSubmit={onSubmit} noValidate>
             <label className="block text-sm font-semibold">
-              رقم الهاتف
+              البريد الإلكتروني
               <div className="relative">
-                <Phone className="pointer-events-none absolute right-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
+                <Mail className="pointer-events-none absolute right-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
                 <input
                   className={field}
-                  value={phone}
+                  type="email"
+                  value={email}
                   required
-                  inputMode="tel"
                   dir="ltr"
-                  placeholder="01xxxxxxxxx"
-                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="name@example.com"
+                  onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
             </label>

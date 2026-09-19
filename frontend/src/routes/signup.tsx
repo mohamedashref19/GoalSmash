@@ -3,6 +3,8 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Trophy, User, Phone, Mail, Lock, Eye, EyeOff, ArrowRight } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
+// @ts-expect-error authApi is a JavaScript module without TypeScript declarations.
+import { signupUser } from "@/api/authApi";
 
 export const Route = createFileRoute("/signup")({
   head: () => ({
@@ -35,7 +37,7 @@ function SignUpPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const onSubmit = (e: FormEvent) => {
+  const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (name.trim().length < 3) {
       toast.error("أدخل اسمك الكامل (3 أحرف على الأقل).");
@@ -57,13 +59,22 @@ function SignUpPage() {
       toast.error("كلمتا المرور غير متطابقتين.");
       return;
     }
+
     setLoading(true);
-    // واجهة تجريبية — لا يوجد خادم فعلي بعد
-    setTimeout(() => {
+    try {
+      // الاتصال الفعلي بالباك إند وإرسال البيانات
+      await signupUser({ name, phone, email, password, passwordConfirm: confirm });
+
+      toast.success("تم إنشاء الحساب بنجاح! يرجى إدخال كود التفعيل");
+      // التوجيه التلقائي لصفحة إدخال الـ OTP
+      navigate({ to: "/verify-otp" });
+    } catch (error) {
+      toast.error(
+        (error as string) || "حدث خطأ أثناء إنشاء الحساب، قد يكون البريد أو الرقم مستخدماً بالفعل",
+      );
+    } finally {
       setLoading(false);
-      toast.success("تم إنشاء الحساب بنجاح");
-      navigate({ to: "/login" });
-    }, 700);
+    }
   };
 
   const strength = (() => {

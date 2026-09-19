@@ -1,7 +1,7 @@
 import axios from "axios";
 
 // 1. رابط الباك إند الأساسي (بدون /api/v1) عشان نستخدمه للصور والـ Sockets
-// export const BACKEND_URL = "http://192.168.1.4:3000";
+//export const BACKEND_URL = "http://192.168.1.4:3000";
 export const BACKEND_URL = "https://goalsmash-api.onrender.com";
 
 // 2. رابط الـ API

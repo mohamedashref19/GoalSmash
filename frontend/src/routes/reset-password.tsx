@@ -1,23 +1,14 @@
 import { useState, type FormEvent } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Trophy, Lock, Eye, EyeOff, ArrowRight } from "lucide-react";
+import { Trophy, Lock, Eye, EyeOff } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
+// @ts-expect-error: authApi is a JavaScript module without TypeScript declarations
+import { resetUserPassword } from "@/api/authApi";
 
 export const Route = createFileRoute("/reset-password")({
   head: () => ({
-    meta: [
-      { title: "إعادة تعيين كلمة المرور | GoalSmash" },
-      {
-        name: "description",
-        content: "قم بتعيين كلمة مرور جديدة لحسابك في GoalSmash.",
-      },
-      { property: "og:title", content: "إعادة تعيين كلمة المرور | GoalSmash" },
-      {
-        property: "og:description",
-        content: "قم بتعيين كلمة مرور جديدة لحسابك في GoalSmash.",
-      },
-    ],
+    meta: [{ title: "إعادة تعيين كلمة المرور | GoalSmash" }],
   }),
   component: ResetPasswordPage,
 });
@@ -32,7 +23,7 @@ function ResetPasswordPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const onSubmit = (e: FormEvent) => {
+  const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (password.length < 6) {
       toast.error("كلمة المرور يجب أن تكون 6 أحرف على الأقل.");
@@ -42,13 +33,24 @@ function ResetPasswordPage() {
       toast.error("كلمتا المرور غير متطابقتين.");
       return;
     }
+
     setLoading(true);
-    // واجهة تجريبية — لا يوجد خادم فعلي بعد
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const email = sessionStorage.getItem("verifyEmail");
+
+      // إرسال الإيميل وكلمة المرور الجديدة للباك إند
+      await resetUserPassword({ email, password });
+
+      sessionStorage.removeItem("verifyEmail");
+      sessionStorage.removeItem("isResetFlow");
+
       toast.success("تم حفظ كلمة المرور الجديدة بنجاح");
       navigate({ to: "/login" });
-    }, 700);
+    } catch (error) {
+      toast.error((error as string) || "حدث خطأ أثناء تغيير كلمة المرور");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const strength = (() => {

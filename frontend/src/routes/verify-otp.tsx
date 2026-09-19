@@ -96,20 +96,27 @@ function VerifyOtpPage() {
 
       localStorage.setItem("token", response.token);
       localStorage.setItem("userData", JSON.stringify(response.data.user));
-      sessionStorage.removeItem("verifyEmail");
 
-      toast.success("تم التحقق بنجاح، أهلاً بك!");
+      toast.success("تم التحقق بنجاح!");
 
-      const userRole = response.data.user.role;
-      if (userRole === "admin") {
-        window.location.href = "/admin-dashboard";
-      } else if (userRole === "customer") {
-        window.location.href = "/explore";
+      // +++ التعديل هنا: التوجيه الذكي +++
+      const isResetFlow = sessionStorage.getItem("isResetFlow");
+      if (isResetFlow) {
+        navigate({ to: "/reset-password" });
       } else {
-        window.location.href = "/";
+        sessionStorage.removeItem("verifyEmail");
+        const userRole = response.data.user.role;
+        if (userRole === "admin") {
+          window.location.href = "/admin-dashboard";
+        } else if (userRole === "customer") {
+          window.location.href = "/explore";
+        } else {
+          window.location.href = "/";
+        }
       }
     } catch (error) {
       toast.error((error as string) || "رمز التحقق غير صحيح");
+    } finally {
       setLoading(false);
     }
   };
