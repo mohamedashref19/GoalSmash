@@ -17,6 +17,8 @@ import { toast } from "sonner";
 
 // @ts-expect-error: API lacks TypeScript definitions
 import { fetchAllPayments, manuallyVerifyPayment, addPaymentNote } from "@/api/paymentApi";
+// @ts-expect-error: until axiosConfig.js is migrated to TypeScript or has typings.
+import { BACKEND_URL } from "@/api/axiosConfig";
 
 interface Payment {
   _id: string;
@@ -386,7 +388,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
               <div className="mt-4 flex flex-col gap-2">
                 {p.proofImage && (
                   <a
-                    href={`http://localhost:3000${p.proofImage}`}
+                    href={`${BACKEND_URL}${p.proofImage}`}
                     target="_blank"
                     rel="noreferrer"
                     className="flex items-center justify-center gap-2 rounded-xl bg-info/10 text-info border border-info/20 hover:bg-info py-2 text-xs font-bold transition"

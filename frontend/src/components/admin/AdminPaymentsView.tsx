@@ -24,6 +24,8 @@ import {
   processUnmatchedPayment,
   // @ts-expect-error: until paymentApi.js is migrated to TypeScript or has typings.
 } from "@/api/paymentApi";
+// @ts-expect-error: until axiosConfig.js is migrated to TypeScript or has typings.
+import { BACKEND_URL } from "@/api/axiosConfig";
 
 interface Payment {
   _id: string;
@@ -465,7 +467,7 @@ export function AdminPaymentsView() {
 
               {p.proofImage && (
                 <a
-                  href={`http://localhost:3000${p.proofImage}`}
+                  href={`${BACKEND_URL}${p.proofImage}`}
                   target="_blank"
                   rel="noreferrer"
                   className="flex items-center justify-center gap-2 rounded-xl bg-info/10 text-info border border-info/20 hover:bg-info hover:text-white transition py-2 text-xs font-bold mb-2"

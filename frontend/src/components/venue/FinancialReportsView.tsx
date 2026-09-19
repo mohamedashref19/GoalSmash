@@ -16,6 +16,10 @@ import { toast } from "sonner";
 // @ts-expect-error: API lacks TypeScript definitions
 import { fetchFinancialReports } from "@/api/paymentApi";
 
+import { Capacitor } from "@capacitor/core";
+import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
+
 interface CourtBreakdown {
   _id: string;
   courtName: string;
@@ -78,7 +82,7 @@ export function FinancialReportsView({ venueId }: { venueId: string }) {
     window.print();
   };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
     if (!report) return;
 
     let csvContent = "\uFEFF";
@@ -96,17 +100,32 @@ export function FinancialReportsView({ venueId }: { venueId: string }) {
       csvContent += `${court.courtName || "غير محدد"},${court.bookingsCount},${Number(court.totalRevenue).toFixed(2)} ج.م\n`;
     });
 
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", `تقرير_مالي_${startDate}_إلى_${endDate}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const fileName = `Financial_Report_${startDate}_${endDate}.csv`;
+
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const savedFile = await Filesystem.writeFile({
+          path: fileName,
+          data: csvContent,
+          directory: Directory.Cache,
+          encoding: Encoding.UTF8,
+        });
+        await Share.share({
+          title: "مشاركة تقرير الإكسيل",
+          url: savedFile.uri,
+        });
+      } catch (error) {
+        toast.error("حدث خطأ أثناء حفظ الملف");
+      }
+    } else {
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = fileName;
+      link.click();
+    }
   };
 
-  // +++ تم تحديث الدالة ومعالجة الخطأ وفصل الأنيميشن +++
   const handleDownloadImage = async () => {
     if (!reportRef.current) return;
     const toastId = toast.loading("جاري تجهيز الصورة...");
@@ -115,11 +134,30 @@ export function FinancialReportsView({ venueId }: { venueId: string }) {
         backgroundColor: "#ffffff",
         scale: 2,
       });
-      const link = document.createElement("a");
-      link.href = dataUrl;
-      link.download = `تقرير_مالي_${startDate}_إلى_${endDate}.png`;
-      link.click();
-      toast.success("تم تحميل الصورة بنجاح", { id: toastId });
+      const fileName = `Financial_Report_${startDate}_${endDate}.png`;
+
+      if (Capacitor.isNativePlatform()) {
+        const base64Data = dataUrl.split(",")[1];
+        if (!base64Data) {
+          throw new Error("Invalid image data");
+        }
+        const savedFile = await Filesystem.writeFile({
+          path: fileName,
+          data: base64Data,
+          directory: Directory.Cache,
+        });
+        await Share.share({
+          title: "مشاركة صورة التقرير",
+          url: savedFile.uri,
+        });
+        toast.success("تمت المشاركة بنجاح", { id: toastId });
+      } else {
+        const link = document.createElement("a");
+        link.href = dataUrl;
+        link.download = fileName;
+        link.click();
+        toast.success("تم تحميل الصورة بنجاح", { id: toastId });
+      }
     } catch (error) {
       console.error("Error generating image:", error);
       toast.error("حدث خطأ أثناء استخراج الصورة", { id: toastId });

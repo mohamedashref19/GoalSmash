@@ -15,8 +15,10 @@ import { toast } from "sonner";
 import { io } from "socket.io-client";
 // @ts-expect-error API lack types
 import { uploadPaymentProof } from "@/api/paymentApi";
+// @ts-expect-error: until axiosConfig.js is migrated to TypeScript or has typings.
+import { BACKEND_URL } from "@/api/axiosConfig";
 
-const SOCKET_URL = "http://localhost:3000";
+const SOCKET_URL = BACKEND_URL;
 
 interface PaymentData {
   id: string;

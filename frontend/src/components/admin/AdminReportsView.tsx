@@ -13,14 +13,18 @@ import {
   Image as ImageIcon,
   Building2,
   PieChart,
-  Loader2, // +++ 1. تم إضافة Loader2 هنا +++
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 // @ts-expect-error: API lacks TypeScript definitions
 import { fetchAllVenues } from "@/api/adminApi";
-// @ts-expect-error: API lacks TypeScript definitions // +++ 2. تم إضافة تعليق التجاهل لـ axiosConfig +++
+// @ts-expect-error: API lacks TypeScript definitions
 import apiClient from "@/api/axiosConfig";
+
+import { Capacitor } from "@capacitor/core";
+import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 
 interface CourtBreakdown {
   _id: string;
@@ -57,7 +61,6 @@ export function AdminReportsView() {
 
   const reportRef = useRef<HTMLDivElement>(null);
 
-  // جلب قائمة الأندية للفلتر
   useEffect(() => {
     fetchAllVenues()
       .then(setVenuesList)
@@ -102,7 +105,7 @@ export function AdminReportsView() {
 
   const handlePrint = () => window.print();
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
     if (!report) return;
     let csvContent = "\uFEFFتقرير تصفية الحسابات والعمولات\n\n";
     csvContent += `من تاريخ:, ${startDate}\nإلى تاريخ:, ${endDate}\n`;
@@ -118,11 +121,30 @@ export function AdminReportsView() {
       csvContent += `${court.venueName || "---"},${court.courtName || "---"},${court.bookingsCount},${Number(court.totalRevenue).toFixed(2)} ج.م,${Number(court.totalCommission).toFixed(2)} ج.م\n`;
     });
 
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `تقرير_المنصة_${startDate}_إلى_${endDate}.csv`;
-    link.click();
+    const fileName = `Admin_Report_${startDate}_${endDate}.csv`;
+
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const savedFile = await Filesystem.writeFile({
+          path: fileName,
+          data: csvContent,
+          directory: Directory.Cache,
+          encoding: Encoding.UTF8,
+        });
+        await Share.share({
+          title: "مشاركة تقرير الإكسيل",
+          url: savedFile.uri,
+        });
+      } catch (error) {
+        toast.error("حدث خطأ أثناء حفظ الملف");
+      }
+    } else {
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = fileName;
+      link.click();
+    }
   };
 
   const handleDownloadImage = async () => {
@@ -130,11 +152,27 @@ export function AdminReportsView() {
     const toastId = toast.loading("جاري تجهيز الصورة...");
     try {
       const dataUrl = await domToPng(reportRef.current, { backgroundColor: "#ffffff", scale: 2 });
-      const link = document.createElement("a");
-      link.href = dataUrl;
-      link.download = `تقرير_المنصة_${startDate}_إلى_${endDate}.png`;
-      link.click();
-      toast.success("تم تحميل الصورة بنجاح", { id: toastId });
+      const fileName = `Admin_Report_${startDate}_${endDate}.png`;
+
+      if (Capacitor.isNativePlatform()) {
+        const base64Data = dataUrl.split(",")[1] ?? "";
+        const savedFile = await Filesystem.writeFile({
+          path: fileName,
+          data: base64Data,
+          directory: Directory.Cache,
+        });
+        await Share.share({
+          title: "مشاركة صورة التقرير",
+          url: savedFile.uri,
+        });
+        toast.success("تمت المشاركة بنجاح", { id: toastId });
+      } else {
+        const link = document.createElement("a");
+        link.href = dataUrl;
+        link.download = fileName;
+        link.click();
+        toast.success("تم تحميل الصورة بنجاح", { id: toastId });
+      }
     } catch {
       toast.error("حدث خطأ أثناء استخراج الصورة", { id: toastId });
     }
@@ -312,15 +350,22 @@ export function AdminReportsView() {
                 <h4 className="font-bold text-md mb-3 text-foreground print:text-black flex items-center gap-2">
                   <TrendingUp className="size-4 text-primary" /> تفصيل الإيرادات والعمولات للملاعب
                 </h4>
-                <div className="overflow-hidden rounded-xl border border-border print:border-gray-300">
-                  <table className="w-full text-sm text-right">
+                {/* التعديل هنا: تحويل overflow-hidden إلى overflow-x-auto لدعم التمرير */}
+                <div className="overflow-x-auto rounded-xl border border-border print:border-gray-300">
+                  {/* إضافة min-w-[700px] لإجبار الجدول على الاحتفاظ بحجمه وعدم عصر الخلايا */}
+                  <table className="w-full text-sm text-right min-w-[700px]">
                     <thead className="bg-muted/50 text-muted-foreground print:bg-gray-100 print:text-black">
                       <tr>
-                        <th className="px-4 py-3 font-bold">النادي</th>
-                        <th className="px-4 py-3 font-bold">الملعب</th>
-                        <th className="px-4 py-3 font-bold text-center">الحجوزات</th>
-                        <th className="px-4 py-3 font-bold">إجمالي الإيرادات</th>
-                        <th className="px-4 py-3 font-bold text-warning">عمولة المنصة</th>
+                        {/* إضافة whitespace-nowrap لكل الأعمدة لمنع تكسير السطور */}
+                        <th className="px-4 py-3 font-bold whitespace-nowrap">النادي</th>
+                        <th className="px-4 py-3 font-bold whitespace-nowrap">الملعب</th>
+                        <th className="px-4 py-3 font-bold text-center whitespace-nowrap">
+                          الحجوزات
+                        </th>
+                        <th className="px-4 py-3 font-bold whitespace-nowrap">إجمالي الإيرادات</th>
+                        <th className="px-4 py-3 font-bold text-warning whitespace-nowrap">
+                          عمولة المنصة
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -329,17 +374,19 @@ export function AdminReportsView() {
                           key={court._id || index}
                           className="border-b border-border/50 last:border-0 print:border-gray-200 print:text-black"
                         >
-                          <td className="px-4 py-3 font-bold text-foreground print:text-black">
+                          <td className="px-4 py-3 font-bold text-foreground print:text-black whitespace-nowrap">
                             {court.venueName || "---"}
                           </td>
-                          <td className="px-4 py-3 font-semibold text-muted-foreground print:text-gray-600">
+                          <td className="px-4 py-3 font-semibold text-muted-foreground print:text-gray-600 whitespace-nowrap">
                             {court.courtName || "---"}
                           </td>
-                          <td className="px-4 py-3 font-bold text-center">{court.bookingsCount}</td>
-                          <td className="px-4 py-3 font-black text-primary print:text-black">
+                          <td className="px-4 py-3 font-bold text-center whitespace-nowrap">
+                            {court.bookingsCount}
+                          </td>
+                          <td className="px-4 py-3 font-black text-primary print:text-black whitespace-nowrap">
                             {Number(court.totalRevenue).toFixed(2)} ج.م
                           </td>
-                          <td className="px-4 py-3 font-black text-warning print:text-black">
+                          <td className="px-4 py-3 font-black text-warning print:text-black whitespace-nowrap">
                             {Number(court.totalCommission).toFixed(2)} ج.م
                           </td>
                         </tr>
