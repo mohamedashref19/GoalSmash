@@ -11,7 +11,7 @@ import { ShieldCheck, ArrowRight } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 // @ts-expect-error: authApi is a JavaScript module without TypeScript declarations
-import { verifyUserOTP, resendUserOTP } from "@/api/authApi";
+import { verifyUserOTP, resendUserOTP, forgetPassword } from "@/api/authApi";
 
 export const Route = createFileRoute("/verify-otp")({
   head: () => ({
@@ -72,7 +72,16 @@ function VerifyOtpPage() {
 
   const resend = async () => {
     try {
-      await resendUserOTP(email);
+      const isResetFlow = sessionStorage.getItem("isResetFlow");
+
+      if (isResetFlow) {
+        // لو المستخدم جاي من نسيت كلمة السر، نبعت كود الاسترجاع تاني
+        await forgetPassword(email);
+      } else {
+        // لو المستخدم بيعمل حساب جديد، نبعت كود التفعيل
+        await resendUserOTP(email);
+      }
+
       setDigits(Array(OTP_LENGTH).fill(""));
       setSecondsLeft(59);
       inputsRef.current[0]?.focus();
@@ -92,27 +101,33 @@ function VerifyOtpPage() {
 
     setLoading(true);
     try {
+      const isResetFlow = sessionStorage.getItem("isResetFlow");
+
+      if (isResetFlow) {
+        // مسار استرجاع كلمة المرور: نحفظ الكود في المتصفح وننتقل لصفحة كتابة الباسورد الجديد
+        sessionStorage.setItem("resetOTP", otpCode);
+        toast.success("تم تأكيد الكود، يرجى إدخال كلمة المرور الجديدة");
+        navigate({ to: "/reset-password" });
+        setLoading(false);
+        return; // بنوقف تنفيذ الدالة هنا عشان ميكلمش الـ API
+      }
+
+      // مسار إنشاء حساب جديد: نكلم الباك إند عشان نفعل الحساب ونعمل Login
       const response = await verifyUserOTP(email, otpCode);
 
       localStorage.setItem("token", response.token);
       localStorage.setItem("userData", JSON.stringify(response.data.user));
+      sessionStorage.removeItem("verifyEmail");
 
       toast.success("تم التحقق بنجاح!");
 
-      // +++ التعديل هنا: التوجيه الذكي +++
-      const isResetFlow = sessionStorage.getItem("isResetFlow");
-      if (isResetFlow) {
-        navigate({ to: "/reset-password" });
+      const userRole = response.data.user.role;
+      if (userRole === "admin") {
+        window.location.href = "/admin-dashboard";
+      } else if (userRole === "customer") {
+        window.location.href = "/explore";
       } else {
-        sessionStorage.removeItem("verifyEmail");
-        const userRole = response.data.user.role;
-        if (userRole === "admin") {
-          window.location.href = "/admin-dashboard";
-        } else if (userRole === "customer") {
-          window.location.href = "/explore";
-        } else {
-          window.location.href = "/";
-        }
+        window.location.href = "/";
       }
     } catch (error) {
       toast.error((error as string) || "رمز التحقق غير صحيح");

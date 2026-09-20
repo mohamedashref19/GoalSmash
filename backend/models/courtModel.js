@@ -15,8 +15,8 @@ const courtSchema = new mongoose.Schema(
     sportType: {
       type: String,
       enum: {
-        values: ["padel", "football"],
-        message: "نوع الرياضة يجب أن يكون padel أو football فقط",
+        values: ["padel", "football", "football_7"],
+        message: "نوع الرياضة يجب أن يكون padel أو football فقط أو football_7",
       },
       required: [true, "يرجى تحديد نوع الرياضة للملعب"],
     },
@@ -44,6 +44,7 @@ const courtSchema = new mongoose.Schema(
 );
 
 courtSchema.pre(/^find/, function () {
+  this.find({ status: { $ne: "inactive" } });
   this.populate({
     path: "venue",
     select: "name address phone",

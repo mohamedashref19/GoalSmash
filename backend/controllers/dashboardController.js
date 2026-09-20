@@ -11,7 +11,6 @@ exports.getTodayStats = catchAsync(async (req, res, next) => {
     return next(new AppError("يرجى تحديد المكان (venue)", 400));
   }
 
-  // +++ قفل الأمان: التأكد إن المالك ده هو صاحب الملعب فعلاً +++
   if (req.user && req.user.role === "owner") {
     const venueCheck = await Venue.findOne({
       _id: venueId,
@@ -24,11 +23,23 @@ exports.getTodayStats = catchAsync(async (req, res, next) => {
     }
   }
 
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
+  const now = new Date();
 
-  const endOfDay = new Date();
-  endOfDay.setHours(23, 59, 59, 999);
+  // استخراج الوقت الحالي في مصر والوقت العالمي (UTC)
+  const cairoTime = new Date(
+    now.toLocaleString("en-US", { timeZone: "Africa/Cairo" }),
+  );
+  const utcTime = new Date(now.toLocaleString("en-US", { timeZone: "UTC" }));
+
+  // حساب الفارق بالساعات (النتيجة هتكون 3 في الصيف و 2 في الشتاء تلقائياً)
+  const dynamicEgyptOffset = (cairoTime - utcTime) / (1000 * 60 * 60);
+
+  const startOfDay = new Date(now);
+  startOfDay.setUTCHours(0 - dynamicEgyptOffset, 0, 0, 0);
+
+  const endOfDay = new Date(now);
+  endOfDay.setUTCHours(23 - dynamicEgyptOffset, 59, 59, 999);
+  // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
   const todayStats = await Booking.aggregate([
     {

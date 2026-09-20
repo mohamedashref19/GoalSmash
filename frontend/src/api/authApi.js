@@ -7,7 +7,7 @@ export const loginUser = async (phone, password) => {
     return response.data;
   } catch (error) {
     // لو الباك إند رجع خطأ، بنرميه عشان الـ Frontend يمسكه ويطلعه للعميل
-    throw error.response?.data?.message || "حدث خطأ أثناء تسجيل الدخول";
+    throw error;
   }
 };
 

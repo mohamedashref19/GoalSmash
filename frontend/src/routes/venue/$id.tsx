@@ -71,6 +71,12 @@ interface PaymentDataType {
   };
 }
 
+const getImageUrl = (imagePath?: string) => {
+  if (!imagePath) return "/default-placeholder.png";
+  if (imagePath.startsWith("http")) return imagePath;
+  return `${BACKEND_URL}${imagePath}`;
+};
+
 export const Route = createFileRoute("/venue/$id")({
   head: () => ({
     meta: [{ title: "تفاصيل الملعب | GoalSmash" }],
@@ -361,14 +367,7 @@ function VenueDetailsPage() {
       <div className="relative flex h-52 items-center justify-center bg-muted overflow-hidden sm:h-72">
         {displayImage ? (
           <img
-            src={
-              displayImage
-                ? displayImage.replace(
-                    /http:\/\/(127\.0\.0\.1|192\.168\.1\.4)(:\d+)?/g,
-                    BACKEND_URL,
-                  )
-                : ""
-            }
+            src={getImageUrl(displayImage)}
             alt={selectedCourt?.name || venue.name}
             className="absolute inset-0 h-full w-full object-cover animate-in fade-in duration-500"
             key={displayImage}

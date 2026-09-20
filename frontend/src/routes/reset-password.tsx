@@ -36,13 +36,22 @@ function ResetPasswordPage() {
 
     setLoading(true);
     try {
+      // سحب الإيميل والكود من المتصفح
       const email = sessionStorage.getItem("verifyEmail");
+      const otp = sessionStorage.getItem("resetOTP");
 
-      // إرسال الإيميل وكلمة المرور الجديدة للباك إند
-      await resetUserPassword({ email, password });
+      // إرسال البيانات كاملة للباك إند
+      await resetUserPassword({
+        email,
+        otp,
+        password,
+        passwordConfirm: confirm,
+      });
 
+      // تنظيف المتصفح بعد النجاح
       sessionStorage.removeItem("verifyEmail");
       sessionStorage.removeItem("isResetFlow");
+      sessionStorage.removeItem("resetOTP");
 
       toast.success("تم حفظ كلمة المرور الجديدة بنجاح");
       navigate({ to: "/login" });

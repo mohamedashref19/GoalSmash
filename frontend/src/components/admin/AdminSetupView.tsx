@@ -483,6 +483,7 @@ export function AdminSetupView() {
             >
               <option value="padel">بادل (Padel)</option>
               <option value="football">كرة قدم خماسي</option>
+              <option value="football_7">كرة قدم سباعي</option>
             </select>
           </div>
           <input
@@ -694,6 +695,7 @@ export function AdminSetupView() {
                             >
                               <option value="padel">بادل</option>
                               <option value="football">خماسي</option>
+                              <option value="football_7">سباعي</option>
                             </select>
                           </div>
 
@@ -738,10 +740,16 @@ export function AdminSetupView() {
                                 "text-[10px] font-bold px-2 py-0.5 rounded-full",
                                 court.sportType === "padel"
                                   ? "bg-blue-500/10 text-blue-500"
-                                  : "bg-emerald-500/10 text-emerald-500",
+                                  : court.sportType === "football_7"
+                                    ? "bg-orange-500/10 text-orange-500"
+                                    : "bg-emerald-500/10 text-emerald-500",
                               )}
                             >
-                              {court.sportType === "padel" ? "بادل" : "خماسي"}
+                              {court.sportType === "padel"
+                                ? "بادل"
+                                : court.sportType === "football_7"
+                                  ? "سباعي"
+                                  : "خماسي"}
                             </span>
                           </div>
                           <div className="flex justify-between items-end mt-3">

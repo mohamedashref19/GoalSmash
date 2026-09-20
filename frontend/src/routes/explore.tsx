@@ -41,6 +41,11 @@ interface VenueType {
   courts?: CourtType[];
   image?: string;
 }
+const getImageUrl = (imagePath?: string) => {
+  if (!imagePath) return "/default-placeholder.png";
+  if (imagePath.startsWith("http")) return imagePath;
+  return `${BACKEND_URL}${imagePath}`;
+};
 
 export const Route = createFileRoute("/explore")({
   head: () => ({
@@ -391,14 +396,7 @@ function ExplorePage() {
                     <div className="relative h-48 w-full bg-muted overflow-hidden">
                       {venue.image ? (
                         <img
-                          src={
-                            venue.image
-                              ? venue.image.replace(
-                                  /http:\/\/(127\.0\.0\.1|192\.168\.1\.4)(:\d+)?/g,
-                                  BACKEND_URL,
-                                )
-                              : ""
-                          }
+                          src={getImageUrl(venue.image)}
                           alt={venue.name}
                           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                         />

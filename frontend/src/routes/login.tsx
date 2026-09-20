@@ -1,10 +1,10 @@
 import { useState, type FormEvent } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Trophy, Phone, Lock, Eye, EyeOff, ArrowRight } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 // @ts-expect-error authApi is a JavaScript module without TypeScript declarations.
-import { loginUser } from "@/api/authApi";
+import { loginUser, resendUserOTP } from "@/api/authApi";
 
 export const Route = createFileRoute("/login")({
   head: () => ({
@@ -23,6 +23,7 @@ const field =
   "mt-1.5 w-full rounded-xl border border-input bg-background py-2.5 pr-11 pl-3 text-sm outline-none transition-shadow focus:border-primary focus:ring-2 focus:ring-ring/40";
 
 function LoginPage() {
+  const navigate = useNavigate();
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -61,8 +62,43 @@ function LoginPage() {
       } else {
         window.location.href = "/";
       }
-    } catch (error) {
-      toast.error((error as string) || "رقم الهاتف أو كلمة المرور غير صحيحة");
+    } catch (error: unknown) {
+      const errorData =
+        typeof error === "object" && error !== null && "response" in error
+          ? (
+              error as {
+                response?: {
+                  data?: {
+                    actionRequired?: unknown;
+                    email?: string;
+                    message?: string;
+                  };
+                };
+              }
+            ).response?.data
+          : undefined;
+      // التوجيه الذكي إذا كان الحساب غير مفعل
+      if (errorData?.actionRequired === "VERIFY_OTP") {
+        toast.info("حسابك يحتاج للتفعيل، جاري إرسال كود جديد وتوجيهك...");
+        const userEmail = errorData.email ?? "";
+        sessionStorage.setItem("verifyEmail", userEmail);
+
+        // +++ طلب كود تفعيل جديد أوتوماتيكياً +++
+        try {
+          await resendUserOTP(userEmail);
+        } catch (resendError) {
+          console.error("فشل إرسال الكود التلقائي", resendError);
+        }
+
+        navigate({ to: "/verify-otp" });
+      } else {
+        // عرض رسالة الخطأ العادية (مثل خطأ في كلمة المرور)
+        toast.error(
+          errorData?.message ||
+            (error instanceof Error ? error.message : undefined) ||
+            "رقم الهاتف أو كلمة المرور غير صحيحة",
+        );
+      }
       setLoading(false);
     }
   };

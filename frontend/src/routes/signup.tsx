@@ -64,6 +64,7 @@ function SignUpPage() {
     try {
       // الاتصال الفعلي بالباك إند وإرسال البيانات
       await signupUser({ name, phone, email, password, passwordConfirm: confirm });
+      sessionStorage.setItem("verifyEmail", email);
 
       toast.success("تم إنشاء الحساب بنجاح! يرجى إدخال كود التفعيل");
       // التوجيه التلقائي لصفحة إدخال الـ OTP

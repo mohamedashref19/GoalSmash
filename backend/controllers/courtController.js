@@ -26,7 +26,8 @@ exports.createCourt = catchAsync(async (req, res, next) => {
 
   if (req.file) {
     // req.body.image = `http://127.0.0.1:3000/uploads/venues/${req.file.filename}`;
-    req.body.image = `http://192.168.1.4:3000/uploads/venues/${req.file.filename}`;
+    // req.body.image = `http://192.168.1.4:3000/uploads/venues/${req.file.filename}`;
+    req.body.image = `/uploads/venues/${req.file.filename}`;
   }
 
   const newCourt = await Court.create(req.body);
@@ -76,8 +77,7 @@ exports.updateCourt = catchAsync(async (req, res, next) => {
   if (req.body.venue) delete req.body.venue;
 
   if (req.file) {
-    // req.body.image = `http://127.0.0.1:3000/uploads/venues/${req.file.filename}`;
-    req.body.image = `http://192.168.1.4:3000/uploads/venues/${req.file.filename}`;
+    req.body.image = `/uploads/venues/${req.file.filename}`;
   }
 
   court = await Court.findByIdAndUpdate(req.params.id, req.body, {

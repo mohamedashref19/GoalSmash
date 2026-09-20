@@ -73,6 +73,7 @@ exports.updateVenue = catchAsync(async (req, res, next) => {
   if (req.file) {
     // req.body.image = `http://127.0.0.1:3000/uploads/venues/${req.file.filename}`;
     req.body.image = `http://192.168.1.4:3000/uploads/venues/${req.file.filename}`;
+    req.body.image = `/uploads/venues/${req.file.filename}`;
   }
 
   venue = await Venue.findByIdAndUpdate(req.params.id, req.body, {

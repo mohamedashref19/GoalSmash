@@ -36,6 +36,19 @@ const createAndSendToken = (user, statusCode, res) => {
 };
 
 exports.signup = catchAsync(async (req, res, next) => {
+  const existingUser = await User.findOne({
+    $or: [{ email: req.body.email }, { phone: req.body.phone }],
+  });
+
+  if (existingUser) {
+    if (existingUser.verified) {
+      return next(
+        new AppError("هذا البريد أو الرقم مستخدم بالفعل ومفعل.", 400),
+      );
+    } else {
+      await User.findByIdAndDelete(existingUser._id);
+    }
+  }
   const allowedRoles = ["customer", "owner"];
   const userRole = allowedRoles.includes(req.body.role)
     ? req.body.role
