@@ -6,8 +6,8 @@ exports.createVenue = catchAsync(async (req, res, next) => {
   if (!req.body.owner) req.body.owner = req.user.id;
 
   if (req.file) {
-    // req.body.image = `http://127.0.0.1:3000/uploads/venues/${req.file.filename}`;
-    req.body.image = `http://192.168.1.4:3000/uploads/venues/${req.file.filename}`;
+    // Cloudinary بيرجع الرابط الدائم للصورة في req.file.path
+    req.body.image = req.file.path;
   }
 
   const newVenue = await Venue.create(req.body);
@@ -71,9 +71,8 @@ exports.updateVenue = catchAsync(async (req, res, next) => {
   }
 
   if (req.file) {
-    // req.body.image = `http://127.0.0.1:3000/uploads/venues/${req.file.filename}`;
-    req.body.image = `http://192.168.1.4:3000/uploads/venues/${req.file.filename}`;
-    req.body.image = `/uploads/venues/${req.file.filename}`;
+    // Cloudinary بيرجع الرابط الدائم للصورة في req.file.path
+    req.body.image = req.file.path;
   }
 
   venue = await Venue.findByIdAndUpdate(req.params.id, req.body, {
