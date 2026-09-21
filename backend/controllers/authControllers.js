@@ -107,7 +107,7 @@ exports.verifyOTP = catchAsync(async (req, res, next) => {
   user.otpExpires = undefined;
   await user.save({ validateBeforeSave: false });
 
-  const url = `${process.env.FRONTEND_URL}/explore`;
+  const url = `${req.protocol}://${req.get("host")}/profile`;
   await new Email(user, url).sendWelcome();
 
   createAndSendToken(user, 200, res);
@@ -290,22 +290,18 @@ exports.forgetPassword = catchAsync(async (req, res, next) => {
   user.passwordResetOTPExpires = Date.now() + 10 * 60 * 1000;
   await user.save({ validateBeforeSave: false });
 
-  // نرجع رد للمستخدم فورًا من غير ما ننتظر إرسال الإيميل يخلص
-  res.status(200).json({
-    status: "success",
-    message: "OTP sent to your email",
-    email: user.email,
-  });
-
-  // إرسال الإيميل يحصل في الخلفية - لو فشل، بنسجل الخطأ الحقيقي في الكونسول
-  // من غير ما نأثر على رد المستخدم اللي وصله بالفعل
   try {
     await new Email(user, "").sendPasswordResetOTP(otp);
+    res.status(200).json({
+      status: "success",
+      message: "OTP sent to your email",
+      email: user.email,
+    });
   } catch (err) {
-    console.error("خطأ أثناء إرسال إيميل إعادة تعيين كلمة المرور:", err);
     user.passwordResetOTP = undefined;
     user.passwordResetOTPExpires = undefined;
     await user.save({ validateBeforeSave: false });
+    return next(new AppError("حدث خطأ في الخادم", 500));
   }
 });
 
