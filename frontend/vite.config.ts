@@ -7,10 +7,7 @@ export default defineConfig({
     ssr: false,
     server: { entry: "server" },
     prerender: {
-      enabled: true,
-      routes: ["/"], // prerender الصفحة الرئيسية بس كـ SPA shell
-      crawlLinks: false, // منمنعش زحف لينكات routes محمية بتسجيل دخول
-      concurrency: 1,
+      enabled: false, // بنقفله لأنه بيسبب فشل الـ build على Vercel، والتطبيق ديناميكي بالكامل مش محتاجه
     },
   },
   plugins: [
