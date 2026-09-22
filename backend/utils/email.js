@@ -3,8 +3,8 @@ const fs = require("fs");
 const path = require("path");
 const { convert } = require("html-to-text");
 
-// مسار الشعار - المفروض يكون موجود في backend/assets/logo.jpg
-const LOGO_PATH = path.join(__dirname, "..", "assets", "logo.jpg");
+// مسار الشعار - المفروض يكون موجود في backend/assets/logo.png
+const LOGO_PATH = path.join(__dirname, "..", "assets", "logo.png");
 
 // بنحول الشعار لـ base64 مرة واحدة بس وقت ما السيرفر يشتغل،
 // وبعد كده بنستخدمه كصورة مدمجة جوه الإيميل نفسه (مش attachment منفصل)
@@ -12,7 +12,7 @@ const LOGO_PATH = path.join(__dirname, "..", "assets", "logo.jpg");
 let LOGO_DATA_URI = "";
 try {
   const logoBuffer = fs.readFileSync(LOGO_PATH);
-  LOGO_DATA_URI = `data:image/jpeg;base64,${logoBuffer.toString("base64")}`;
+  LOGO_DATA_URI = `data:image/png;base64,${logoBuffer.toString("base64")}`;
 } catch (err) {
   console.error("⚠️ لم يتم العثور على شعار الإيميل في المسار:", LOGO_PATH);
 }
