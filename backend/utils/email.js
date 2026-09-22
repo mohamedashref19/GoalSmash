@@ -1,21 +1,8 @@
 const nodemailer = require("nodemailer");
-const fs = require("fs");
-const path = require("path");
 const { convert } = require("html-to-text");
 
-// مسار الشعار - المفروض يكون موجود في backend/assets/logo.png
-const LOGO_PATH = path.join(__dirname, "..", "assets", "logo.png");
-
-// بنحول الشعار لـ base64 مرة واحدة بس وقت ما السيرفر يشتغل،
-// وبعد كده بنستخدمه كصورة مدمجة جوه الإيميل نفسه (مش attachment منفصل)
-// الطريقة دي بتشتغل صح سواء بعتنا الإيميل عن طريق SMTP أو HTTPS API
-let LOGO_DATA_URI = "";
-try {
-  const logoBuffer = fs.readFileSync(LOGO_PATH);
-  LOGO_DATA_URI = `data:image/png;base64,${logoBuffer.toString("base64")}`;
-} catch (err) {
-  console.error("⚠️ لم يتم العثور على شعار الإيميل في المسار:", LOGO_PATH);
-}
+// بنستخدم رابط عادي (مش base64) لأن Gmail وأغلب برامج البريد بترفض تعرض data URIs
+const LOGO_URL = `${process.env.SERVER_URL || "https://goalsmash-api.onrender.com"}/assets/logo.png`;
 
 module.exports = class Email {
   constructor(user, url) {
@@ -34,7 +21,7 @@ module.exports = class Email {
         
         <!-- Header -->
         <div style="background:#1f3d2b; padding:28px 20px; text-align:center;">
-          <img src="${LOGO_DATA_URI}" alt="GoalSmash" style="width:64px; height:64px; border-radius:16px;" />
+          <img src="${LOGO_URL}" alt="GoalSmash" style="width:64px; height:64px; border-radius:16px;" />
           <h1 style="color:#ffffff; font-size:20px; margin:12px 0 0; font-weight:800;">GoalSmash</h1>
         </div>
 
@@ -130,7 +117,7 @@ module.exports = class Email {
       </div>
       <p style="color:#999; font-size:13px; margin:0;">لو محتاج أي مساعدة، إحنا موجودين ليك في أي وقت.</p>
     `;
-    await this.send("أهلاً بيك في GoalSmash ⚽🎾", body);
+    await this.send("أهلاً بيك في GoalSmash ", body);
   }
 
   async sendPasswordResetOTP(otpCode) {
@@ -150,7 +137,7 @@ module.exports = class Email {
 
   async sendOTP(otpCode) {
     const body = `
-      <h2 style="color:#1f3d2b; font-size:20px; margin:0 0 12px;">خطوة وحدة وخلصنا 🚀</h2>
+      <h2 style="color:#1f3d2b; font-size:20px; margin:0 0 12px;">خطوة وحدة وخلصنا </h2>
       <p style="color:#555; font-size:15px; line-height:1.8; margin:0 0 20px;">
         استخدم الكود ده عشان تفعّل حسابك في GoalSmash:
       </p>
@@ -158,7 +145,7 @@ module.exports = class Email {
         <span style="font-size:36px; font-weight:800; letter-spacing:10px; color:#28a745;">${otpCode}</span>
       </div>
       <p style="color:#666; font-size:14px; margin:0 0 8px;">⏱ الكود صالح لمدة <strong>10 دقايق</strong> بس، فسرّع شوية 😄</p>
-      <p style="color:#999; font-size:13px; margin:0;">شكرًا إنك اخترت GoalSmash 🙏</p>
+    
     `;
     await this.send("رمز تفعيل حسابك في GoalSmash", body);
   }
