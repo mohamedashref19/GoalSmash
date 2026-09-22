@@ -1,46 +1,29 @@
 const nodemailer = require("nodemailer");
+const fs = require("fs");
 const path = require("path");
 const { convert } = require("html-to-text");
 
 // مسار الشعار - المفروض يكون موجود في backend/assets/logo.jpg
 const LOGO_PATH = path.join(__dirname, "..", "assets", "logo.jpg");
 
+// بنحول الشعار لـ base64 مرة واحدة بس وقت ما السيرفر يشتغل،
+// وبعد كده بنستخدمه كصورة مدمجة جوه الإيميل نفسه (مش attachment منفصل)
+// الطريقة دي بتشتغل صح سواء بعتنا الإيميل عن طريق SMTP أو HTTPS API
+let LOGO_DATA_URI = "";
+try {
+  const logoBuffer = fs.readFileSync(LOGO_PATH);
+  LOGO_DATA_URI = `data:image/jpeg;base64,${logoBuffer.toString("base64")}`;
+} catch (err) {
+  console.error("⚠️ لم يتم العثور على شعار الإيميل في المسار:", LOGO_PATH);
+}
+
 module.exports = class Email {
   constructor(user, url) {
     this.to = user.email;
     this.firstName = user.name.split(" ")[0];
     this.url = url;
-    this.from = `GoalSmash <${process.env.EMAIL_FROM}>`;
-  }
-
-  // 🛠️ يختار الإعدادات المناسبة تلقائيًا حسب البيئة اللي السيرفر شغال فيها
-  createTransport() {
-    // Production: Brevo
-    if (process.env.NODE_ENV === "production") {
-      return nodemailer.createTransport({
-        host: process.env.BREVO_EMAIL_HOST,
-        port: process.env.BREVO_EMAIL_PORT,
-        secure: false,
-        auth: {
-          user: process.env.BREVO_EMAIL_USERNAME,
-          pass: process.env.BREVO_EMAIL_PASSWORD,
-        },
-      });
-    }
-
-    // Development: Mailtrap
-    return nodemailer.createTransport({
-      host: process.env.EMAIL_HOST,
-      port: process.env.EMAIL_PORT,
-      secure: false,
-      auth: {
-        user: process.env.EMAIL_USERNAME,
-        pass: process.env.EMAIL_PASSWORD,
-      },
-      tls: {
-        rejectUnauthorized: false,
-      },
-    });
+    this.fromEmail = process.env.EMAIL_FROM;
+    this.fromName = "GoalSmash";
   }
 
   // 🎨 الهيكل العام لكل إيميل - هيدر فيه الشعار + محتوى + فوتر
@@ -51,7 +34,7 @@ module.exports = class Email {
         
         <!-- Header -->
         <div style="background:#1f3d2b; padding:28px 20px; text-align:center;">
-          <img src="cid:goalsmash-logo" alt="GoalSmash" style="width:64px; height:64px; border-radius:16px;" />
+          <img src="${LOGO_DATA_URI}" alt="GoalSmash" style="width:64px; height:64px; border-radius:16px;" />
           <h1 style="color:#ffffff; font-size:20px; margin:12px 0 0; font-weight:800;">GoalSmash</h1>
         </div>
 
@@ -69,26 +52,66 @@ module.exports = class Email {
     </div>`;
   }
 
-  async send(subject, bodyContent) {
-    const htmlContent = this.wrapTemplate(bodyContent);
+  // 🚀 Production: بنستخدم Brevo API عن طريق HTTPS (بورت 443)
+  // ده بديل SMTP لأن Render بتمنع اتصالات SMTP (بورت 587/465/25) على الخطة المجانية
+  async sendViaBrevoAPI(subject, htmlContent, textContent) {
+    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "api-key": process.env.BREVO_API_KEY,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        sender: { name: this.fromName, email: this.fromEmail },
+        to: [{ email: this.to, name: this.firstName }],
+        subject,
+        htmlContent,
+        textContent,
+      }),
+    });
 
-    const emailOptions = {
-      from: this.from,
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(
+        `Brevo API error (status ${response.status}): ${errorBody}`,
+      );
+    }
+  }
+
+  // 🛠️ Development: بنستخدم Mailtrap عن طريق SMTP العادي (شغال محليًا من غير مشاكل)
+  async sendViaMailtrap(subject, htmlContent, textContent) {
+    const transport = nodemailer.createTransport({
+      host: process.env.EMAIL_HOST,
+      port: process.env.EMAIL_PORT,
+      secure: false,
+      auth: {
+        user: process.env.EMAIL_USERNAME,
+        pass: process.env.EMAIL_PASSWORD,
+      },
+      tls: {
+        rejectUnauthorized: false,
+      },
+    });
+
+    await transport.sendMail({
+      from: `${this.fromName} <${this.fromEmail}>`,
       to: this.to,
       subject,
       html: htmlContent,
-      text: convert(htmlContent),
-      attachments: [
-        {
-          filename: "logo.jpg",
-          path: LOGO_PATH,
-          cid: "goalsmash-logo", // نفس الـ cid المستخدم في src="cid:..." فوق
-        },
-      ],
-    };
+      text: textContent,
+    });
+  }
 
-    const transport = this.createTransport();
-    await transport.sendMail(emailOptions);
+  async send(subject, bodyContent) {
+    const htmlContent = this.wrapTemplate(bodyContent);
+    const textContent = convert(htmlContent);
+
+    if (process.env.NODE_ENV === "production") {
+      await this.sendViaBrevoAPI(subject, htmlContent, textContent);
+    } else {
+      await this.sendViaMailtrap(subject, htmlContent, textContent);
+    }
   }
 
   async sendWelcome() {
