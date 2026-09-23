@@ -104,3 +104,23 @@ export const updateCourtByAdmin = async (id, formData) => {
     throw error.response?.data?.message || "حدث خطأ أثناء تحديث الملعب";
   }
 };
+
+// +++ جلب بيانات تقفيل اليومية +++
+export const fetchDailyClosing = async (date = null, venueId = "all") => {
+  try {
+    let url = "/admin/daily-closing";
+    const params = new URLSearchParams();
+
+    if (date) params.append("date", date);
+    if (venueId && venueId !== "all") params.append("venue", venueId);
+
+    if (params.toString()) {
+      url += `?${params.toString()}`;
+    }
+
+    const response = await apiClient.get(url);
+    return response.data.data;
+  } catch (error) {
+    throw error.response?.data?.message || "حدث خطأ أثناء جلب تفاصيل اليومية";
+  }
+};

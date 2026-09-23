@@ -13,5 +13,6 @@ router.get("/venues-performance", adminController.getVenuesPerformance);
 router.post("/owners", adminController.createOwner);
 router.get("/owners", adminController.getAllOwners);
 router.get("/customers", adminController.getAllCustomers);
+router.get("/daily-closing", adminController.getDailyClosing);
 
 module.exports = router;

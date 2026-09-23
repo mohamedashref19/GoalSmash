@@ -2,12 +2,12 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { LayoutDashboard, Wallet, FileText, Settings, X, ClipboardList } from "lucide-react";
 import { Header } from "@/components/venue/Header";
-import { AdminReportsView } from "@/components/admin/AdminReportsView";
+import { AdminDailyClosingView } from "@/components/admin/AdminDailyClosingView";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/admin-reports")({
-  head: () => ({ meta: [{ title: "تقارير المنصة | GoalSmash" }] }),
-  component: AdminReportsPage,
+export const Route = createFileRoute("/admin-daily-closing")({
+  head: () => ({ meta: [{ title: "تقفيل اليومية | GoalSmash" }] }),
+  component: AdminDailyClosingPage,
 });
 
 function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -38,35 +38,35 @@ function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void
           <Link
             to="/admin-dashboard"
             onClick={onClose}
-            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary text-muted-foreground"
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-muted-foreground hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary"
           >
             <LayoutDashboard className="h-5 w-5" /> لوحة القيادة
           </Link>
           <Link
             to="/admin-payments"
             onClick={onClose}
-            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary text-muted-foreground"
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-muted-foreground hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary"
           >
             <Wallet className="h-5 w-5" /> المدفوعات المركزية
           </Link>
           <Link
             to="/admin-daily-closing"
             onClick={onClose}
-            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary text-muted-foreground"
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-muted-foreground hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary"
           >
             <ClipboardList className="h-5 w-5" /> تقفيل اليومية
           </Link>
           <Link
             to="/admin-reports"
             onClick={onClose}
-            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary text-muted-foreground"
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-muted-foreground hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary"
           >
             <FileText className="h-5 w-5" /> تقارير المنصة
           </Link>
           <Link
             to="/admin-setup"
             onClick={onClose}
-            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary text-muted-foreground"
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-muted-foreground hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary"
           >
             <Settings className="h-5 w-5" /> إعدادات النظام
           </Link>
@@ -76,50 +76,49 @@ function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void
   );
 }
 
-function AdminReportsPage() {
+function AdminDailyClosingPage() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
     <div dir="rtl" className="min-h-screen bg-background text-foreground pb-20">
       <AdminMobileMenu open={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
-      <Header title="تقارير المنصة (Super Admin)" onMenu={() => setIsMobileMenuOpen(true)} />
+      <Header title="تقفيل اليومية (Super Admin)" onMenu={() => setIsMobileMenuOpen(true)} />
 
-      {/* شريط التنقل العلوي للشاشات الكبيرة */}
       <div className="hidden lg:flex bg-card border-b border-border px-6 py-3 gap-6 justify-center sticky top-[61px] z-20 shadow-sm print:hidden">
         <Link
           to="/admin-dashboard"
-          className="text-sm font-bold flex items-center gap-2 hover:text-primary transition-colors text-muted-foreground [&.active]:text-primary"
+          className="text-sm font-bold flex items-center gap-2 hover:text-primary text-muted-foreground [&.active]:text-primary"
         >
           <LayoutDashboard className="size-4" /> الرئيسية
         </Link>
         <Link
           to="/admin-payments"
-          className="text-sm font-bold flex items-center gap-2 hover:text-primary transition-colors text-muted-foreground [&.active]:text-primary"
+          className="text-sm font-bold flex items-center gap-2 hover:text-primary text-muted-foreground [&.active]:text-primary"
         >
           <Wallet className="size-4" /> المدفوعات المركزية
         </Link>
         <Link
           to="/admin-daily-closing"
-          className="text-sm font-bold flex items-center gap-2 hover:text-primary transition-colors text-muted-foreground [&.active]:text-primary"
+          className="text-sm font-bold flex items-center gap-2 hover:text-primary text-muted-foreground [&.active]:text-primary"
         >
           <ClipboardList className="size-4" /> تقفيل اليومية
         </Link>
         <Link
           to="/admin-reports"
-          className="text-sm font-bold flex items-center gap-2 hover:text-primary transition-colors text-muted-foreground [&.active]:text-primary"
+          className="text-sm font-bold flex items-center gap-2 hover:text-primary text-muted-foreground [&.active]:text-primary"
         >
           <FileText className="size-4" /> تقارير المنصة
         </Link>
         <Link
           to="/admin-setup"
-          className="text-sm font-bold flex items-center gap-2 hover:text-primary transition-colors text-muted-foreground [&.active]:text-primary"
+          className="text-sm font-bold flex items-center gap-2 hover:text-primary text-muted-foreground [&.active]:text-primary"
         >
           <Settings className="size-4" /> إعدادات النظام
         </Link>
       </div>
 
       <main className="mx-auto w-full max-w-6xl">
-        <AdminReportsView />
+        <AdminDailyClosingView />
       </main>
     </div>
   );

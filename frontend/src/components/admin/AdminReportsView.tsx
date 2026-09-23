@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { domToPng } from "modern-screenshot";
+import jsPDF from "jspdf";
 import {
   CalendarDays,
   FileText,
@@ -57,8 +58,9 @@ export function AdminReportsView() {
   const [venuesList, setVenuesList] = useState<VenueOption[]>([]);
 
   const [report, setReport] = useState<ReportData | null>(null);
-  const [loading, setLoading] = useState(false);
 
+  const [loading, setLoading] = useState(false);
+  const [isCapturing, setIsCapturing] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -103,8 +105,62 @@ export function AdminReportsView() {
     }
   };
 
-  const handlePrint = () => {
-    window.print();
+  const handlePrint = async () => {
+    // تشغيل الطباعة العادية في المتصفح (اللاب توب)
+    if (!Capacitor.isNativePlatform()) {
+      window.print();
+      return;
+    }
+
+    // توليد PDF ومشاركته في تطبيق الموبايل
+    if (!reportRef.current) return;
+    const toastId = toast.loading("جاري تجهيز ملف PDF...");
+    setIsCapturing(true);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    try {
+      const dataUrl = await domToPng(reportRef.current, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+      });
+      const elementWidth = reportRef.current.offsetWidth;
+      const elementHeight = reportRef.current.offsetHeight;
+
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "px",
+        format: [elementWidth, elementHeight],
+      });
+
+      pdf.addImage(dataUrl, "PNG", 0, 0, elementWidth, elementHeight);
+
+      const pdfBase64 = pdf.output("datauristring").split(",")[1];
+      if (!pdfBase64) {
+        throw new Error("تعذر تجهيز بيانات ملف PDF");
+      }
+      const fileName = `Financial_Report_${startDate}_${endDate}.pdf`;
+
+      const { Filesystem, Directory } = await import("@capacitor/filesystem");
+      const { Share } = await import("@capacitor/share");
+
+      const savedFile = await Filesystem.writeFile({
+        path: fileName,
+        data: pdfBase64,
+        directory: Directory.Cache,
+      });
+
+      await Share.share({
+        title: "مشاركة تقرير PDF",
+        url: savedFile.uri,
+      });
+
+      toast.success("تم تجهيز الـ PDF ومشاركته بنجاح", { id: toastId });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(message || "حدث خطأ أثناء إنشاء ملف PDF", { id: toastId });
+    } finally {
+      setIsCapturing(false);
+    }
   };
 
   const handleExportCSV = async () => {
@@ -156,6 +212,8 @@ export function AdminReportsView() {
   const handleDownloadImage = async () => {
     if (!reportRef.current) return;
     const toastId = toast.loading("جاري تجهيز الصورة...");
+    setIsCapturing(true);
+    await new Promise((resolve) => setTimeout(resolve, 150));
     try {
       const dataUrl = await domToPng(reportRef.current, {
         backgroundColor: "#ffffff",
@@ -190,6 +248,8 @@ export function AdminReportsView() {
       // التعديل هنا: إظهار الخطأ الفعلي
       const message = error instanceof Error ? error.message : String(error);
       toast.error(message || "حدث خطأ أثناء حفظ الملف");
+    } finally {
+      setIsCapturing(false); // +++ إرجاع الشاشة لوضعها الطبيعي
     }
   };
 
@@ -290,7 +350,7 @@ export function AdminReportsView() {
           <div className="animate-in slide-in-from-bottom-4">
             <div
               ref={reportRef}
-              className="space-y-6 bg-background print:bg-white print:p-0 print:m-0 rounded-2xl p-4"
+              className={`space-y-6 bg-background print:bg-white print:p-0 print:m-0 rounded-2xl p-4 ${isCapturing ? "w-max min-w-full" : ""}`}
             >
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-border pb-4 gap-4">
                 <div>
@@ -366,7 +426,9 @@ export function AdminReportsView() {
                   <TrendingUp className="size-4 text-primary" /> تفصيل الإيرادات والعمولات للملاعب
                 </h4>
                 {/* التعديل هنا: تحويل overflow-hidden إلى overflow-x-auto لدعم التمرير */}
-                <div className="overflow-x-auto rounded-xl border border-border print:border-gray-300">
+                <div
+                  className={`rounded-xl border border-border print:border-gray-300 ${!isCapturing ? "overflow-x-auto" : ""}`}
+                >
                   {/* إضافة min-w-[700px] لإجبار الجدول على الاحتفاظ بحجمه وعدم عصر الخلايا */}
                   <table className="w-full text-sm text-right min-w-[700px]">
                     <thead className="bg-muted/50 text-muted-foreground print:bg-gray-100 print:text-black">

@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminDailyClosingRouteImport } from './routes/admin-daily-closing'
 import { Route as AdminDashboardRouteImport } from './routes/admin-dashboard'
 import { Route as AdminPaymentsRouteImport } from './routes/admin-payments'
 import { Route as AdminReportsRouteImport } from './routes/admin-reports'
@@ -27,6 +28,11 @@ import { Route as VenueIdRouteImport } from './routes/venue/$id'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminDailyClosingRoute = AdminDailyClosingRouteImport.update({
+  id: '/admin-daily-closing',
+  path: '/admin-daily-closing',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminDashboardRoute = AdminDashboardRouteImport.update({
@@ -97,6 +103,7 @@ const VenueIdRoute = VenueIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin-daily-closing': typeof AdminDailyClosingRoute
   '/admin-dashboard': typeof AdminDashboardRoute
   '/admin-payments': typeof AdminPaymentsRoute
   '/admin-reports': typeof AdminReportsRoute
@@ -113,6 +120,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin-daily-closing': typeof AdminDailyClosingRoute
   '/admin-dashboard': typeof AdminDashboardRoute
   '/admin-payments': typeof AdminPaymentsRoute
   '/admin-reports': typeof AdminReportsRoute
@@ -130,6 +138,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin-daily-closing': typeof AdminDailyClosingRoute
   '/admin-dashboard': typeof AdminDashboardRoute
   '/admin-payments': typeof AdminPaymentsRoute
   '/admin-reports': typeof AdminReportsRoute
@@ -148,6 +157,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/admin-daily-closing'
     | '/admin-dashboard'
     | '/admin-payments'
     | '/admin-reports'
@@ -164,6 +174,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/admin-daily-closing'
     | '/admin-dashboard'
     | '/admin-payments'
     | '/admin-reports'
@@ -180,6 +191,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/admin-daily-closing'
     | '/admin-dashboard'
     | '/admin-payments'
     | '/admin-reports'
@@ -197,6 +209,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminDailyClosingRoute: typeof AdminDailyClosingRoute
   AdminDashboardRoute: typeof AdminDashboardRoute
   AdminPaymentsRoute: typeof AdminPaymentsRoute
   AdminReportsRoute: typeof AdminReportsRoute
@@ -219,6 +232,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin-daily-closing': {
+      id: '/admin-daily-closing'
+      path: '/admin-daily-closing'
+      fullPath: '/admin-daily-closing'
+      preLoaderRoute: typeof AdminDailyClosingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin-dashboard': {
@@ -317,6 +337,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminDailyClosingRoute: AdminDailyClosingRoute,
   AdminDashboardRoute: AdminDashboardRoute,
   AdminPaymentsRoute: AdminPaymentsRoute,
   AdminReportsRoute: AdminReportsRoute,

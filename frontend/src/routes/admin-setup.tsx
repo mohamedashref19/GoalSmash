@@ -2,7 +2,15 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Header } from "@/components/venue/Header";
 import { AdminSetupView } from "@/components/admin/AdminSetupView";
-import { LayoutDashboard, Wallet, Settings, ArrowRight, X, FileText } from "lucide-react"; // +++ إضافة FileText
+import {
+  LayoutDashboard,
+  Wallet,
+  Settings,
+  ArrowRight,
+  X,
+  FileText,
+  ClipboardList,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin-setup")({
@@ -49,6 +57,13 @@ function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void
           >
             <Wallet className="h-5 w-5" /> المدفوعات المركزية
           </Link>
+          <Link
+            to="/admin-daily-closing"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary text-muted-foreground"
+          >
+            <ClipboardList className="h-5 w-5" /> تقفيل اليومية
+          </Link>
           {/* +++ إضافة التقارير للقائمة الجانبية +++ */}
           <Link
             to="/admin-reports"
@@ -94,6 +109,13 @@ function AdminSetupPage() {
         >
           <Wallet className="size-4" />
           المدفوعات المركزية
+        </Link>
+        <Link
+          to="/admin-daily-closing"
+          className="text-sm font-bold flex items-center gap-2 hover:text-primary transition-colors text-muted-foreground [&.active]:text-primary"
+        >
+          <ClipboardList className="size-4" />
+          تقفيل اليومية
         </Link>
         {/* +++ إضافة التقارير للشريط العلوي +++ */}
         <Link

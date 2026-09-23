@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { domToPng } from "modern-screenshot";
+import jsPDF from "jspdf";
 import {
   CalendarDays,
   FileText,
@@ -45,6 +46,7 @@ export function FinancialReportsView({ venueId }: { venueId: string }) {
   const [endDate, setEndDate] = useState("");
   const [report, setReport] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isCapturing, setIsCapturing] = useState(false);
 
   const reportRef = useRef<HTMLDivElement>(null);
 
@@ -78,8 +80,63 @@ export function FinancialReportsView({ venueId }: { venueId: string }) {
     }
   };
 
-  const handlePrint = () => {
-    window.print();
+  const handlePrint = async () => {
+    // تشغيل الطباعة العادية في المتصفح (اللاب توب)
+    if (!Capacitor.isNativePlatform()) {
+      window.print();
+      return;
+    }
+
+    // توليد PDF ومشاركته في تطبيق الموبايل
+    if (!reportRef.current) return;
+    const toastId = toast.loading("جاري تجهيز ملف PDF...");
+    setIsCapturing(true);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    try {
+      const dataUrl = await domToPng(reportRef.current, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+      });
+
+      const elementWidth = reportRef.current.offsetWidth;
+      const elementHeight = reportRef.current.offsetHeight;
+
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "px",
+        format: [elementWidth, elementHeight],
+      });
+
+      pdf.addImage(dataUrl, "PNG", 0, 0, elementWidth, elementHeight);
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (reportRef.current.offsetHeight * pdfWidth) / reportRef.current.offsetWidth;
+
+      const pdfBase64 = pdf.output("datauristring").split(",")[1] ?? "";
+      const fileName = `Financial_Report_${startDate}_${endDate}.pdf`;
+
+      const { Filesystem, Directory } = await import("@capacitor/filesystem");
+      const { Share } = await import("@capacitor/share");
+
+      const savedFile = await Filesystem.writeFile({
+        path: fileName,
+        data: pdfBase64,
+        directory: Directory.Cache,
+      });
+
+      await Share.share({
+        title: "مشاركة تقرير PDF",
+        url: savedFile.uri,
+      });
+
+      toast.success("تم تجهيز الـ PDF ومشاركته بنجاح", { id: toastId });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(message || "حدث خطأ أثناء إنشاء ملف PDF", { id: toastId });
+    } finally {
+      setIsCapturing(false);
+    }
   };
 
   const handleExportCSV = async () => {
@@ -131,6 +188,8 @@ export function FinancialReportsView({ venueId }: { venueId: string }) {
   const handleDownloadImage = async () => {
     if (!reportRef.current) return;
     const toastId = toast.loading("جاري تجهيز الصورة...");
+    setIsCapturing(true);
+    await new Promise((resolve) => setTimeout(resolve, 150));
     try {
       const dataUrl = await domToPng(reportRef.current, {
         backgroundColor: "#ffffff",
@@ -165,6 +224,8 @@ export function FinancialReportsView({ venueId }: { venueId: string }) {
       // التعديل هنا: إظهار الخطأ الفعلي
       const message = error instanceof Error ? error.message : String(error);
       toast.error(message || "حدث خطأ أثناء حفظ الملف");
+    } finally {
+      setIsCapturing(false); // +++ إرجاع الشاشة لوضعها الطبيعي
     }
   };
 
@@ -250,7 +311,7 @@ export function FinancialReportsView({ venueId }: { venueId: string }) {
             {/* +++ الغلاف الداخلي الثابت اللي هيتصور +++ */}
             <div
               ref={reportRef}
-              className="space-y-6 bg-background print:bg-white print:p-0 print:m-0 rounded-2xl p-4"
+              className={`space-y-6 bg-background print:bg-white print:p-0 print:m-0 rounded-2xl p-4 ${isCapturing ? "w-max min-w-full" : ""}`}
             >
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-border pb-4 gap-4">
                 <div>
@@ -308,13 +369,15 @@ export function FinancialReportsView({ venueId }: { venueId: string }) {
                 <h4 className="font-bold text-md mb-3 text-foreground print:text-black flex items-center gap-2">
                   <TrendingUp className="size-4 text-primary" /> تفصيل الإيرادات حسب الملعب
                 </h4>
-                <div className="overflow-hidden rounded-xl border border-border print:border-gray-300">
-                  <table className="w-full text-sm text-right">
+                <div
+                  className={`rounded-xl border border-border print:border-gray-300 ${!isCapturing ? "overflow-x-auto" : ""}`}
+                >
+                  <table className="w-full text-sm text-right min-w-[700px]">
                     <thead className="bg-muted/50 text-muted-foreground print:bg-gray-100 print:text-black">
                       <tr>
-                        <th className="px-4 py-3 font-bold">اسم الملعب</th>
-                        <th className="px-4 py-3 font-bold">الحجوزات الناجحة</th>
-                        <th className="px-4 py-3 font-bold">إجمالي الإيرادات</th>
+                        <th className="px-4 py-3 font-bold whitespace-nowrap">اسم الملعب</th>
+                        <th className="px-4 py-3 font-bold whitespace-nowrap">الحجوزات الناجحة</th>
+                        <th className="px-4 py-3 font-bold whitespace-nowrap">إجمالي الإيرادات</th>
                       </tr>
                     </thead>
                     <tbody>

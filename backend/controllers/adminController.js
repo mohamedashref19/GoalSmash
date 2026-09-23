@@ -271,3 +271,170 @@ exports.getAllCustomers = catchAsync(async (req, res, next) => {
     data: { customers },
   });
 });
+
+// +++ 6. تقفيل اليومية: جلب إيرادات اليوم الحالي لكل الأندية والملاعب +++
+exports.getDailyClosing = catchAsync(async (req, res, next) => {
+  const { date, venue } = req.query;
+
+  // تحديد بداية ونهاية اليوم المطلوب (أو اليوم الحالي افتراضياً)
+  const targetDate = date ? new Date(date) : new Date();
+  const startOfDay = new Date(targetDate);
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const endOfDay = new Date(targetDate);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  let venueMatch = {};
+  if (venue && venue !== "all") {
+    venueMatch = { "bookingDetails.venue": new mongoose.Types.ObjectId(venue) };
+  }
+
+  const pipeline = [
+    {
+      $match: {
+        status: "verified",
+        createdAt: { $gte: startOfDay, $lte: endOfDay },
+      },
+    },
+    {
+      $lookup: {
+        from: "bookings",
+        localField: "booking",
+        foreignField: "_id",
+        as: "bookingDetails",
+      },
+    },
+    { $unwind: "$bookingDetails" },
+  ];
+
+  if (Object.keys(venueMatch).length > 0) {
+    pipeline.push({ $match: venueMatch });
+  }
+
+  pipeline.push(
+    {
+      $lookup: {
+        from: "courts",
+        localField: "bookingDetails.court",
+        foreignField: "_id",
+        as: "courtDetails",
+      },
+    },
+    { $unwind: { path: "$courtDetails", preserveNullAndEmptyArrays: true } },
+    {
+      $lookup: {
+        from: "venues",
+        localField: "bookingDetails.venue",
+        foreignField: "_id",
+        as: "venueDetails",
+      },
+    },
+    { $unwind: { path: "$venueDetails", preserveNullAndEmptyArrays: true } },
+    // حساب مدة الحجز
+    {
+      $addFields: {
+        "bookingDetails.durationInHours": {
+          $divide: [
+            {
+              $subtract: [
+                "$bookingDetails.endTime",
+                "$bookingDetails.startTime",
+              ],
+            },
+            1000 * 60 * 60,
+          ],
+        },
+      },
+    },
+    // حساب العمولة
+    {
+      $addFields: {
+        "bookingDetails.calculatedCommission": {
+          $ifNull: [
+            "$bookingDetails.commission",
+            {
+              $multiply: [
+                "$baseAmount",
+                {
+                  $cond: [
+                    { $gte: ["$bookingDetails.durationInHours", 2] },
+                    0.1,
+                    0.05,
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+    {
+      $group: {
+        _id: { venue: "$bookingDetails.venue", court: "$bookingDetails.court" },
+        venueName: { $first: "$venueDetails.name" },
+        courtName: { $first: "$courtDetails.name" },
+        totalOnline: {
+          $sum: { $cond: [{ $ne: ["$method", "cash"] }, "$baseAmount", 0] },
+        },
+        totalCash: {
+          $sum: { $cond: [{ $eq: ["$method", "cash"] }, "$baseAmount", 0] },
+        },
+        totalRevenue: { $sum: "$baseAmount" },
+        totalCommission: { $sum: "$bookingDetails.calculatedCommission" },
+        bookingsCount: { $sum: 1 },
+      },
+    },
+    {
+      $group: {
+        _id: "$_id.venue",
+        venueName: { $first: "$venueName" },
+        venueTotalOnline: { $sum: "$totalOnline" },
+        venueTotalCash: { $sum: "$totalCash" },
+        venueTotalRevenue: { $sum: "$totalRevenue" },
+        venueTotalCommission: { $sum: "$totalCommission" },
+        venueBookingsCount: { $sum: "$bookingsCount" },
+        courts: {
+          $push: {
+            courtId: "$_id.court",
+            courtName: "$courtName",
+            totalOnline: "$totalOnline",
+            totalCash: "$totalCash",
+            totalRevenue: "$totalRevenue",
+            totalCommission: "$totalCommission",
+            bookingsCount: "$bookingsCount",
+          },
+        },
+      },
+    },
+    { $sort: { venueTotalRevenue: -1 } },
+  );
+
+  const dailyClosing = await mongoose.model("Payment").aggregate(pipeline);
+
+  // حساب الإجماليات لكل الأندية في هذا اليوم
+  const platformTotals = dailyClosing.reduce(
+    (acc, curr) => ({
+      totalRevenue: acc.totalRevenue + curr.venueTotalRevenue,
+      totalCommission: acc.totalCommission + curr.venueTotalCommission,
+      totalOnline: acc.totalOnline + curr.venueTotalOnline,
+      totalCash: acc.totalCash + curr.venueTotalCash,
+      totalBookings: acc.totalBookings + curr.venueBookingsCount,
+    }),
+    {
+      totalRevenue: 0,
+      totalCommission: 0,
+      totalOnline: 0,
+      totalCash: 0,
+      totalBookings: 0,
+    },
+  );
+
+  res.status(200).json({
+    status: "success",
+    data: {
+      date: targetDate,
+      platformTotals,
+      venuesClosing: dailyClosing,
+    },
+  });
+});
