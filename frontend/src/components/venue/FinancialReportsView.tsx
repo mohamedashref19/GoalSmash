@@ -12,19 +12,23 @@ import {
   Printer,
   Download,
   Image as ImageIcon,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 // @ts-expect-error: API lacks TypeScript definitions
 import { fetchFinancialReports } from "@/api/paymentApi";
 
 import { Capacitor } from "@capacitor/core";
-import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
-import { Share } from "@capacitor/share";
 
 interface CourtBreakdown {
   _id: string;
   courtName: string;
   totalRevenue: number;
+  totalOnline: number;
+  totalCash: number;
+  netAmount: number;
+  totalCommission: number;
   bookingsCount: number;
 }
 
@@ -33,6 +37,7 @@ interface ReportData {
   totalOnline: number;
   totalCash: number;
   totalOverall: number;
+  totalCommission: number;
   transactionsCount: {
     online: number;
     cash: number;
@@ -81,13 +86,11 @@ export function FinancialReportsView({ venueId }: { venueId: string }) {
   };
 
   const handlePrint = async () => {
-    // تشغيل الطباعة العادية في المتصفح (اللاب توب)
     if (!Capacitor.isNativePlatform()) {
       window.print();
       return;
     }
 
-    // توليد PDF ومشاركته في تطبيق الموبايل
     if (!reportRef.current) return;
     const toastId = toast.loading("جاري تجهيز ملف PDF...");
     setIsCapturing(true);
@@ -110,10 +113,10 @@ export function FinancialReportsView({ venueId }: { venueId: string }) {
 
       pdf.addImage(dataUrl, "PNG", 0, 0, elementWidth, elementHeight);
 
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (reportRef.current.offsetHeight * pdfWidth) / reportRef.current.offsetWidth;
-
       const pdfBase64 = pdf.output("datauristring").split(",")[1] ?? "";
+      if (!pdfBase64) {
+        throw new Error("تعذر تجهيز بيانات ملف PDF");
+      }
       const fileName = `Financial_Report_${startDate}_${endDate}.pdf`;
 
       const { Filesystem, Directory } = await import("@capacitor/filesystem");
@@ -152,15 +155,20 @@ export function FinancialReportsView({ venueId }: { venueId: string }) {
     csvContent += `${report.totalOverall} ج.م,${report.totalOnline} ج.م,${report.totalCash} ج.م\n\n`;
 
     csvContent += "--- تفصيل الملاعب ---\n";
-    csvContent += "اسم الملعب,عدد الحجوزات الناجحة,إجمالي الإيرادات\n";
+    csvContent +=
+      "اسم الملعب,عدد الحجوزات,إيراد الكاش,إيراد أونلاين,إجمالي الإيرادات,صافي المستحقات,الجهة المستحقة\n";
     report.courtsBreakdown.forEach((court) => {
-      csvContent += `${court.courtName || "غير محدد"},${court.bookingsCount},${Number(court.totalRevenue).toFixed(2)} ج.م\n`;
+      const isOwed = court.netAmount >= 0;
+      csvContent += `${court.courtName || "غير محدد"},${court.bookingsCount},${Number(court.totalCash || 0).toFixed(2)} ج.م,${Number(court.totalOnline || 0).toFixed(2)} ج.م,${Number(court.totalRevenue).toFixed(2)} ج.م,${Math.abs(Number(court.netAmount || 0)).toFixed(2)} ج.م,${isOwed ? "لك" : "عليك"}\n`;
     });
 
     const fileName = `Financial_Report_${startDate}_${endDate}.csv`;
 
     if (Capacitor.isNativePlatform()) {
       try {
+        const { Filesystem, Directory, Encoding } = await import("@capacitor/filesystem");
+        const { Share } = await import("@capacitor/share");
+
         const savedFile = await Filesystem.writeFile({
           path: fileName,
           data: csvContent,
@@ -172,7 +180,6 @@ export function FinancialReportsView({ venueId }: { venueId: string }) {
           url: savedFile.uri,
         });
       } catch (error: unknown) {
-        // التعديل هنا: إظهار الخطأ الفعلي
         const message = error instanceof Error ? error.message : String(error);
         toast.error(message || "حدث خطأ أثناء حفظ الملف");
       }
@@ -202,6 +209,10 @@ export function FinancialReportsView({ venueId }: { venueId: string }) {
         if (!base64Data) {
           throw new Error("Invalid image data");
         }
+
+        const { Filesystem, Directory } = await import("@capacitor/filesystem");
+        const { Share } = await import("@capacitor/share");
+
         const savedFile = await Filesystem.writeFile({
           path: fileName,
           data: base64Data,
@@ -221,11 +232,10 @@ export function FinancialReportsView({ venueId }: { venueId: string }) {
       }
     } catch (error: unknown) {
       console.error("Error generating image:", error);
-      // التعديل هنا: إظهار الخطأ الفعلي
       const message = error instanceof Error ? error.message : String(error);
       toast.error(message || "حدث خطأ أثناء حفظ الملف");
     } finally {
-      setIsCapturing(false); // +++ إرجاع الشاشة لوضعها الطبيعي
+      setIsCapturing(false);
     }
   };
 
@@ -273,7 +283,7 @@ export function FinancialReportsView({ venueId }: { venueId: string }) {
             className="w-full md:w-auto shrink-0 flex items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3 font-bold text-white transition disabled:opacity-50 hover:bg-primary/90"
           >
             {loading ? (
-              "جاري الحساب..."
+              <Loader2 className="size-4 animate-spin" />
             ) : (
               <>
                 <Search className="size-4" /> استخراج التقرير
@@ -306,9 +316,7 @@ export function FinancialReportsView({ venueId }: { venueId: string }) {
             </button>
           </div>
 
-          {/* الغلاف الخارجي للأنيميشن (بدون Ref عشان html2canvas ميهنجش) */}
           <div className="animate-in slide-in-from-bottom-4">
-            {/* +++ الغلاف الداخلي الثابت اللي هيتصور +++ */}
             <div
               ref={reportRef}
               className={`space-y-6 bg-background print:bg-white print:p-0 print:m-0 rounded-2xl p-4 ${isCapturing ? "w-max min-w-full" : ""}`}
@@ -325,6 +333,7 @@ export function FinancialReportsView({ venueId }: { venueId: string }) {
                 </div>
               </div>
 
+              {/* ملخص إجمالي الدخل */}
               <div className="grid grid-cols-1 md:grid-cols-3 print:grid-cols-3 gap-4">
                 <div className="card-surface p-5 border-b-4 border-b-primary relative overflow-hidden print:border print:border-gray-200 print:shadow-none print:break-inside-avoid">
                   <p className="text-sm font-semibold text-muted-foreground print:text-gray-600 mb-1 flex items-center gap-1.5">
@@ -365,9 +374,43 @@ export function FinancialReportsView({ venueId }: { venueId: string }) {
                 </div>
               </div>
 
+              {/* ملخص تصفية الحسابات للنادي ككل */}
+              <div className="mt-6 p-4 rounded-xl border border-border bg-muted/30 print:bg-gray-50 flex flex-col sm:flex-row justify-between items-center gap-4">
+                <div>
+                  <h4 className="font-bold text-foreground print:text-black">
+                    تصفية المستحقات المجمعة
+                  </h4>
+                  <p className="text-xs text-muted-foreground print:text-gray-600 mt-1">
+                    الرقم النهائي المطلوب تسويته مع المنصة بناءً على جميع حجوزات النادي.
+                  </p>
+                </div>
+                {(() => {
+                  const totalNet = report.totalOnline - report.totalCommission;
+                  const isOwedToVenue = totalNet >= 0;
+                  return (
+                    <div
+                      className={cn(
+                        "flex items-center gap-2 px-4 py-2 rounded-lg border",
+                        isOwedToVenue
+                          ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600"
+                          : "bg-red-500/10 border-red-500/20 text-red-600",
+                      )}
+                    >
+                      <span className="font-bold text-sm">
+                        {isOwedToVenue ? "إجمالي المستحق لك:" : "إجمالي المطلوب منك:"}
+                      </span>
+                      <span className="font-black text-xl">
+                        {Math.abs(totalNet).toFixed(2)} ج.م
+                      </span>
+                    </div>
+                  );
+                })()}
+              </div>
+
               <div className="mt-8">
                 <h4 className="font-bold text-md mb-3 text-foreground print:text-black flex items-center gap-2">
-                  <TrendingUp className="size-4 text-primary" /> تفصيل الإيرادات حسب الملعب
+                  <TrendingUp className="size-4 text-primary" /> تفصيل الإيرادات وتصفية الحسابات حسب
+                  الملعب
                 </h4>
                 <div
                   className={`rounded-xl border border-border print:border-gray-300 ${!isCapturing ? "overflow-x-auto" : ""}`}
@@ -376,29 +419,66 @@ export function FinancialReportsView({ venueId }: { venueId: string }) {
                     <thead className="bg-muted/50 text-muted-foreground print:bg-gray-100 print:text-black">
                       <tr>
                         <th className="px-4 py-3 font-bold whitespace-nowrap">اسم الملعب</th>
-                        <th className="px-4 py-3 font-bold whitespace-nowrap">الحجوزات الناجحة</th>
-                        <th className="px-4 py-3 font-bold whitespace-nowrap">إجمالي الإيرادات</th>
+                        <th className="px-4 py-3 font-bold text-center whitespace-nowrap">
+                          الحجوزات
+                        </th>
+                        <th className="px-4 py-3 font-bold whitespace-nowrap text-info">
+                          إيراد الكاش
+                        </th>
+                        <th className="px-4 py-3 font-bold whitespace-nowrap text-success">
+                          إيراد أونلاين
+                        </th>
+                        <th className="px-4 py-3 font-bold whitespace-nowrap text-primary">
+                          إجمالي الإيرادات
+                        </th>
+                        <th className="px-4 py-3 font-bold whitespace-nowrap text-foreground print:text-black">
+                          صافي المستحقات
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {report.courtsBreakdown.map((court, index) => (
-                        <tr
-                          key={court._id || index}
-                          className="border-b border-border/50 last:border-0 print:border-gray-200 print:text-black"
-                        >
-                          <td className="px-4 py-3 font-semibold text-foreground print:text-black">
-                            {court.courtName || "غير محدد"}
-                          </td>
-                          <td className="px-4 py-3 font-bold">{court.bookingsCount} حجز</td>
-                          <td className="px-4 py-3 font-black text-primary print:text-black">
-                            {Number(court.totalRevenue).toFixed(2)} ج.م
-                          </td>
-                        </tr>
-                      ))}
+                      {report.courtsBreakdown.map((court, index) => {
+                        const isOwedToVenue = court.netAmount >= 0;
+                        return (
+                          <tr
+                            key={court._id || index}
+                            className="border-b border-border/50 last:border-0 print:border-gray-200 print:text-black"
+                          >
+                            <td className="px-4 py-3 font-semibold text-foreground print:text-black whitespace-nowrap">
+                              {court.courtName || "غير محدد"}
+                            </td>
+                            <td className="px-4 py-3 font-bold text-center whitespace-nowrap">
+                              {court.bookingsCount}
+                            </td>
+                            <td className="px-4 py-3 font-semibold text-info whitespace-nowrap">
+                              {Number(court.totalCash || 0).toFixed(2)} ج.م
+                            </td>
+                            <td className="px-4 py-3 font-semibold text-success whitespace-nowrap">
+                              {Number(court.totalOnline || 0).toFixed(2)} ج.م
+                            </td>
+                            <td className="px-4 py-3 font-black text-primary print:text-black whitespace-nowrap">
+                              {Number(court.totalRevenue).toFixed(2)} ج.م
+                            </td>
+                            <td
+                              className={cn(
+                                "px-4 py-3 font-black whitespace-nowrap",
+                                isOwedToVenue ? "text-emerald-600" : "text-red-500",
+                              )}
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] px-2 py-0.5 rounded-md bg-muted text-muted-foreground print:border print:border-gray-200">
+                                  {isOwedToVenue ? "لك" : "عليك"}
+                                </span>
+                                {Math.abs(Number(court.netAmount || 0)).toFixed(2)} ج.م
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                       {report.courtsBreakdown.length === 0 && (
                         <tr>
                           <td
-                            colSpan={3}
+                            colSpan={6}
                             className="px-4 py-8 text-center text-muted-foreground font-bold"
                           >
                             لا توجد إيرادات مسجلة للملاعب في هذه الفترة.

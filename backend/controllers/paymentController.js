@@ -595,6 +595,7 @@ exports.addPaymentNote = catchAsync(async (req, res, next) => {
 // +++ دالة تصفية الحسابات والتقارير للمالك (محدثة بتفاصيل الملاعب) +++
 // +++ دالة تصفية الحسابات والتقارير (تدعم المالك والأدمن وتصلح مشكلة الكسور) +++
 // +++ دالة تصفية الحسابات والتقارير (تدعم المالك والأدمن وتصلح مشكلة الحجوزات القديمة) +++
+// +++ دالة تصفية الحسابات والتقارير (تدعم المالك والأدمن وتفصل الكاش والأونلاين وتحسب الصافي) +++
 exports.getFinancialReports = catchAsync(async (req, res, next) => {
   const { startDate, endDate, venue } = req.query;
 
@@ -751,9 +752,26 @@ exports.getFinancialReports = catchAsync(async (req, res, next) => {
               courtName: { $first: "$courtDetails.name" },
               venueName: { $first: "$venueDetails.name" },
               totalRevenue: { $sum: "$baseAmount" },
+              // +++ تجميع أموال الأونلاين والكاش لكل ملعب +++
+              totalOnline: {
+                $sum: {
+                  $cond: [{ $ne: ["$method", "cash"] }, "$baseAmount", 0],
+                },
+              },
+              totalCash: {
+                $sum: {
+                  $cond: [{ $eq: ["$method", "cash"] }, "$baseAmount", 0],
+                },
+              },
               // +++ استخدام الحقل الجديد للملاعب الفردية +++
               totalCommission: { $sum: "$bookingDetails.calculatedCommission" },
               bookingsCount: { $sum: 1 },
+            },
+          },
+          // +++ إضافة حساب الصافي لكل ملعب مباشرة من الباك إند +++
+          {
+            $addFields: {
+              netAmount: { $subtract: ["$totalOnline", "$totalCommission"] },
             },
           },
           { $sort: { totalRevenue: -1 } },

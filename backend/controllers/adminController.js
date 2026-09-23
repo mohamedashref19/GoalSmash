@@ -402,7 +402,15 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
             totalRevenue: "$totalRevenue",
             totalCommission: "$totalCommission",
             bookingsCount: "$bookingsCount",
+            netAmount: { $subtract: ["$totalOnline", "$totalCommission"] },
           },
+        },
+      },
+    },
+    {
+      $addFields: {
+        venueNetAmount: {
+          $subtract: ["$venueTotalOnline", "$venueTotalCommission"],
         },
       },
     },

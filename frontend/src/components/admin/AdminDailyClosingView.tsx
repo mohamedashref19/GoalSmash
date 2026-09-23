@@ -10,13 +10,12 @@ import {
   TrendingUp,
   Building2,
   Printer,
-  Download,
-  Image as ImageIcon,
   Loader2,
   PieChart,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Capacitor } from "@capacitor/core";
+import { cn } from "@/lib/utils";
 // @ts-expect-error: API lacks TypeScript definitions
 import { fetchAllVenues, fetchDailyClosing } from "@/api/adminApi";
 
@@ -28,6 +27,7 @@ interface CourtDetails {
   totalRevenue: number;
   totalCommission: number;
   bookingsCount: number;
+  netAmount: number; // +++ الحقل الجديد من الباك إند +++
 }
 
 interface VenueClosing {
@@ -38,6 +38,7 @@ interface VenueClosing {
   venueTotalRevenue: number;
   venueTotalCommission: number;
   venueBookingsCount: number;
+  venueNetAmount: number; // +++ الحقل الجديد من الباك إند +++
   courts: CourtDetails[];
 }
 
@@ -112,7 +113,10 @@ export function AdminDailyClosingView() {
       });
 
       pdf.addImage(dataUrl, "PNG", 0, 0, elementWidth, elementHeight);
-      const pdfBase64 = pdf.output("datauristring").split(",")[1] ?? "";
+      const pdfBase64 = pdf.output("datauristring").split(",")[1];
+      if (!pdfBase64) {
+        throw new Error("تعذر تجهيز بيانات ملف PDF");
+      }
 
       const fileName = `Daily_Closing_${date}.pdf`;
       const { Filesystem, Directory } = await import("@capacitor/filesystem");
@@ -141,7 +145,7 @@ export function AdminDailyClosingView() {
             <ClipboardList className="size-6 text-primary" /> تقفيل اليومية
           </h2>
           <p className="text-sm text-muted-foreground font-bold bg-muted px-3 py-1.5 rounded-lg border border-border">
-            إيرادات يومية مفصلة
+            إيرادات وتصفية حسابات
           </p>
         </div>
 
@@ -208,7 +212,7 @@ export function AdminDailyClosingView() {
             >
               <div className="border-b border-border pb-4">
                 <h3 className="font-bold text-lg text-foreground print:text-black">
-                  تقرير اليومية الشامل
+                  تقرير اليومية الشامل وتصفية المستحقات
                 </h3>
                 <p className="text-sm text-muted-foreground print:text-gray-600 mt-1">
                   تاريخ اليومية: <span className="font-bold">{date}</span>
@@ -251,66 +255,106 @@ export function AdminDailyClosingView() {
                 </div>
               </div>
 
-              {/* تفاصيل كل نادي */}
+              {/* تفاصيل وتصفية حساب كل نادي */}
               <div className="space-y-8 mt-8">
-                {closingData.venuesClosing.map((venue) => (
-                  <div
-                    key={venue._id}
-                    className="border border-border print:border-gray-300 rounded-xl overflow-hidden"
-                  >
-                    <div className="bg-muted/50 print:bg-gray-100 p-4 border-b border-border flex justify-between items-center">
-                      <h4 className="font-bold text-lg">{venue.venueName}</h4>
-                      <p className="text-sm font-bold text-primary">
-                        الإجمالي: {venue.venueTotalRevenue} ج.م
-                      </p>
-                    </div>
-                    <div className={`p-0 ${!isCapturing ? "overflow-x-auto" : ""}`}>
-                      <table className="w-full text-sm text-right min-w-[700px]">
-                        <thead className="bg-background print:bg-white text-muted-foreground border-b border-border">
-                          <tr>
-                            <th className="px-4 py-3 font-bold whitespace-nowrap">الملعب</th>
-                            <th className="px-4 py-3 font-bold text-center whitespace-nowrap">
-                              الحجوزات
-                            </th>
-                            <th className="px-4 py-3 font-bold whitespace-nowrap text-info">
-                              إيراد الكاش
-                            </th>
-                            <th className="px-4 py-3 font-bold whitespace-nowrap text-success">
-                              إيراد أونلاين
-                            </th>
-                            <th className="px-4 py-3 font-bold whitespace-nowrap text-warning">
-                              عمولة التطبيق
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {venue.courts.map((court) => (
-                            <tr
-                              key={court.courtId}
-                              className="border-b border-border/50 last:border-0 print:border-gray-200"
-                            >
-                              <td className="px-4 py-3 font-bold whitespace-nowrap">
-                                {court.courtName}
-                              </td>
-                              <td className="px-4 py-3 font-bold text-center whitespace-nowrap">
-                                {court.bookingsCount}
-                              </td>
-                              <td className="px-4 py-3 font-semibold text-info whitespace-nowrap">
-                                {court.totalCash} ج.م
-                              </td>
-                              <td className="px-4 py-3 font-semibold text-success whitespace-nowrap">
-                                {court.totalOnline} ج.م
-                              </td>
-                              <td className="px-4 py-3 font-black text-warning whitespace-nowrap">
-                                {court.totalCommission} ج.م
-                              </td>
+                {closingData.venuesClosing.map((venue) => {
+                  // الاعتماد بالكامل على الباك إند
+                  const isVenueOwed = venue.venueNetAmount >= 0;
+
+                  return (
+                    <div
+                      key={venue._id}
+                      className="border border-border print:border-gray-300 rounded-xl overflow-hidden"
+                    >
+                      <div className="bg-muted/50 print:bg-gray-100 p-4 border-b border-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                        <h4 className="font-bold text-lg">{venue.venueName}</h4>
+                        <div className="flex flex-col items-start sm:items-end gap-1">
+                          <p className="text-sm font-bold text-muted-foreground print:text-gray-600">
+                            إجمالي إيرادات النادي: {venue.venueTotalRevenue} ج.م
+                          </p>
+                          <p
+                            className={cn(
+                              "text-sm font-bold px-3 py-1 rounded-lg border",
+                              isVenueOwed
+                                ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                                : "bg-red-500/10 text-red-500 border-red-500/20",
+                            )}
+                          >
+                            الصافي {isVenueOwed ? "المستحق للنادي:" : "المطلوب من النادي:"}{" "}
+                            {Math.abs(venue.venueNetAmount)} ج.م
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className={`p-0 ${!isCapturing ? "overflow-x-auto" : ""}`}>
+                        <table className="w-full text-sm text-right min-w-[800px]">
+                          <thead className="bg-background print:bg-white text-muted-foreground border-b border-border">
+                            <tr>
+                              <th className="px-4 py-3 font-bold whitespace-nowrap">الملعب</th>
+                              <th className="px-4 py-3 font-bold text-center whitespace-nowrap">
+                                الحجوزات
+                              </th>
+                              <th className="px-4 py-3 font-bold whitespace-nowrap text-info">
+                                إيراد الكاش
+                              </th>
+                              <th className="px-4 py-3 font-bold whitespace-nowrap text-success">
+                                إيراد أونلاين
+                              </th>
+                              <th className="px-4 py-3 font-bold whitespace-nowrap text-warning">
+                                عمولة التطبيق
+                              </th>
+                              <th className="px-4 py-3 font-bold whitespace-nowrap text-primary">
+                                صافي المستحقات
+                              </th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {venue.courts.map((court) => {
+                              // الاعتماد بالكامل على الباك إند
+                              const isOwedToVenue = court.netAmount >= 0;
+
+                              return (
+                                <tr
+                                  key={court.courtId}
+                                  className="border-b border-border/50 last:border-0 print:border-gray-200"
+                                >
+                                  <td className="px-4 py-3 font-bold whitespace-nowrap">
+                                    {court.courtName}
+                                  </td>
+                                  <td className="px-4 py-3 font-bold text-center whitespace-nowrap">
+                                    {court.bookingsCount}
+                                  </td>
+                                  <td className="px-4 py-3 font-semibold text-info whitespace-nowrap">
+                                    {court.totalCash} ج.م
+                                  </td>
+                                  <td className="px-4 py-3 font-semibold text-success whitespace-nowrap">
+                                    {court.totalOnline} ج.م
+                                  </td>
+                                  <td className="px-4 py-3 font-black text-warning whitespace-nowrap">
+                                    {court.totalCommission} ج.م
+                                  </td>
+                                  <td
+                                    className={cn(
+                                      "px-4 py-3 font-black whitespace-nowrap",
+                                      isOwedToVenue ? "text-emerald-600" : "text-red-500",
+                                    )}
+                                  >
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-[10px] px-2 py-0.5 rounded-md bg-muted text-muted-foreground print:border print:border-gray-200">
+                                        {isOwedToVenue ? "يحول للنادي" : "يحول للمنصة"}
+                                      </span>
+                                      {Math.abs(court.netAmount)} ج.م
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {closingData.venuesClosing.length === 0 && (
                   <p className="text-center text-muted-foreground py-8 font-bold">
                     لا توجد إيرادات مسجلة لهذا اليوم.

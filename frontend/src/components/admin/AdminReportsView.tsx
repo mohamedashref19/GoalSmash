@@ -32,6 +32,9 @@ interface CourtBreakdown {
   courtName: string;
   venueName: string;
   totalRevenue: number;
+  totalOnline: number; // +++
+  totalCash: number; // +++
+  netAmount: number; // +++
   totalCommission: number;
   bookingsCount: number;
 }
@@ -176,9 +179,11 @@ export function AdminReportsView() {
     csvContent += `${report.totalOverall} ج.م,${report.totalOnline} ج.م,${report.totalCash} ج.م\n\n`;
 
     csvContent += "--- تفصيل الملاعب ---\n";
-    csvContent += "اسم الملعب,عدد الحجوزات الناجحة,إجمالي الإيرادات\n";
+    csvContent +=
+      "النادي,اسم الملعب,عدد الحجوزات,إيراد الكاش,إيراد أونلاين,عمولة المنصة,صافي المستحقات,الجهة المستحقة\n";
     report.courtsBreakdown.forEach((court) => {
-      csvContent += `${court.courtName || "غير محدد"},${court.bookingsCount},${Number(court.totalRevenue).toFixed(2)} ج.م\n`;
+      const isOwed = court.netAmount >= 0;
+      csvContent += `${court.venueName || "غير محدد"},${court.courtName || "غير محدد"},${court.bookingsCount},${Number(court.totalCash || 0).toFixed(2)} ج.م,${Number(court.totalOnline || 0).toFixed(2)} ج.م,${Number(court.totalCommission).toFixed(2)} ج.م,${Math.abs(Number(court.netAmount || 0)).toFixed(2)} ج.م,${isOwed ? "للنادي" : "للمنصة"}\n`;
     });
 
     const fileName = `Financial_Report_${startDate}_${endDate}.csv`;
@@ -433,41 +438,67 @@ export function AdminReportsView() {
                   <table className="w-full text-sm text-right min-w-[700px]">
                     <thead className="bg-muted/50 text-muted-foreground print:bg-gray-100 print:text-black">
                       <tr>
-                        {/* إضافة whitespace-nowrap لكل الأعمدة لمنع تكسير السطور */}
                         <th className="px-4 py-3 font-bold whitespace-nowrap">النادي</th>
                         <th className="px-4 py-3 font-bold whitespace-nowrap">الملعب</th>
                         <th className="px-4 py-3 font-bold text-center whitespace-nowrap">
                           الحجوزات
                         </th>
-                        <th className="px-4 py-3 font-bold whitespace-nowrap">إجمالي الإيرادات</th>
-                        <th className="px-4 py-3 font-bold text-warning whitespace-nowrap">
+                        <th className="px-4 py-3 font-bold whitespace-nowrap text-info">
+                          إيراد الكاش
+                        </th>
+                        <th className="px-4 py-3 font-bold whitespace-nowrap text-success">
+                          إيراد أونلاين
+                        </th>
+                        <th className="px-4 py-3 font-bold whitespace-nowrap text-warning">
                           عمولة المنصة
+                        </th>
+                        <th className="px-4 py-3 font-bold whitespace-nowrap text-primary">
+                          صافي المستحقات
                         </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {report.courtsBreakdown.map((court, index) => (
-                        <tr
-                          key={court._id || index}
-                          className="border-b border-border/50 last:border-0 print:border-gray-200 print:text-black"
-                        >
-                          <td className="px-4 py-3 font-bold text-foreground print:text-black whitespace-nowrap">
-                            {court.venueName || "---"}
-                          </td>
-                          <td className="px-4 py-3 font-semibold text-muted-foreground print:text-gray-600 whitespace-nowrap">
-                            {court.courtName || "---"}
-                          </td>
-                          <td className="px-4 py-3 font-bold text-center whitespace-nowrap">
-                            {court.bookingsCount}
-                          </td>
-                          <td className="px-4 py-3 font-black text-primary print:text-black whitespace-nowrap">
-                            {Number(court.totalRevenue).toFixed(2)} ج.م
-                          </td>
-                          <td className="px-4 py-3 font-black text-warning print:text-black whitespace-nowrap">
-                            {Number(court.totalCommission).toFixed(2)} ج.م
-                          </td>
-                        </tr>
-                      ))}
+                      {report.courtsBreakdown.map((court, index) => {
+                        const isOwedToVenue = court.netAmount >= 0;
+                        return (
+                          <tr
+                            key={court._id || index}
+                            className="border-b border-border/50 last:border-0 print:border-gray-200 print:text-black"
+                          >
+                            <td className="px-4 py-3 font-bold text-foreground print:text-black whitespace-nowrap">
+                              {court.venueName || "---"}
+                            </td>
+                            <td className="px-4 py-3 font-semibold text-muted-foreground print:text-gray-600 whitespace-nowrap">
+                              {court.courtName || "---"}
+                            </td>
+                            <td className="px-4 py-3 font-bold text-center whitespace-nowrap">
+                              {court.bookingsCount}
+                            </td>
+                            <td className="px-4 py-3 font-semibold text-info whitespace-nowrap">
+                              {Number(court.totalCash || 0).toFixed(2)} ج.م
+                            </td>
+                            <td className="px-4 py-3 font-semibold text-success whitespace-nowrap">
+                              {Number(court.totalOnline || 0).toFixed(2)} ج.م
+                            </td>
+                            <td className="px-4 py-3 font-black text-warning print:text-black whitespace-nowrap">
+                              {Number(court.totalCommission).toFixed(2)} ج.م
+                            </td>
+                            <td
+                              className={cn(
+                                "px-4 py-3 font-black whitespace-nowrap",
+                                isOwedToVenue ? "text-emerald-600" : "text-red-500",
+                              )}
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] px-2 py-0.5 rounded-md bg-muted text-muted-foreground print:border print:border-gray-200">
+                                  {isOwedToVenue ? "يحول للنادي" : "يحول للمنصة"}
+                                </span>
+                                {Math.abs(Number(court.netAmount || 0)).toFixed(2)} ج.م
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                       {report.courtsBreakdown.length === 0 && (
                         <tr>
                           <td
