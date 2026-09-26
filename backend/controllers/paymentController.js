@@ -7,6 +7,7 @@ const Notification = require("../models/notificationModel");
 const Venue = require("../models/venueModel");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
+const PaymentAccount = require("../models/paymentAccountModel");
 
 // +++ 1. تحسين دالة الـ Regex لتكون أكثر مرونة مع تغيرات مسافات رسائل فودافون وإنستا باي +++
 const parsePaymentSMS = (sender, message) => {
@@ -131,6 +132,13 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
     },
     { new: true }, // لضمان إرجاع الداتا بعد التحديث مباشرة
   );
+  // +++ تحديث إحصائيات حساب الدفع الفعلي (إضافة المبلغ وتاريخ آخر استلام) +++
+  if (payment && payment.paymentAccount) {
+    await PaymentAccount.findByIdAndUpdate(payment.paymentAccount, {
+      lastTransferReceivedAt: new Date(),
+      $inc: { totalMoneyCollected: parsedPayment.amount },
+    });
+  }
 
   // لو ملقاش حجز يطابق الفلوس دي، هيسجلها كفلوس معلقة (Unmatched)
   if (!payment) {
@@ -413,6 +421,13 @@ exports.manuallyVerifyPayment = catchAsync(async (req, res, next) => {
   payment.verificationNotes =
     req.body.notes || "تم التأكيد يدوياً بواسطة الإدارة";
   await payment.save();
+  // +++ تحديث إحصائيات الحساب عند التأكيد اليدوي من الإدارة +++
+  if (payment.paymentAccount) {
+    await PaymentAccount.findByIdAndUpdate(payment.paymentAccount, {
+      lastTransferReceivedAt: new Date(),
+      $inc: { totalMoneyCollected: payment.expectedAmount },
+    });
+  }
 
   const updatedBooking = await Booking.findByIdAndUpdate(
     payment.booking._id,

@@ -11,6 +11,7 @@ import {
   Phone,
   DollarSign,
   Trash2,
+  CheckCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -21,12 +22,16 @@ import { fetchCourts } from "@/api/courtApi";
 import { createBooking } from "@/api/bookingApi";
 // @ts-expect-error: API lacks TypeScript definitions
 import apiClient from "@/api/axiosConfig";
+// @ts-expect-error: API lacks TypeScript definitions
+import { fetchVenueById } from "@/api/venueApi";
 
 interface CourtData {
   _id: string;
   name: string;
   status: string;
-  pricePerHour: number;
+  pricePerHour?: number;
+  priceMorning?: number; // السعر الصباحي
+  priceEvening?: number; // السعر المسائي
   sportType?: string;
 }
 
@@ -58,16 +63,18 @@ const MORNING_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
 const EVENING_HOURS = [19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 7];
 
 // =========================================
-// +++ نافذة تفاصيل الحجز +++
+// +++ نافذة تفاصيل الحجز (مع زر التسديد) +++
 // =========================================
 function BookingDetailsDialog({
   booking,
   onClose,
   onCancelBooking,
+  onMarkAsPaid,
 }: {
   booking: BookingData | null;
   onClose: () => void;
   onCancelBooking: (id: string) => void;
+  onMarkAsPaid: (id: string, fullPrice: number) => void;
 }) {
   if (!booking) return null;
 
@@ -157,29 +164,48 @@ function BookingDetailsDialog({
               <span className="font-bold text-foreground">{price} ج.م</span>
             </div>
             <div className="mb-3 flex items-center justify-between text-sm">
-              <span className="font-semibold text-muted-foreground">العربون المدفوع:</span>
+              <span className="font-semibold text-muted-foreground">المدفوع (العربون):</span>
               <span className="font-bold text-success">{deposit} ج.م</span>
             </div>
             <div className="border-t border-dashed border-border pt-3 flex items-center justify-between">
               <span className="font-extrabold text-foreground">المتبقي للتحصيل:</span>
-              <span className="text-lg font-black text-destructive">{remaining} ج.م</span>
+              <span
+                className={cn(
+                  "text-lg font-black",
+                  remaining > 0 ? "text-destructive" : "text-success",
+                )}
+              >
+                {remaining > 0 ? `${remaining} ج.م` : "خالص"}
+              </span>
             </div>
           </div>
 
-          <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end border-t border-border pt-4">
-            <button
-              onClick={onClose}
-              className="rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-bold text-foreground hover:bg-muted transition"
-            >
-              إغلاق النافذة
-            </button>
-            <button
-              onClick={() => onCancelBooking(booking._id)}
-              className="flex items-center justify-center gap-2 rounded-xl bg-destructive px-4 py-2.5 text-sm font-bold text-white hover:bg-destructive/90 transition"
-            >
-              <Trash2 size={16} />
-              إلغاء هذا الحجز
-            </button>
+          <div className="mt-6 flex flex-col gap-2 border-t border-border pt-4">
+            {remaining > 0 && (
+              <button
+                onClick={() => onMarkAsPaid(booking._id, price)}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-success px-4 py-2.5 text-sm font-bold text-white hover:bg-success/90 transition"
+              >
+                <CheckCircle size={16} />
+                تأكيد استلام باقي المبلغ ({remaining} ج.م)
+              </button>
+            )}
+
+            <div className="flex gap-2 w-full mt-2">
+              <button
+                onClick={onClose}
+                className="flex-1 rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-bold text-foreground hover:bg-muted transition"
+              >
+                إغلاق النافذة
+              </button>
+              <button
+                onClick={() => onCancelBooking(booking._id)}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-destructive px-4 py-2.5 text-sm font-bold text-white hover:bg-destructive/90 transition"
+              >
+                <Trash2 size={16} />
+                إلغاء الحجز
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -197,6 +223,9 @@ export function ScheduleView({ venueId }: { venueId: string }) {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [timeTab, setTimeTab] = useState<"morning" | "evening">("morning");
   const [viewBooking, setViewBooking] = useState<BookingData | null>(null);
+
+  // جلب بيانات النادي لتحديد متى يبدأ المساء
+  const [eveningStartHour, setEveningStartHour] = useState(18); // افتراضي 6 مساءً
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [slot, setSlot] = useState<{
@@ -224,6 +253,12 @@ export function ScheduleView({ venueId }: { venueId: string }) {
     async (vId: string, dateObj: Date) => {
       try {
         setLoading(true);
+
+        const venueData = await fetchVenueById(vId);
+        if (venueData && venueData.eveningStartTime) {
+          setEveningStartHour(parseInt(venueData.eveningStartTime.split(":")[0], 10));
+        }
+
         const courtsData = await fetchCourts(vId);
         const activeCourts = courtsData.filter((c: CourtData) => c.status === "active");
         setCourts(activeCourts);
@@ -231,7 +266,6 @@ export function ScheduleView({ venueId }: { venueId: string }) {
           setSelectedCourtId(activeCourts[0]._id);
         }
 
-        // +++ التعديل 1: جلب 3 أيام لضمان وجود فجر اليوم الحالي اللي بييجي مع اليوم السابق +++
         const prevDay = new Date(dateObj);
         prevDay.setDate(prevDay.getDate() - 1);
         const date0 = formatDateForInput(prevDay);
@@ -280,13 +314,12 @@ export function ScheduleView({ venueId }: { venueId: string }) {
 
       const cellDate = new Date(selectedDate);
 
-      // التعديل 2: الاعتماد على التطابق التقويمي لليوم فقط
       const isSameDay =
         bDate.getDate() === cellDate.getDate() &&
         bDate.getMonth() === cellDate.getMonth() &&
         bDate.getFullYear() === cellDate.getFullYear();
 
-      return bCourtId === courtId && startHour === hour && b.status !== "cancelled" && isSameDay;
+      return bCourtId === courtId && startHour === hour && b.status === "confirmed" && isSameDay;
     });
   };
 
@@ -294,9 +327,22 @@ export function ScheduleView({ venueId }: { venueId: string }) {
     courtId: string,
     courtName: string,
     hour: number,
-    price: number,
+    courtPricePerHour: number | undefined,
+    courtPriceMorning: number | undefined,
+    courtPriceEvening: number | undefined,
     sportType?: string | undefined,
   ) => {
+    // يعتبر الحجز مسائياً إذا كان في ساعة المساء المحددة أو في الفجر قبل الـ 8 صباحاً
+    const isEvening = hour >= eveningStartHour || hour < 8;
+
+    let price = courtPricePerHour || 0; // القيمة القديمة الموحدة كاحتياطي
+
+    if (isEvening && courtPriceEvening) {
+      price = courtPriceEvening;
+    } else if (!isEvening && courtPriceMorning) {
+      price = courtPriceMorning;
+    }
+
     setSlot({ courtId, courtName, hour, price, sportType });
     setIsModalOpen(true);
   };
@@ -305,8 +351,6 @@ export function ScheduleView({ venueId }: { venueId: string }) {
     if (!slot || !venueId) return;
 
     const startDateTime = new Date(selectedDate);
-
-    // +++ التعديل 3: إزالة شرط إضافة اليوم، ليتم حجز الساعة في اليوم المختار مباشرة +++
     startDateTime.setHours(slot.hour, 0, 0, 0);
 
     const endDateTime = new Date(startDateTime);
@@ -343,6 +387,21 @@ export function ScheduleView({ venueId }: { venueId: string }) {
       loadData(venueId, selectedDate);
     } catch (err) {
       toast.error("حدث خطأ أثناء الإلغاء");
+    }
+  };
+
+  const handleMarkAsPaid = async (id: string, fullPrice: number) => {
+    try {
+      await apiClient.patch(`/bookings/${id}/payment`, {
+        deposit: fullPrice,
+        paymentStatus: "paid",
+      });
+
+      toast.success("تم تأكيد استلام باقي المبلغ بنجاح");
+      setViewBooking(null);
+      loadData(venueId, selectedDate);
+    } catch (err) {
+      toast.error("حدث خطأ أثناء تحديث بيانات الدفع");
     }
   };
 
@@ -459,21 +518,32 @@ export function ScheduleView({ venueId }: { venueId: string }) {
                     const b = getBookingForCell(court._id, hour);
                     if (b) {
                       const kind = b.bookingType || "app";
+
+                      const price = b.totalPrice || 0;
+                      const deposit = b.deposit || 0;
+                      const remaining = Math.max(price - deposit, 0);
+
                       return (
                         <div
                           key={hour}
                           onClick={() => setViewBooking(b)}
                           className={cn(
-                            "m-1 overflow-hidden rounded-xl border p-2 text-right transition-transform hover:scale-[1.02] cursor-pointer",
+                            "m-1 overflow-hidden rounded-xl border p-2 text-right transition-transform hover:scale-[1.02] cursor-pointer relative",
                             kindClass[kind],
                           )}
                         >
-                          <p className="truncate text-[11px] font-bold">
+                          <p className="truncate text-[11px] font-bold pr-1">
                             {b.guestData?.name || b.user?.name || "بدون اسم"}
                           </p>
-                          <p className="truncate text-[10px] opacity-80">
-                            {String(hour).padStart(2, "0")}:00
-                          </p>
+                          {remaining > 0 ? (
+                            <p className="truncate text-[10px] font-bold text-destructive mt-0.5">
+                              باقي: {remaining} ج
+                            </p>
+                          ) : (
+                            <p className="truncate text-[10px] opacity-80 mt-0.5">
+                              {String(hour).padStart(2, "0")}:00
+                            </p>
+                          )}
                         </div>
                       );
                     }
@@ -490,6 +560,8 @@ export function ScheduleView({ venueId }: { venueId: string }) {
                               court.name,
                               hour,
                               court.pricePerHour,
+                              court.priceMorning,
+                              court.priceEvening,
                               court.sportType,
                             )
                           }
@@ -541,16 +613,24 @@ export function ScheduleView({ venueId }: { venueId: string }) {
                     <div
                       onClick={() => setViewBooking(b)}
                       className={cn(
-                        "min-w-0 rounded-xl border p-3 cursor-pointer transition hover:opacity-90",
+                        "min-w-0 rounded-xl border p-3 cursor-pointer transition hover:opacity-90 flex justify-between items-center",
                         kindClass[b.bookingType || "app"],
                       )}
                     >
-                      <p className="truncate text-sm font-bold">
-                        {b.guestData?.name || b.user?.name || "بدون اسم"}
-                      </p>
-                      <p className="truncate text-[11px] opacity-80">
-                        {KIND_LABEL[b.bookingType || "app"]}
-                      </p>
+                      <div>
+                        <p className="truncate text-sm font-bold">
+                          {b.guestData?.name || b.user?.name || "بدون اسم"}
+                        </p>
+                        <p className="truncate text-[11px] opacity-80 mt-0.5">
+                          {KIND_LABEL[b.bookingType || "app"]}
+                        </p>
+                      </div>
+
+                      {(b.totalPrice || 0) - (b.deposit || 0) > 0 && (
+                        <div className="bg-destructive/10 text-destructive px-2 py-1 rounded-md text-[10px] font-bold shrink-0">
+                          باقي: {(b.totalPrice || 0) - (b.deposit || 0)} ج
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <button
@@ -560,6 +640,8 @@ export function ScheduleView({ venueId }: { venueId: string }) {
                           currentCourt.name,
                           hour,
                           currentCourt.pricePerHour,
+                          currentCourt.priceMorning,
+                          currentCourt.priceEvening,
                           currentCourt.sportType,
                         )
                       }
@@ -579,6 +661,7 @@ export function ScheduleView({ venueId }: { venueId: string }) {
         booking={viewBooking}
         onClose={() => setViewBooking(null)}
         onCancelBooking={handleCancelBooking}
+        onMarkAsPaid={handleMarkAsPaid}
       />
 
       <QuickBookingModal

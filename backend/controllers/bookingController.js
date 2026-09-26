@@ -7,6 +7,7 @@ const Venue = require("../models/venueModel");
 const Notification = require("../models/notificationModel");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
+const PaymentAccount = require("../models/paymentAccountModel");
 
 const courtMutexes = new Map();
 
@@ -50,9 +51,14 @@ exports.createBooking = catchAsync(async (req, res, next) => {
     paymentMethod,
   } = req.body;
 
+  // جلب بيانات النادي لتحديد موعد الفترة المسائية وصلاحيات المالك
+  const venueObj = await Venue.findById(venue);
+  if (!venueObj) {
+    return next(new AppError("هذا النادي غير موجود", 404));
+  }
+
   if (req.user && req.user.role === "owner") {
-    const venueObj = await Venue.findById(venue);
-    if (!venueObj || venueObj.owner.toString() !== req.user.id) {
+    if (venueObj.owner.toString() !== req.user.id) {
       return next(new AppError("غير مصرح لك بإنشاء حجز في هذا الملعب!", 403));
     }
   }
@@ -98,16 +104,34 @@ exports.createBooking = catchAsync(async (req, res, next) => {
 
   const durationInHours =
     (newEnd.getTime() - newStart.getTime()) / (1000 * 60 * 60);
+
+  // +++ حساب السعر ديناميكياً بناءً على الفترة (صباحي / مسائي) +++
+  const bookingHour = newStart.getHours();
+  const eveningStartHour = parseInt(
+    (venueObj.eveningStartTime || "18:00").split(":")[0],
+    10,
+  );
+  const morningStartHour = parseInt(
+    (venueObj.openTime || "08:00").split(":")[0],
+    10,
+  );
+
+  // يعتبر مسائياً إذا كان وقت الحجز بعد موعد المساء، أو في الفجر (قبل موعد الفتح الصباحي)
+  const isEvening =
+    bookingHour >= eveningStartHour || bookingHour < morningStartHour;
+  const hourlyPrice = isEvening
+    ? courtExists.priceEvening
+    : courtExists.priceMorning;
+
   const calculatedTotalPrice = Number(
-    (durationInHours * courtExists.pricePerHour).toFixed(2),
+    (durationInHours * hourlyPrice).toFixed(2),
   );
 
   if (!Number.isFinite(calculatedTotalPrice) || calculatedTotalPrice <= 0) {
     return next(new AppError("تعذر حساب السعر الإجمالي بشكل صحيح", 400));
   }
 
-  // +++ حساب نسبة وقيمة العمولة ديناميكياً +++
-  const commissionRate = durationInHours >= 2 ? 0.1 : 0.05; // 10% لساعتين فأكثر، و 5% لأقل من ذلك
+  const commissionRate = durationInHours >= 2 ? 0.1 : 0.05;
   const calculatedCommission = Number(
     (calculatedTotalPrice * commissionRate).toFixed(2),
   );
@@ -136,6 +160,22 @@ exports.createBooking = catchAsync(async (req, res, next) => {
       const expirationTime = new Date();
       expirationTime.setMinutes(expirationTime.getMinutes() + 10);
 
+      let activePaymentAccount = null;
+      if (req.user && req.user.role === "customer") {
+        activePaymentAccount = await PaymentAccount.findOneAndUpdate(
+          { type: paymentMethod, isActive: true },
+          { lastUsedAt: new Date() },
+          { sort: { lastUsedAt: 1 }, new: true },
+        );
+
+        if (!activePaymentAccount) {
+          throw new AppError(
+            `عذراً، لا توجد حسابات (${paymentMethod === "instapay" ? "إنستا باي" : "فودافون كاش"}) نشطة حالياً. يرجى المحاولة لاحقاً.`,
+            404,
+          );
+        }
+      }
+
       let bookingData = {
         venue,
         court,
@@ -143,8 +183,11 @@ exports.createBooking = catchAsync(async (req, res, next) => {
         endTime: newEnd,
         bookingType,
         totalPrice: calculatedTotalPrice,
-        commission: calculatedCommission, // +++ حفظ قيمة العمولة المحسوبة للحجز +++
-        deposit: calculatedTotalPrice,
+        commission: calculatedCommission,
+        deposit:
+          req.body.deposit !== undefined
+            ? req.body.deposit
+            : calculatedTotalPrice,
         paymentMethod:
           req.user && req.user.role === "customer" ? paymentMethod : "cash",
         status:
@@ -182,6 +225,9 @@ exports.createBooking = catchAsync(async (req, res, next) => {
               baseAmount: calculatedTotalPrice,
               expectedAmount: expectedAmount,
               expiresAt: expirationTime,
+              paymentAccount: activePaymentAccount
+                ? activePaymentAccount._id
+                : null,
             },
           ],
           { session },
@@ -209,7 +255,7 @@ exports.createBooking = catchAsync(async (req, res, next) => {
               status: "verified",
               verifiedAt: new Date(),
               verificationMethod: "admin",
-              verificationNotes: "حجز يدوي من لوحة الإدارة",
+              verificationNotes: "حجز يدوي من لوحة المالك",
               expiresAt: new Date(newStart.getTime() + 1000 * 60 * 60 * 24),
             },
           ],
@@ -224,7 +270,6 @@ exports.createBooking = catchAsync(async (req, res, next) => {
 
       if (newBooking.status === "confirmed") {
         try {
-          const venueObj = await Venue.findById(venue);
           const bookingDate = newStart.toLocaleDateString("ar-EG");
           const bookingTime = newStart.toLocaleTimeString("ar-EG", {
             hour: "2-digit",
@@ -257,11 +302,12 @@ exports.createBooking = catchAsync(async (req, res, next) => {
           method: paymentData.method,
           amount: paymentData.expectedAmount,
           expiresAt: paymentData.expiresAt,
-          instructions: {
-            vodafoneCashNumber:
-              process.env.VODAFONE_CASH_NUMBER || "01000000000",
-            instaPayAddress: process.env.INSTAPAY_ADDRESS || "nadi@instapay",
-          },
+          instructions: activePaymentAccount
+            ? {
+                identifier: activePaymentAccount.identifier,
+                accountName: activePaymentAccount.accountName,
+              }
+            : null,
         };
       }
 
@@ -286,7 +332,6 @@ exports.getAllBookings = catchAsync(async (req, res, next) => {
     }
   }
 
-  // +++ قفل الأمان 2: إجبار المالك على رؤية حجوزات ملاعبه فقط +++
   if (req.user && req.user.role === "owner") {
     const myVenues = await Venue.find({ owner: req.user.id }).select("_id");
     const myVenueIds = myVenues.map((v) => v._id.toString());
@@ -318,7 +363,11 @@ exports.getAllBookings = catchAsync(async (req, res, next) => {
 
   const bookings = await Booking.find(filter)
     .populate({ path: "venue", select: "name address" })
-    .populate({ path: "court", select: "name sportType pricePerHour" })
+    // +++ التعديل هنا: جلب السعرين الصباحي والمسائي بدلاً من السعر الموحد +++
+    .populate({
+      path: "court",
+      select: "name sportType priceMorning priceEvening",
+    })
     .populate({ path: "user", select: "name phone" })
     .sort("startTime");
 
@@ -374,7 +423,6 @@ exports.getBooking = catchAsync(async (req, res, next) => {
     return next(new AppError("ليس لديك صلاحية لعرض هذا الحجز", 403));
   }
 
-  // +++ قفل الأمان 3: التأكد من صلاحية المالك لرؤية حجز محدد +++
   if (
     req.user.role === "owner" &&
     booking.venue &&
@@ -428,11 +476,13 @@ exports.cancelBooking = catchAsync(async (req, res, next) => {
 });
 
 exports.updatePayment = catchAsync(async (req, res, next) => {
-  const { paymentStatus, paymentMethod } = req.body;
-  if (!paymentStatus)
-    return next(new AppError("يرجى تحديد حالة الدفع الجديدة", 400));
+  const { paymentStatus, paymentMethod, deposit } = req.body;
 
-  // +++ قفل الأمان 4: منع أي مالك من تعديل دفع لحجز في ملعب لا يملكه +++
+  if (!paymentStatus && deposit === undefined)
+    return next(
+      new AppError("يرجى تحديد حالة الدفع الجديدة أو العربون المحدث", 400),
+    );
+
   const booking = await Booking.findById(req.params.id).populate("venue");
   if (!booking) return next(new AppError("لا يوجد حجز بهذا المعرف", 404));
 
@@ -445,9 +495,24 @@ exports.updatePayment = catchAsync(async (req, res, next) => {
     return next(new AppError("ليس لديك صلاحية لتعديل دفع هذا الحجز", 403));
   }
 
-  booking.paymentStatus = paymentStatus;
-  booking.paymentMethod = paymentMethod || booking.paymentMethod;
+  if (paymentStatus) booking.paymentStatus = paymentStatus;
+  if (paymentMethod)
+    booking.paymentMethod = paymentMethod || booking.paymentMethod;
+  if (deposit !== undefined) booking.deposit = deposit;
+
   await booking.save();
+
+  if (deposit !== undefined) {
+    await Payment.findOneAndUpdate(
+      { booking: req.params.id },
+      {
+        amountReceived: deposit,
+        baseAmount: deposit,
+        expectedAmount: deposit,
+      },
+      { new: true },
+    );
+  }
 
   res.status(200).json({
     status: "success",

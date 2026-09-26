@@ -5,7 +5,7 @@ export type BookingFormData = {
   name: string;
   phone: string;
   sport: "خماسي" | "بادل";
-  deposit: number;
+  deposit: string | number; // +++ التعديل هنا: السماح بأن يكون سترينج لاستيعاب الحقل الفارغ +++
 };
 
 type Props = {
@@ -31,13 +31,12 @@ export function QuickBookingModal({
     sport: "خماسي",
     deposit: 0,
   });
-  const [isLoading, setIsLoading] = useState(false); // +++ حالة التحميل +++
+  const [isLoading, setIsLoading] = useState(false);
 
-  // إعادة ضبط البيانات عند فتح المودال وتحديد نوع الرياضة
   useEffect(() => {
     if (open) {
       const sportAr = defaultSport === "padel" ? "بادل" : "خماسي";
-      setForm({ name: "", phone: "", sport: sportAr, deposit: 0 });
+      setForm({ name: "", phone: "", sport: sportAr, deposit: "" }); // +++ جعلها فارغة عند الفتح +++
       setIsLoading(false);
     }
   }, [open, defaultSport]);
@@ -58,15 +57,19 @@ export function QuickBookingModal({
     e.preventDefault();
     setIsLoading(true);
     try {
-      await onConfirm(form);
-      // الإغلاق هيتم من الأب (ScheduleView) بعد النجاح
+      // +++ تحويل السترينج الفارغ إلى 0 قبل الإرسال +++
+      const finalData = { ...form, deposit: Number(form.deposit) || 0 };
+      await onConfirm(finalData);
     } catch (error) {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center p-0 sm:items-center sm:p-4">
+    <div
+      className="fixed inset-0 z-[60] flex items-end justify-center p-0 sm:items-center sm:p-4"
+      dir="rtl"
+    >
       <div
         className="absolute inset-0 bg-foreground/40 backdrop-blur-sm"
         onClick={() => !isLoading && onClose()}
@@ -97,7 +100,7 @@ export function QuickBookingModal({
               value={form.name}
               required
               disabled={isLoading}
-              placeholder="مثال: أحمد سمير"
+              placeholder="مثال: محمد أشرف"
               onChange={(e) => setForm({ ...form, name: e.target.value })}
             />
           </label>
@@ -111,11 +114,11 @@ export function QuickBookingModal({
               inputMode="tel"
               placeholder="01xxxxxxxxx"
               onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              dir="ltr"
             />
           </label>
           <label className="block text-sm font-semibold">
             نوع الرياضة
-            {/* +++ تحويله لـ Input ثابت بدلاً من Select لمنع اللخبطة +++ */}
             <input
               readOnly
               className={`${field} bg-muted text-muted-foreground cursor-not-allowed`}
@@ -131,8 +134,9 @@ export function QuickBookingModal({
                 max={slotPrice}
                 disabled={isLoading}
                 className={field}
-                value={form.deposit}
-                onChange={(e) => setForm({ ...form, deposit: Number(e.target.value) })}
+                value={form.deposit} // +++ الآن يقبل السترينج والأرقام +++
+                onChange={(e) => setForm({ ...form, deposit: e.target.value })}
+                dir="ltr"
               />
             </label>
             <label className="block text-sm font-semibold">
@@ -141,6 +145,7 @@ export function QuickBookingModal({
                 readOnly
                 className={`${field} bg-muted text-muted-foreground`}
                 value={remaining}
+                dir="ltr"
               />
             </label>
           </div>

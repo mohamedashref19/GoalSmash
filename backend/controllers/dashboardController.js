@@ -11,27 +11,24 @@ exports.getTodayStats = catchAsync(async (req, res, next) => {
     return next(new AppError("يرجى تحديد المكان (venue)", 400));
   }
 
-  if (req.user && req.user.role === "owner") {
-    const venueCheck = await Venue.findOne({
-      _id: venueId,
-      owner: req.user.id,
-    });
-    if (!venueCheck) {
-      return next(
-        new AppError("غير مصرح لك بالوصول لإحصائيات هذا الملعب!", 403),
-      );
-    }
+  const venueDoc = await Venue.findById(venueId);
+  if (!venueDoc) {
+    return next(new AppError("هذا الملعب غير موجود", 404));
+  }
+
+  if (
+    req.user &&
+    req.user.role === "owner" &&
+    venueDoc.owner.toString() !== req.user.id
+  ) {
+    return next(new AppError("غير مصرح لك بالوصول لإحصائيات هذا الملعب!", 403));
   }
 
   const now = new Date();
-
-  // استخراج الوقت الحالي في مصر والوقت العالمي (UTC)
   const cairoTime = new Date(
     now.toLocaleString("en-US", { timeZone: "Africa/Cairo" }),
   );
   const utcTime = new Date(now.toLocaleString("en-US", { timeZone: "UTC" }));
-
-  // حساب الفارق بالساعات (النتيجة هتكون 3 في الصيف و 2 في الشتاء تلقائياً)
   const dynamicEgyptOffset = (cairoTime - utcTime) / (1000 * 60 * 60);
 
   const startOfDay = new Date(now);
@@ -39,14 +36,13 @@ exports.getTodayStats = catchAsync(async (req, res, next) => {
 
   const endOfDay = new Date(now);
   endOfDay.setUTCHours(23 - dynamicEgyptOffset, 59, 59, 999);
-  // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
   const todayStats = await Booking.aggregate([
     {
       $match: {
         venue: new mongoose.Types.ObjectId(venueId),
         startTime: { $gte: startOfDay, $lte: endOfDay },
-        status: { $ne: "cancelled" },
+        status: "confirmed", // احتساب المؤكد فقط
       },
     },
     {
@@ -54,30 +50,45 @@ exports.getTodayStats = catchAsync(async (req, res, next) => {
         _id: null,
         totalRevenue: { $sum: "$totalPrice" },
         bookingsCount: { $sum: 1 },
+        totalBookedHours: {
+          $sum: {
+            $divide: [
+              { $subtract: ["$endTime", "$startTime"] },
+              1000 * 60 * 60,
+            ],
+          },
+        },
       },
     },
   ]);
 
-  const stats = todayStats[0] || { totalRevenue: 0, bookingsCount: 0 };
+  const stats = todayStats[0] || {
+    totalRevenue: 0,
+    bookingsCount: 0,
+    totalBookedHours: 0,
+  };
 
-  const courtsCount = await Court.countDocuments({
+  const activeCourtsCount = await Court.countDocuments({
     venue: venueId,
     status: "active",
   });
-  const totalAvailableHours = courtsCount * 10;
-  const bookedHours = stats.bookingsCount * 1.5;
+
+  // +++ الحسبة الديناميكية لنسبة الإشغال +++
+  const dailyOperatingHours = venueDoc.operatingHours || 24;
+  const totalAvailableHours = activeCourtsCount * dailyOperatingHours;
+
   const occupancyRate =
     totalAvailableHours === 0
       ? 0
-      : Math.round((bookedHours / totalAvailableHours) * 100);
+      : Math.round((stats.totalBookedHours / totalAvailableHours) * 100);
 
   res.status(200).json({
     status: "success",
     data: {
       todayRevenue: stats.totalRevenue,
       todayBookings: stats.bookingsCount,
-      occupancyRate: `${occupancyRate}%`,
-      activeCourts: courtsCount,
+      occupancyRate: `${Math.min(occupancyRate, 100)}%`,
+      activeCourts: activeCourtsCount,
     },
   });
 });
@@ -88,7 +99,6 @@ exports.getTopCustomers = catchAsync(async (req, res, next) => {
     return next(new AppError("يرجى تحديد المكان (venue)", 400));
   }
 
-  // +++ قفل الأمان: التأكد إن المالك ده هو صاحب الملعب فعلاً +++
   if (req.user && req.user.role === "owner") {
     const venueCheck = await Venue.findOne({
       _id: venueId,
@@ -103,7 +113,8 @@ exports.getTopCustomers = catchAsync(async (req, res, next) => {
     {
       $match: {
         venue: new mongoose.Types.ObjectId(venueId),
-        status: { $ne: "cancelled" },
+        // +++ تعديل: جلب الحجوزات المؤكدة فقط لضمان دقة إجمالي الإنفاق للعميل +++
+        status: "confirmed",
       },
     },
     {

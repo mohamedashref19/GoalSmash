@@ -124,3 +124,54 @@ export const fetchDailyClosing = async (date = null, venueId = "all") => {
     throw error.response?.data?.message || "حدث خطأ أثناء جلب تفاصيل اليومية";
   }
 };
+
+// --- دوال إدارة حسابات الدفع ---
+
+// جلب جميع حسابات الدفع
+export const fetchPaymentAccounts = async () => {
+  try {
+    const response = await apiClient.get("/payments/accounts");
+    return response.data.data.accounts;
+  } catch (error) {
+    throw error.response?.data?.message || "حدث خطأ أثناء جلب حسابات الدفع";
+  }
+};
+
+// إنشاء حساب دفع جديد
+export const createPaymentAccount = async (accountData) => {
+  try {
+    const response = await apiClient.post("/payments/accounts", accountData);
+    return response.data.data.account;
+  } catch (error) {
+    throw error.response?.data?.message || "حدث خطأ أثناء إنشاء حساب الدفع";
+  }
+};
+
+// تفعيل/إيقاف حساب دفع
+export const togglePaymentAccount = async (id) => {
+  try {
+    const response = await apiClient.patch(`/payments/accounts/${id}/toggle`);
+    return response.data.data.account;
+  } catch (error) {
+    throw error.response?.data?.message || "حدث خطأ أثناء تغيير حالة الحساب";
+  }
+};
+// تعديل بيانات حساب دفع
+export const updatePaymentAccount = async (id, accountData) => {
+  try {
+    const response = await apiClient.patch(`/payments/accounts/${id}`, accountData);
+    return response.data.data.account;
+  } catch (error) {
+    throw error.response?.data?.message || "حدث خطأ أثناء تعديل الحساب";
+  }
+};
+
+// حذف حساب دفع
+export const deletePaymentAccount = async (id) => {
+  try {
+    await apiClient.delete(`/payments/accounts/${id}`);
+    return true;
+  } catch (error) {
+    throw error.response?.data?.message || "حدث خطأ أثناء حذف الحساب";
+  }
+};

@@ -8,7 +8,8 @@ import {
   FileImage,
   Loader2,
   Info,
-  AlertTriangle, // +++ أضفنا هذه الأيقونات للتنبيهات +++
+  AlertTriangle,
+  CalendarDays, // +++ أيقونة النتيجة +++
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -25,17 +26,33 @@ interface PaymentData {
   method: string;
   amount: number;
   expiresAt: string;
-  instructions: { vodafoneCashNumber: string; instaPayAddress: string };
+  instructions: {
+    identifier: string;
+    accountName: string;
+  } | null;
+}
+
+// +++ واجهة تفاصيل الحجز الجديدة +++
+export interface BookingDetails {
+  startTime: string;
+  endTime: string;
 }
 
 interface PaymentModalProps {
   open: boolean;
   paymentData: PaymentData | null;
+  bookingDetails?: BookingDetails | null; // +++ إضافة الـ Prop الجديد +++
   onClose: () => void;
   onSuccess: () => void;
 }
 
-export function PaymentModal({ open, paymentData, onClose, onSuccess }: PaymentModalProps) {
+export function PaymentModal({
+  open,
+  paymentData,
+  bookingDetails,
+  onClose,
+  onSuccess,
+}: PaymentModalProps) {
   const [timeLeft, setTimeLeft] = useState<string>("");
   const [isExpired, setIsExpired] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -114,9 +131,8 @@ export function PaymentModal({ open, paymentData, onClose, onSuccess }: PaymentM
   if (!open || !paymentData) return null;
 
   const isInstapay = paymentData.method === "instapay";
-  const targetAddress = isInstapay
-    ? paymentData.instructions.instaPayAddress
-    : paymentData.instructions.vodafoneCashNumber;
+  const targetAddress = paymentData.instructions?.identifier || "الرقم غير متاح حالياً";
+  const targetName = paymentData.instructions?.accountName || "";
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6" dir="rtl">
@@ -159,6 +175,47 @@ export function PaymentModal({ open, paymentData, onClose, onSuccess }: PaymentM
 
           {!isExpired && !showProofForm && (
             <div className="animate-in fade-in slide-in-from-bottom-2 space-y-5">
+              {/* +++ صندوق تفاصيل الحجز +++ */}
+              {bookingDetails && (
+                <div className="flex items-center justify-between bg-muted/40 border border-border rounded-xl p-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="bg-primary/10 p-2 rounded-lg text-primary">
+                      <CalendarDays className="size-4" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-muted-foreground">تاريخ الحجز</p>
+                      <p className="text-xs font-bold text-foreground">
+                        {new Date(bookingDetails.startTime).toLocaleDateString("ar-EG", {
+                          weekday: "long",
+                          day: "numeric",
+                          month: "short",
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="w-px h-8 bg-border"></div>
+                  <div className="flex items-center gap-2.5">
+                    <div className="bg-primary/10 p-2 rounded-lg text-primary">
+                      <Clock className="size-4" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-muted-foreground">التوقيت</p>
+                      <p className="text-xs font-bold text-foreground" dir="ltr">
+                        {new Date(bookingDetails.startTime).toLocaleTimeString("ar-EG", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}{" "}
+                        -{" "}
+                        {new Date(bookingDetails.endTime).toLocaleTimeString("ar-EG", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* صندوق المبلغ المطلوب */}
               <div className="rounded-2xl border-2 border-primary/20 bg-primary/5 p-5 text-center space-y-2 relative overflow-hidden">
                 <div className="absolute top-0 right-0 bg-primary text-primary-foreground px-3 py-0.5 rounded-bl-xl text-[10px] font-bold">
@@ -196,10 +253,16 @@ export function PaymentModal({ open, paymentData, onClose, onSuccess }: PaymentM
                     <span className="font-bold text-lg" dir="ltr">
                       {targetAddress}
                     </span>
+                    {targetName && (
+                      <span className="text-[10px] font-bold text-muted-foreground mt-0.5">
+                        باسم: {targetName}
+                      </span>
+                    )}
                   </div>
                   <button
                     onClick={() => handleCopy(targetAddress)}
-                    className="flex items-center justify-center gap-1.5 rounded-lg bg-background border border-border px-3 py-2 text-xs font-bold transition hover:bg-muted"
+                    disabled={!paymentData.instructions}
+                    className="flex items-center justify-center gap-1.5 rounded-lg bg-background border border-border px-3 py-2 text-xs font-bold transition hover:bg-muted disabled:opacity-50"
                   >
                     {copied ? (
                       <CheckCircle2 size={16} className="text-success" />
@@ -211,7 +274,6 @@ export function PaymentModal({ open, paymentData, onClose, onSuccess }: PaymentM
                 </div>
               </div>
 
-              {/* +++ صندوق سياسة الإلغاء والتعليمات +++ */}
               <div className="bg-muted/50 border border-border rounded-xl p-4 space-y-2">
                 <h4 className="text-xs font-extrabold flex items-center gap-1.5 text-foreground">
                   <Info className="size-4 text-primary" /> تعليمات الحجز وسياسة الإلغاء:

@@ -7,6 +7,10 @@ const paymentSchema = new mongoose.Schema(
       ref: "Booking",
       required: true,
     },
+    paymentAccount: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "PaymentAccount",
+    },
 
     paymentReference: {
       type: String,

@@ -17,7 +17,7 @@ import {
   Sun,
   Moon,
   Wallet,
-  Info, // +++ إضافة أيقونة Info +++
+  Info,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -36,7 +36,9 @@ interface CourtType {
   _id: string;
   name: string;
   sportType: string;
-  pricePerHour: number;
+  priceMorning?: number; // +++ السعر الصباحي +++
+  priceEvening?: number; // +++ السعر المسائي +++
+  pricePerHour?: number; // للتوافق مع الملاعب القديمة
   status?: string;
   image?: string;
 }
@@ -45,6 +47,8 @@ interface VenueType {
   _id: string;
   name: string;
   description?: string;
+  openTime?: string; // +++ بداية الصباح +++
+  eveningStartTime?: string; // +++ بداية المساء +++
   address?: {
     city: string;
     area: string;
@@ -66,9 +70,9 @@ interface PaymentDataType {
   amount: number;
   expiresAt: string;
   instructions: {
-    vodafoneCashNumber: string;
-    instaPayAddress: string;
-  };
+    identifier: string;
+    accountName: string;
+  } | null;
 }
 
 const getImageUrl = (imagePath?: string) => {
@@ -153,11 +157,17 @@ function VenueDetailsPage() {
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentData, setPaymentData] = useState<PaymentDataType | null>(null);
+
+  const [bookingDetails, setBookingDetails] = useState<{
+    startTime: string;
+    endTime: string;
+  } | null>(null);
+
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"vodafone_cash" | "instapay">(
     "vodafone_cash",
   );
 
-  const [showInfoModal, setShowInfoModal] = useState(false); // +++ حالة ظهور مودال التعليمات +++
+  const [showInfoModal, setShowInfoModal] = useState(false);
 
   const days = useMemo(getDays, []);
   const [selectedCourt, setSelectedCourt] = useState<CourtType | null>(null);
@@ -280,7 +290,29 @@ function VenueDetailsPage() {
     });
   }, [bookedSlots, timeTab, selectedDay, days]);
 
-  const total = selectedCourt ? selectedCourt.pricePerHour : 0;
+  // +++ حساب السعر ديناميكياً بناءً على وقت الشريحة المحددة +++
+  const total = useMemo(() => {
+    if (!selectedCourt || !selectedSlot) return 0;
+
+    const [hours] = selectedSlot.split(":");
+    const bookingHour = parseInt(hours || "0", 10);
+
+    const eveningStartHour = parseInt(
+      (venue?.eveningStartTime || "18:00").split(":")[0] ?? "18",
+      10,
+    );
+    const morningStartHour = parseInt((venue?.openTime || "08:00").split(":")[0] ?? "08", 10);
+
+    const isEvening = bookingHour >= eveningStartHour || bookingHour < morningStartHour;
+
+    if (isEvening && selectedCourt.priceEvening) {
+      return selectedCourt.priceEvening;
+    } else if (!isEvening && selectedCourt.priceMorning) {
+      return selectedCourt.priceMorning;
+    }
+
+    return selectedCourt.pricePerHour || 0; // لضمان التوافق مع القديم
+  }, [selectedCourt, selectedSlot, venue]);
 
   const confirm = async () => {
     if (!selectedSlot || !selectedCourt || !venue || !days || !days[selectedDay]) return;
@@ -306,6 +338,12 @@ function VenueDetailsPage() {
 
       if (response.data && response.data.payment) {
         setPaymentData(response.data.payment);
+        if (response.data.booking) {
+          setBookingDetails({
+            startTime: response.data.booking.startTime,
+            endTime: response.data.booking.endTime,
+          });
+        }
         setShowPaymentModal(true);
       } else {
         toast.success(`تم تأكيد الحجز في ${venue.name} بنجاح!`);
@@ -430,13 +468,13 @@ function VenueDetailsPage() {
                       setSelectedSlot(null);
                     }}
                     className={cn(
-                      "flex shrink-0 items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-bold transition",
+                      "flex shrink-0 flex-col items-center gap-1.5 rounded-xl border px-4 py-2.5 text-xs font-bold transition",
                       selectedCourt?._id === c._id
                         ? "gradient-primary border-transparent text-primary-foreground"
                         : "border-border bg-background text-muted-foreground hover:border-primary/40",
                     )}
                   >
-                    {c.name}
+                    <span>{c.name}</span>
                   </button>
                 ))}
               </div>
@@ -556,11 +594,11 @@ function VenueDetailsPage() {
               </p>
               <p className="flex justify-between border-t border-border pt-2">
                 <span>الإجمالي</span>
-                <span className="font-bold text-primary">{total} ج.م</span>
+                {/* +++ عرض السعر الديناميكي +++ */}
+                <span className="font-bold text-primary">{total > 0 ? `${total} ج.م` : "--"}</span>
               </p>
             </div>
             <div className="border-t border-border pt-3">
-              {/* +++ زر تعليمات الحجز في نسخة الكمبيوتر +++ */}
               <div className="flex items-center justify-between mb-3">
                 <p className="text-xs font-bold text-muted-foreground flex items-center gap-1">
                   <Wallet className="size-3" /> اختر طريقة الدفع
@@ -612,7 +650,6 @@ function VenueDetailsPage() {
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 px-4 py-3 backdrop-blur lg:hidden">
         <div className="mx-auto flex max-w-6xl flex-col gap-3">
           <div className="flex flex-col gap-2 w-full border-b border-border pb-2">
-            {/* +++ زر تعليمات الحجز في نسخة الموبايل +++ */}
             <div className="flex justify-between items-center px-1">
               <span className="text-[11px] font-bold text-muted-foreground">اختر طريقة الدفع</span>
               <button
@@ -650,7 +687,8 @@ function VenueDetailsPage() {
           <div className="flex items-center justify-between gap-3">
             <div className="text-xs text-muted-foreground">
               <p>{summary.mobileText}</p>
-              <p className="text-sm font-bold text-primary">{total} ج.م</p>
+              {/* +++ عرض السعر الديناميكي +++ */}
+              <p className="text-sm font-bold text-primary">{total > 0 ? `${total} ج.م` : "--"}</p>
             </div>
             <button
               onClick={confirm}
@@ -663,7 +701,6 @@ function VenueDetailsPage() {
         </div>
       </div>
 
-      {/* +++ مودال تعليمات الحجز وسياسة الإلغاء +++ */}
       {showInfoModal && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6"
@@ -729,6 +766,7 @@ function VenueDetailsPage() {
       <PaymentModal
         open={showPaymentModal}
         paymentData={paymentData}
+        bookingDetails={bookingDetails}
         onClose={() => {
           setShowPaymentModal(false);
           navigate({ to: "/my-bookings" });

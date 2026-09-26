@@ -27,6 +27,7 @@ interface BookingData {
   startTime: string;
   status: string;
   totalPrice: number;
+  deposit?: number; // +++ إضافة deposit +++
   user?: { name: string; phone?: string };
   guestData?: { name: string; phone?: string };
   court?: { name: string };
@@ -83,7 +84,11 @@ export function OverviewView({
         const upcoming = safeBookings
           .filter(
             (b: BookingData) =>
-              b && b.startTime && new Date(b.startTime) >= now && b.venue?._id === venueId,
+              b &&
+              b.startTime &&
+              new Date(b.startTime) >= now &&
+              b.venue?._id === venueId &&
+              b.status === "confirmed",
           )
           .slice(0, 5);
         setUpcomingBookings(upcoming);
@@ -116,8 +121,8 @@ export function OverviewView({
   }
 
   const statCards = [
-    { label: "حجوزات اليوم", value: stats?.todayBookings || 0, change: "+0%", icon: CalendarCheck },
-    { label: "إيرادات اليوم", value: `${stats?.todayRevenue || 0} ج`, change: "+0%", icon: Wallet },
+    { label: "حجوزات اليوم", value: stats?.todayBookings || 0, icon: CalendarCheck },
+    { label: "إيرادات اليوم", value: `${stats?.todayRevenue || 0} ج`, icon: Wallet },
     { label: "الملاعب المتاحة", value: stats?.activeCourts || 0, change: "نشط", icon: Users },
     { label: "نسبة الإشغال", value: stats?.occupancyRate || "0%", change: "اليوم", icon: Activity },
   ];
@@ -155,7 +160,7 @@ export function OverviewView({
                 <th className="px-5 py-3 font-semibold">التاريخ</th>
                 <th className="px-5 py-3 font-semibold">الوقت</th>
                 <th className="px-5 py-3 font-semibold">الحالة</th>
-                <th className="px-5 py-3 font-semibold">المبلغ</th>
+                <th className="px-5 py-3 font-semibold">المبلغ المطلوب</th>
               </tr>
             </thead>
             <tbody>
@@ -170,6 +175,9 @@ export function OverviewView({
                   const d = new Date(m.startTime);
                   const clientName = m.user?.name || m.guestData?.name || "بدون اسم";
                   const clientPhone = m.user?.phone || m.guestData?.phone || "";
+
+                  // +++ حساب المبلغ المتبقي +++
+                  const remaining = Math.max((m.totalPrice || 0) - (m.deposit || 0), 0);
 
                   return (
                     <tr
@@ -199,7 +207,19 @@ export function OverviewView({
                       <td className="px-5 py-3">
                         <StatusBadge status={m.status} />
                       </td>
-                      <td className="px-5 py-3 font-bold">{m.totalPrice} ج</td>
+                      {/* +++ إظهار المبلغ الكلي وإذا كان هناك متبقي +++ */}
+                      <td className="px-5 py-3">
+                        <div className="flex flex-col">
+                          <span className="font-bold">{m.totalPrice} ج.م</span>
+                          {remaining > 0 ? (
+                            <span className="text-[10px] font-bold text-destructive">
+                              باقي: {remaining} ج
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-success">خالص</span>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   );
                 })
@@ -221,7 +241,7 @@ export function OverviewView({
                 <th className="px-5 py-3 font-semibold">الاسم والرقم</th>
                 <th className="px-5 py-3 font-semibold">إجمالي الحجوزات</th>
                 <th className="px-5 py-3 font-semibold">إجمالي الإنفاق</th>
-                <th className="px-5 py-3 font-semibold">إجراء</th>
+                {/* <th className="px-5 py-3 font-semibold">إجراء</th> */}
               </tr>
             </thead>
             <tbody>
@@ -257,14 +277,14 @@ export function OverviewView({
                     </td>
                     <td className="px-5 py-3 text-muted-foreground">{c.totalBookings} حجز</td>
                     <td className="px-5 py-3 font-bold text-primary">{c.totalSpent} ج.م</td>
-                    <td className="px-5 py-3">
+                    {/* <td className="px-5 py-3">
                       <button
                         onClick={() => onSendCode(c.name || "")}
                         className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-xs font-bold text-primary-foreground transition-opacity hover:opacity-90"
                       >
                         <Ticket className="h-4 w-4" /> إرسال كود خصم
                       </button>
-                    </td>
+                    </td> */}
                   </tr>
                 ))
               )}

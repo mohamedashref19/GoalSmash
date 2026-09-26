@@ -33,9 +33,14 @@ const courtSchema = new mongoose.Schema(
       },
       default: "active",
     },
-    pricePerHour: {
+    // +++ التعديل هنا: استبدال السعر الموحد بسعرين للفترات +++
+    priceMorning: {
       type: Number,
-      required: [true, "يرجى تحديد سعر الحجز في الساعة للملعب"],
+      required: [true, "يرجى تحديد سعر الحجز الصباحي للملعب"],
+    },
+    priceEvening: {
+      type: Number,
+      required: [true, "يرجى تحديد سعر الحجز المسائي للملعب"],
     },
   },
   {
@@ -47,7 +52,7 @@ courtSchema.pre(/^find/, function () {
   this.find({ status: { $ne: "inactive" } });
   this.populate({
     path: "venue",
-    select: "name address phone",
+    select: "name address phone eveningStartTime openTime",
   });
 });
 

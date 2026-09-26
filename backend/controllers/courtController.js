@@ -25,7 +25,6 @@ exports.createCourt = catchAsync(async (req, res, next) => {
   }
 
   if (req.file) {
-    // Cloudinary بيرجع الرابط الدائم للصورة في req.file.path
     req.body.image = req.file.path;
   }
 
@@ -76,7 +75,6 @@ exports.updateCourt = catchAsync(async (req, res, next) => {
   if (req.body.venue) delete req.body.venue;
 
   if (req.file) {
-    // Cloudinary بيرجع الرابط الدائم للصورة في req.file.path
     req.body.image = req.file.path;
   }
 

@@ -9,9 +9,16 @@ import {
   Users,
   Settings2,
   Edit,
-  X,
   MapPin,
   ImageIcon,
+  Wallet,
+  CheckCircle,
+  XCircle,
+  Trash2,
+  X,
+  Clock,
+  Moon,
+  Sun,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -24,6 +31,11 @@ import {
   fetchAllCustomers,
   updateVenueByAdmin,
   updateCourtByAdmin,
+  fetchPaymentAccounts,
+  createPaymentAccount,
+  togglePaymentAccount,
+  updatePaymentAccount,
+  deletePaymentAccount,
   // @ts-expect-error: API lacks TypeScript definitions
 } from "@/api/adminApi";
 
@@ -36,7 +48,9 @@ interface Owner {
 interface Court {
   _id: string;
   name: string;
-  pricePerHour: number;
+  pricePerHour?: number; // لضمان التوافق مع البيانات القديمة
+  priceMorning: number;
+  priceEvening: number;
   sportType: string;
 }
 
@@ -44,6 +58,10 @@ interface Venue {
   _id: string;
   name: string;
   phone: string;
+  operatingHours?: number;
+  openTime?: string;
+  closeTime?: string;
+  eveningStartTime?: string;
   address?: { area: string; city: string; details?: string };
   owner?: { _id: string; name: string; phone: string };
   courts?: Court[];
@@ -58,16 +76,36 @@ interface Customer {
   createdAt: string;
 }
 
-type TabKey = "owner" | "venue" | "court" | "manage" | "customers";
+interface PaymentAccount {
+  _id: string;
+  type: string;
+  identifier: string;
+  accountName: string;
+  isActive: boolean;
+  lastUsedAt: string;
+  lastTransferReceivedAt?: string;
+  totalMoneyCollected?: number;
+}
+
+type TabKey = "owner" | "venue" | "court" | "manage" | "customers" | "accounts";
+
+const calculateHours = (open: string, close: string) => {
+  if (!open || !close) return 24;
+  const [openHr] = open.split(":").map(Number);
+  const [closeHr] = close.split(":").map(Number);
+  let hours = (closeHr ?? 0) - (openHr ?? 0);
+  if (hours <= 0) hours += 24;
+  return hours;
+};
 
 export function AdminSetupView() {
   const [activeTab, setActiveTab] = useState<TabKey>("owner");
   const [ownersList, setOwnersList] = useState<Owner[]>([]);
   const [venuesList, setVenuesList] = useState<Venue[]>([]);
   const [customersList, setCustomersList] = useState<Customer[]>([]);
+  const [accountsList, setAccountsList] = useState<PaymentAccount[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // حالات الإضافة
   const [ownerData, setOwnerData] = useState({
     name: "",
     email: "",
@@ -75,23 +113,40 @@ export function AdminSetupView() {
     password: "",
     passwordConfirm: "",
   });
+
   const [venueData, setVenueData] = useState({
     name: "",
     phone: "",
     city: "Alexandria",
     area: "",
     ownerId: "",
+    openTime: "08:00",
+    closeTime: "02:00",
+    eveningStartTime: "18:00",
   });
   const [venueImage, setVenueImage] = useState<File | null>(null);
   const [courtData, setCourtData] = useState({
     venueId: "",
     name: "",
     sportType: "padel",
-    pricePerHour: "",
+    priceMorning: "",
+    priceEvening: "",
   });
   const [courtImage, setCourtImage] = useState<File | null>(null);
 
-  // حالات التعديل (Edit)
+  const [accountData, setAccountData] = useState({
+    type: "vodafone_cash",
+    identifier: "",
+    accountName: "",
+  });
+
+  const [editAccountId, setEditAccountId] = useState<string | null>(null);
+  const [editAccountForm, setEditAccountForm] = useState({
+    type: "vodafone_cash",
+    identifier: "",
+    accountName: "",
+  });
+
   const [editVenueId, setEditVenueId] = useState<string | null>(null);
   const [editVenueForm, setEditVenueForm] = useState({
     name: "",
@@ -99,33 +154,43 @@ export function AdminSetupView() {
     area: "",
     details: "",
     ownerId: "",
+    openTime: "08:00",
+    closeTime: "02:00",
+    eveningStartTime: "18:00",
   });
-  const [editVenueImage, setEditVenueImage] = useState<File | null>(null); // +++ حالة صورة النادي الجديدة +++
+  const [editVenueImage, setEditVenueImage] = useState<File | null>(null);
 
   const [editCourtId, setEditCourtId] = useState<string | null>(null);
   const [editCourtForm, setEditCourtForm] = useState({
     name: "",
-    pricePerHour: "",
     sportType: "padel",
+    priceMorning: "",
+    priceEvening: "",
   });
   const [editCourtImage, setEditCourtImage] = useState<File | null>(null);
 
-  // جلب البيانات بذكاء حسب التاب
   const loadVenues = async () => {
     try {
-      const data = await fetchAllVenues();
-      setVenuesList(data);
+      setVenuesList(await fetchAllVenues());
     } catch (err: unknown) {
       toast.error(err as string);
     }
   };
-
   const loadOwners = async () => {
     try {
-      const data = await fetchAllOwners();
-      setOwnersList(data);
+      setOwnersList(await fetchAllOwners());
     } catch (err: unknown) {
       toast.error(err as string);
+    }
+  };
+  const loadAccounts = async () => {
+    setLoading(true);
+    try {
+      setAccountsList(await fetchPaymentAccounts());
+    } catch (err: unknown) {
+      toast.error(err as string);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -139,9 +204,9 @@ export function AdminSetupView() {
         .catch((err: unknown) => toast.error(err as string))
         .finally(() => setLoading(false));
     }
-  }, [activeTab, customersList.length, ownersList.length, venuesList.length]);
+    if (activeTab === "accounts" && accountsList.length === 0) loadAccounts();
+  }, [activeTab, customersList.length, ownersList.length, venuesList.length, accountsList.length]);
 
-  // --- دوال الإضافة ---
   const handleCreateOwner = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     if (ownerData.password !== ownerData.passwordConfirm) {
@@ -165,16 +230,33 @@ export function AdminSetupView() {
     e.preventDefault();
     setLoading(true);
     try {
+      const computedHours = calculateHours(venueData.openTime, venueData.closeTime);
+
       const formData = new FormData();
       formData.append("name", venueData.name);
       formData.append("phone", venueData.phone);
       formData.append("address[city]", venueData.city);
       formData.append("address[area]", venueData.area);
       formData.append("owner", venueData.ownerId);
+
+      formData.append("openTime", venueData.openTime);
+      formData.append("closeTime", venueData.closeTime);
+      formData.append("eveningStartTime", venueData.eveningStartTime);
+      formData.append("operatingHours", String(computedHours));
+
       if (venueImage) formData.append("image", venueImage);
       await createVenueByAdmin(formData);
       toast.success("تم إنشاء النادي بنجاح");
-      setVenueData({ name: "", phone: "", city: "Alexandria", area: "", ownerId: "" });
+      setVenueData({
+        name: "",
+        phone: "",
+        city: "Alexandria",
+        area: "",
+        ownerId: "",
+        openTime: "08:00",
+        closeTime: "02:00",
+        eveningStartTime: "18:00",
+      });
       setVenueImage(null);
       setVenuesList([]);
     } catch (err: unknown) {
@@ -191,12 +273,19 @@ export function AdminSetupView() {
       const formData = new FormData();
       formData.append("name", courtData.name);
       formData.append("sportType", courtData.sportType);
-      formData.append("pricePerHour", courtData.pricePerHour);
+      formData.append("priceMorning", courtData.priceMorning);
+      formData.append("priceEvening", courtData.priceEvening);
       formData.append("venue", courtData.venueId);
       if (courtImage) formData.append("image", courtImage);
       await createCourtByAdmin(formData);
       toast.success("تم إضافة الملعب للنادي بنجاح");
-      setCourtData({ venueId: "", name: "", sportType: "padel", pricePerHour: "" });
+      setCourtData({
+        venueId: "",
+        name: "",
+        sportType: "padel",
+        priceMorning: "",
+        priceEvening: "",
+      });
       setCourtImage(null);
       loadVenues();
     } catch (err: unknown) {
@@ -206,34 +295,96 @@ export function AdminSetupView() {
     }
   };
 
-  // --- دوال التعديل (الإدارة الشاملة) ---
+  const handleCreateAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await createPaymentAccount(accountData);
+      toast.success("تم إضافة حساب الدفع بنجاح");
+      setAccountData({ type: "vodafone_cash", identifier: "", accountName: "" });
+      loadAccounts();
+    } catch (err: unknown) {
+      toast.error(err as string);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggleAccount = async (id: string) => {
+    try {
+      await togglePaymentAccount(id);
+      toast.success("تم تغيير حالة الحساب بنجاح");
+      loadAccounts();
+    } catch (err: unknown) {
+      toast.error(err as string);
+    }
+  };
+
+  const startEditAccount = (acc: PaymentAccount) => {
+    setEditAccountId(acc._id);
+    setEditAccountForm({
+      type: acc.type,
+      identifier: acc.identifier,
+      accountName: acc.accountName,
+    });
+  };
+
+  const handleUpdateAccount = async (id: string) => {
+    try {
+      await updatePaymentAccount(id, editAccountForm);
+      toast.success("تم تعديل الحساب بنجاح");
+      setEditAccountId(null);
+      loadAccounts();
+    } catch (err: unknown) {
+      toast.error(err as string);
+    }
+  };
+
+  const handleDeleteAccount = async (id: string) => {
+    if (window.confirm("هل أنت متأكد من حذف هذا الحساب نهائياً؟ لا يمكن التراجع عن هذه الخطوة.")) {
+      try {
+        await deletePaymentAccount(id);
+        toast.success("تم حذف الحساب بنجاح");
+        loadAccounts();
+      } catch (err: unknown) {
+        toast.error(err as string);
+      }
+    }
+  };
+
   const startEditVenue = (venue: Venue) => {
     setEditVenueId(venue._id);
-    setEditVenueImage(null); // تصفير الصورة
+    setEditVenueImage(null);
     setEditVenueForm({
       name: venue.name,
       phone: venue.phone,
       area: venue.address?.area || "",
       details: venue.address?.details || "",
       ownerId: venue.owner?._id || "",
+      openTime: venue.openTime || "08:00",
+      closeTime: venue.closeTime || "02:00",
+      eveningStartTime: venue.eveningStartTime || "18:00",
     });
   };
 
   const saveEditVenue = async (id: string) => {
     try {
-      // +++ استخدام FormData لتمكين رفع الصورة للنادي +++
+      const computedHours = calculateHours(editVenueForm.openTime, editVenueForm.closeTime);
+
       const formData = new FormData();
       formData.append("name", editVenueForm.name);
       formData.append("phone", editVenueForm.phone);
       formData.append("address[city]", "Alexandria");
       formData.append("address[area]", editVenueForm.area);
+
+      formData.append("openTime", editVenueForm.openTime);
+      formData.append("closeTime", editVenueForm.closeTime);
+      formData.append("eveningStartTime", editVenueForm.eveningStartTime);
+      formData.append("operatingHours", String(computedHours));
+
       if (editVenueForm.details) formData.append("address[details]", editVenueForm.details);
       formData.append("owner", editVenueForm.ownerId);
-
-      if (editVenueImage) {
-        formData.append("image", editVenueImage);
-      }
-
+      if (editVenueImage) formData.append("image", editVenueImage);
       await updateVenueByAdmin(id, formData);
       toast.success("تم تحديث بيانات النادي بنجاح");
       setEditVenueId(null);
@@ -249,8 +400,9 @@ export function AdminSetupView() {
     setEditCourtImage(null);
     setEditCourtForm({
       name: court.name,
-      pricePerHour: String(court.pricePerHour),
       sportType: court.sportType,
+      priceMorning: String(court.priceMorning || court.pricePerHour || 0),
+      priceEvening: String(court.priceEvening || court.pricePerHour || 0),
     });
   };
 
@@ -258,13 +410,10 @@ export function AdminSetupView() {
     try {
       const formData = new FormData();
       formData.append("name", editCourtForm.name);
-      formData.append("pricePerHour", String(editCourtForm.pricePerHour));
+      formData.append("priceMorning", String(editCourtForm.priceMorning));
+      formData.append("priceEvening", String(editCourtForm.priceEvening));
       formData.append("sportType", editCourtForm.sportType);
-
-      if (editCourtImage) {
-        formData.append("image", editCourtImage);
-      }
-
+      if (editCourtImage) formData.append("image", editCourtImage);
       await updateCourtByAdmin(id, formData);
       toast.success("تم تحديث بيانات الملعب بنجاح");
       setEditCourtId(null);
@@ -290,6 +439,7 @@ export function AdminSetupView() {
           { id: "court", icon: Dribbble, label: "إضافة ملعب" },
           { id: "manage", icon: Edit, label: "إدارة الملاعب" },
           { id: "customers", icon: Users, label: "العملاء" },
+          { id: "accounts", icon: Wallet, label: "حسابات الدفع" },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -306,7 +456,6 @@ export function AdminSetupView() {
         ))}
       </div>
 
-      {/* ... (فورم إضافة المالك والنادي والملعب كما هي تماماً) ... */}
       {activeTab === "owner" && (
         <form
           onSubmit={handleCreateOwner}
@@ -415,6 +564,56 @@ export function AdminSetupView() {
               className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none"
             />
           </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-muted/30 p-3 rounded-xl border border-border">
+            <div>
+              <label className="text-[11px] font-bold text-muted-foreground mb-1.5 block">
+                يفتح الساعة
+              </label>
+              <input
+                type="time"
+                required
+                value={venueData.openTime}
+                onChange={(e) => setVenueData({ ...venueData, openTime: e.target.value })}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none font-bold"
+                dir="ltr"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-bold text-muted-foreground mb-1.5 block">
+                يغلق الساعة
+              </label>
+              <input
+                type="time"
+                required
+                value={venueData.closeTime}
+                onChange={(e) => setVenueData({ ...venueData, closeTime: e.target.value })}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none font-bold"
+                dir="ltr"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-bold text-primary mb-1.5 block">
+                بداية السعر المسائي
+              </label>
+              <input
+                type="time"
+                required
+                value={venueData.eveningStartTime}
+                onChange={(e) => setVenueData({ ...venueData, eveningStartTime: e.target.value })}
+                className="w-full rounded-lg border border-primary/50 bg-primary/5 px-3 py-2 text-sm outline-none font-bold"
+                dir="ltr"
+              />
+            </div>
+            <div className="col-span-1 sm:col-span-3">
+              <p className="text-[11px] font-bold text-muted-foreground flex items-center gap-1">
+                <Clock className="size-3.5" />
+                إجمالي ساعات العمل المحسوبة:{" "}
+                {calculateHours(venueData.openTime, venueData.closeTime)} ساعة
+              </p>
+            </div>
+          </div>
+
           <div className="border-2 border-dashed border-border rounded-xl p-6 text-center cursor-pointer hover:bg-muted/50 transition">
             <input
               type="file"
@@ -486,16 +685,28 @@ export function AdminSetupView() {
               <option value="football_7">كرة قدم سباعي</option>
             </select>
           </div>
-          <input
-            type="number"
-            placeholder="السعر في الساعة"
-            required
-            min="0"
-            value={courtData.pricePerHour}
-            onChange={(e) => setCourtData({ ...courtData, pricePerHour: e.target.value })}
-            className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none"
-            dir="ltr"
-          />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input
+              type="number"
+              placeholder="السعر الصباحي (ج.م/ساعة)"
+              required
+              min="0"
+              value={courtData.priceMorning}
+              onChange={(e) => setCourtData({ ...courtData, priceMorning: e.target.value })}
+              className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none"
+              dir="ltr"
+            />
+            <input
+              type="number"
+              placeholder="السعر المسائي (ج.م/ساعة)"
+              required
+              min="0"
+              value={courtData.priceEvening}
+              onChange={(e) => setCourtData({ ...courtData, priceEvening: e.target.value })}
+              className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none"
+              dir="ltr"
+            />
+          </div>
           <div className="border-2 border-dashed border-border rounded-xl p-6 text-center cursor-pointer hover:bg-muted/50 transition">
             <input
               type="file"
@@ -529,7 +740,6 @@ export function AdminSetupView() {
         </form>
       )}
 
-      {/* --- إدارة وتعديل الملاعب والأندية --- */}
       {activeTab === "manage" && (
         <div className="space-y-6 animate-in slide-in-from-bottom-2">
           {venuesList.map((venue) => (
@@ -537,7 +747,6 @@ export function AdminSetupView() {
               key={venue._id}
               className="border border-border rounded-2xl bg-surface overflow-hidden"
             >
-              {/* هيدر النادي (للتعديل) */}
               <div className="bg-muted/30 p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 {editVenueId === venue._id ? (
                   <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3 w-full animate-in fade-in">
@@ -575,10 +784,54 @@ export function AdminSetupView() {
                       value={editVenueForm.area}
                       onChange={(e) => setEditVenueForm({ ...editVenueForm, area: e.target.value })}
                       className="rounded-lg border px-3 py-2 text-sm"
-                      placeholder="المنطقة الرئيسية (مثال: سموحة)"
+                      placeholder="المنطقة الرئيسية"
                     />
 
-                    {/* +++ العنوان التفصيلي + زر تغيير صورة النادي +++ */}
+                    <div className="col-span-1 md:col-span-2 grid grid-cols-3 gap-3 bg-background p-2 rounded-lg border border-border">
+                      <div>
+                        <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                          يفتح الساعة
+                        </label>
+                        <input
+                          type="time"
+                          value={editVenueForm.openTime}
+                          onChange={(e) =>
+                            setEditVenueForm({ ...editVenueForm, openTime: e.target.value })
+                          }
+                          className="w-full rounded-md border px-2 py-1.5 text-xs font-bold"
+                          dir="ltr"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                          يغلق الساعة
+                        </label>
+                        <input
+                          type="time"
+                          value={editVenueForm.closeTime}
+                          onChange={(e) =>
+                            setEditVenueForm({ ...editVenueForm, closeTime: e.target.value })
+                          }
+                          className="w-full rounded-md border px-2 py-1.5 text-xs font-bold"
+                          dir="ltr"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-primary block mb-1">
+                          بداية المسائي
+                        </label>
+                        <input
+                          type="time"
+                          value={editVenueForm.eveningStartTime}
+                          onChange={(e) =>
+                            setEditVenueForm({ ...editVenueForm, eveningStartTime: e.target.value })
+                          }
+                          className="w-full rounded-md border border-primary/50 bg-primary/5 px-2 py-1.5 text-xs font-bold"
+                          dir="ltr"
+                        />
+                      </div>
+                    </div>
+
                     <div className="md:col-span-2 flex flex-col md:flex-row gap-2">
                       <input
                         type="text"
@@ -587,11 +840,11 @@ export function AdminSetupView() {
                           setEditVenueForm({ ...editVenueForm, details: e.target.value })
                         }
                         className="flex-1 rounded-lg border px-3 py-2 text-sm"
-                        placeholder="العنوان التفصيلي (الشارع، علامة مميزة...)"
+                        placeholder="العنوان التفصيلي"
                       />
                       <label className="md:w-1/3 cursor-pointer bg-muted/50 border border-dashed border-border rounded-lg px-2 py-2 text-[11px] text-center hover:bg-muted text-muted-foreground transition flex items-center justify-center">
                         <ImageIcon className="size-3.5 inline mr-1" />
-                        {editVenueImage ? editVenueImage.name : "تغيير صورة النادي الأساسية"}
+                        {editVenueImage ? editVenueImage.name : "صورة النادي"}
                         <input
                           type="file"
                           accept="image/*"
@@ -603,7 +856,6 @@ export function AdminSetupView() {
                         />
                       </label>
                     </div>
-
                     <div className="md:col-span-2 flex gap-2 mt-1">
                       <button
                         onClick={() => saveEditVenue(venue._id)}
@@ -634,14 +886,15 @@ export function AdminSetupView() {
                           <MapPin className="size-3" /> المنطقة:{" "}
                           <span className="font-bold text-foreground">{venue.address?.area}</span>
                         </p>
-                        {venue.address?.details && (
-                          <p className="flex items-start gap-1.5">
-                            <MapPin className="size-3 mt-0.5" /> العنوان التفصيلي:{" "}
-                            <span className="font-bold text-foreground">
-                              {venue.address?.details}
-                            </span>
-                          </p>
-                        )}
+                        <p className="flex items-center gap-1.5">
+                          <Clock className="size-3" /> المواعيد:{" "}
+                          <span className="font-bold text-primary" dir="ltr">
+                            {venue.openTime || "08:00"} - {venue.closeTime || "02:00"}
+                          </span>{" "}
+                          <span className="text-muted-foreground">
+                            | مسائي بدءاً من: {venue.eveningStartTime || "18:00"}
+                          </span>
+                        </p>
                       </div>
                     </div>
                     <button
@@ -654,7 +907,6 @@ export function AdminSetupView() {
                 )}
               </div>
 
-              {/* ملاعب النادي (للتعديل) */}
               <div className="p-4 border-t border-border">
                 <h4 className="text-xs font-extrabold text-muted-foreground mb-3 uppercase tracking-wider">
                   ملاعب النادي ({venue.courts?.length || 0})
@@ -676,34 +928,58 @@ export function AdminSetupView() {
                             className="w-full rounded-md border px-2 py-1.5 text-xs"
                             placeholder="اسم الملعب"
                           />
+                          {/* +++ التعديل المطلوب: إضافة عناوين الأسعار الصباحية والمسائية +++ */}
                           <div className="flex gap-2">
-                            <input
-                              type="number"
-                              value={editCourtForm.pricePerHour}
-                              onChange={(e) =>
-                                setEditCourtForm({ ...editCourtForm, pricePerHour: e.target.value })
-                              }
-                              className="w-1/2 rounded-md border px-2 py-1.5 text-xs"
-                              placeholder="السعر بالساعة"
-                            />
-                            <select
-                              value={editCourtForm.sportType}
-                              onChange={(e) =>
-                                setEditCourtForm({ ...editCourtForm, sportType: e.target.value })
-                              }
-                              className="w-1/2 rounded-md border px-2 py-1.5 text-xs"
-                            >
-                              <option value="padel">بادل</option>
-                              <option value="football">خماسي</option>
-                              <option value="football_7">سباعي</option>
-                            </select>
+                            <div className="w-1/2">
+                              <label className="text-[10px] font-bold text-muted-foreground flex items-center gap-1 mb-1">
+                                <Sun className="size-3 text-warning" /> السعر الصباحي
+                              </label>
+                              <input
+                                type="number"
+                                value={editCourtForm.priceMorning}
+                                onChange={(e) =>
+                                  setEditCourtForm({
+                                    ...editCourtForm,
+                                    priceMorning: e.target.value,
+                                  })
+                                }
+                                className="w-full rounded-md border px-2 py-1.5 text-xs"
+                                placeholder="مثال: 150"
+                              />
+                            </div>
+                            <div className="w-1/2">
+                              <label className="text-[10px] font-bold text-muted-foreground flex items-center gap-1 mb-1">
+                                <Moon className="size-3 text-primary" /> السعر المسائي
+                              </label>
+                              <input
+                                type="number"
+                                value={editCourtForm.priceEvening}
+                                onChange={(e) =>
+                                  setEditCourtForm({
+                                    ...editCourtForm,
+                                    priceEvening: e.target.value,
+                                  })
+                                }
+                                className="w-full rounded-md border px-2 py-1.5 text-xs"
+                                placeholder="مثال: 250"
+                              />
+                            </div>
                           </div>
-
-                          {/* زر رفع الصورة للملعب */}
+                          <select
+                            value={editCourtForm.sportType}
+                            onChange={(e) =>
+                              setEditCourtForm({ ...editCourtForm, sportType: e.target.value })
+                            }
+                            className="w-full rounded-md border px-2 py-1.5 text-xs"
+                          >
+                            <option value="padel">بادل</option>
+                            <option value="football">خماسي</option>
+                            <option value="football_7">سباعي</option>
+                          </select>
                           <div className="flex items-center gap-2 mt-1">
                             <label className="flex-1 cursor-pointer bg-muted/50 border border-dashed border-border rounded-md px-2 py-1.5 text-[10px] text-center hover:bg-muted text-muted-foreground transition">
                               <ImageIcon className="size-3 inline mr-1" />
-                              {editCourtImage ? editCourtImage.name : "تغيير صورة الملعب (اختياري)"}
+                              {editCourtImage ? editCourtImage.name : "تغيير صورة الملعب"}
                               <input
                                 type="file"
                                 accept="image/*"
@@ -715,7 +991,6 @@ export function AdminSetupView() {
                               />
                             </label>
                           </div>
-
                           <div className="flex gap-2 mt-2">
                             <button
                               onClick={() => saveEditCourt(court._id)}
@@ -753,10 +1028,18 @@ export function AdminSetupView() {
                             </span>
                           </div>
                           <div className="flex justify-between items-end mt-3">
-                            <span className="font-black text-primary text-sm">
-                              {court.pricePerHour}{" "}
-                              <span className="text-[10px] text-muted-foreground">ج/س</span>
-                            </span>
+                            <div className="flex flex-col gap-0.5">
+                              <span className="font-black text-primary text-xs flex items-center gap-1">
+                                <Sun className="size-3" /> صباحاً:{" "}
+                                {court.priceMorning || court.pricePerHour}{" "}
+                                <span className="text-[9px] text-muted-foreground">ج/س</span>
+                              </span>
+                              <span className="font-black text-primary text-xs flex items-center gap-1">
+                                <Moon className="size-3" /> مساءً:{" "}
+                                {court.priceEvening || court.pricePerHour}{" "}
+                                <span className="text-[9px] text-muted-foreground">ج/س</span>
+                              </span>
+                            </div>
                             <button
                               onClick={() => startEditCourt(court)}
                               className="text-muted-foreground hover:text-primary transition bg-muted/50 p-1.5 rounded-lg"
@@ -775,7 +1058,264 @@ export function AdminSetupView() {
         </div>
       )}
 
-      {/* ... (العملاء كما هي) ... */}
+      {activeTab === "accounts" && (
+        <div className="space-y-6 animate-in slide-in-from-bottom-2">
+          <form
+            onSubmit={handleCreateAccount}
+            className="p-4 border border-border rounded-xl bg-muted/30 mb-6"
+          >
+            <h3 className="font-bold mb-4 flex items-center gap-2">
+              <Wallet className="size-5 text-primary" /> إضافة حساب دفع جديد
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <select
+                required
+                value={accountData.type}
+                onChange={(e) => setAccountData({ ...accountData, type: e.target.value })}
+                className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm outline-none focus:border-primary"
+              >
+                <option value="vodafone_cash">فودافون كاش</option>
+                <option value="instapay">إنستا باي</option>
+              </select>
+              <input
+                type="text"
+                placeholder={
+                  accountData.type === "vodafone_cash"
+                    ? "رقم المحفظة (مثال: 010...)"
+                    : "عنوان إنستا باي (مثال: name@instapay)"
+                }
+                required
+                value={accountData.identifier}
+                onChange={(e) => setAccountData({ ...accountData, identifier: e.target.value })}
+                className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm outline-none focus:border-primary"
+                dir="ltr"
+              />
+              <input
+                type="text"
+                placeholder="اسم صاحب الحساب (للتأكيد)"
+                required
+                value={accountData.accountName}
+                onChange={(e) => setAccountData({ ...accountData, accountName: e.target.value })}
+                className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm outline-none focus:border-primary"
+              />
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button
+                disabled={loading}
+                type="submit"
+                className="flex items-center justify-center gap-2 rounded-xl bg-primary px-6 py-2.5 font-bold text-white transition disabled:opacity-50"
+              >
+                {loading ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Save className="size-4" />
+                )}{" "}
+                إضافة الحساب
+              </button>
+            </div>
+          </form>
+
+          <div className="overflow-x-auto rounded-xl border border-border">
+            <table className="w-full text-sm text-right">
+              <thead className="bg-muted/50 text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3 font-bold">نوع الحساب</th>
+                  <th className="px-4 py-3 font-bold">الرقم / العنوان</th>
+                  <th className="px-4 py-3 font-bold">اسم صاحب الحساب</th>
+                  <th className="px-4 py-3 font-bold text-center">آخر ظهور (دوران)</th>
+                  <th className="px-4 py-3 font-bold text-center">آخر تحويل مُستلم</th>
+                  <th className="px-4 py-3 font-bold text-center">إجمالي المُحصل</th>
+                  <th className="px-4 py-3 font-bold text-center">الحالة</th>
+                  <th className="px-4 py-3 font-bold text-center">إجراءات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {accountsList.map((account) => (
+                  <tr
+                    key={account._id}
+                    className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors"
+                  >
+                    {editAccountId === account._id ? (
+                      <>
+                        <td className="px-2 py-2">
+                          <select
+                            value={editAccountForm.type}
+                            onChange={(e) =>
+                              setEditAccountForm({ ...editAccountForm, type: e.target.value })
+                            }
+                            className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-xs outline-none"
+                          >
+                            <option value="vodafone_cash">فودافون</option>
+                            <option value="instapay">إنستا باي</option>
+                          </select>
+                        </td>
+                        <td className="px-2 py-2">
+                          <input
+                            type="text"
+                            value={editAccountForm.identifier}
+                            onChange={(e) =>
+                              setEditAccountForm({ ...editAccountForm, identifier: e.target.value })
+                            }
+                            className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-xs outline-none text-left"
+                            dir="ltr"
+                          />
+                        </td>
+                        <td className="px-2 py-2">
+                          <input
+                            type="text"
+                            value={editAccountForm.accountName}
+                            onChange={(e) =>
+                              setEditAccountForm({
+                                ...editAccountForm,
+                                accountName: e.target.value,
+                              })
+                            }
+                            className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-xs outline-none"
+                          />
+                        </td>
+                        <td
+                          className="px-2 py-2 text-center text-muted-foreground text-xs"
+                          colSpan={3}
+                        >
+                          جاري التعديل...
+                        </td>
+                        <td className="px-2 py-2 text-center text-muted-foreground text-xs">---</td>
+                        <td className="px-2 py-2">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => handleUpdateAccount(account._id)}
+                              className="bg-success text-white p-1.5 rounded-md hover:bg-success/80 transition"
+                              title="حفظ"
+                            >
+                              <Save size={14} />
+                            </button>
+                            <button
+                              onClick={() => setEditAccountId(null)}
+                              className="bg-muted text-foreground p-1.5 rounded-md hover:bg-muted/80 transition"
+                              title="إلغاء"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-4 py-3 font-bold text-foreground">
+                          {account.type === "vodafone_cash" ? "فودافون كاش" : "إنستا باي"}
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-muted-foreground" dir="ltr">
+                          {account.identifier}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground font-semibold">
+                          {account.accountName}
+                        </td>
+
+                        <td
+                          className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground"
+                          dir="ltr"
+                        >
+                          {account.lastUsedAt
+                            ? new Date(account.lastUsedAt).toLocaleString("ar-EG", {
+                                month: "short",
+                                day: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                hour12: true,
+                              })
+                            : "لم يُعرض بعد"}
+                        </td>
+
+                        <td
+                          className="px-4 py-3 text-center text-xs font-bold text-success"
+                          dir="ltr"
+                        >
+                          {account.lastTransferReceivedAt
+                            ? new Date(account.lastTransferReceivedAt).toLocaleString("ar-EG", {
+                                month: "short",
+                                day: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                hour12: true,
+                              })
+                            : "لم يُحصل بعد"}
+                        </td>
+
+                        <td className="px-4 py-3 text-center font-black text-primary">
+                          {account.totalMoneyCollected
+                            ? `${account.totalMoneyCollected.toFixed(2)} ج`
+                            : "0 ج"}
+                        </td>
+
+                        <td className="px-4 py-3 text-center">
+                          <span
+                            className={cn(
+                              "px-2 py-1 rounded-md text-[11px] font-bold",
+                              account.isActive
+                                ? "bg-success/10 text-success"
+                                : "bg-red-500/10 text-red-500",
+                            )}
+                          >
+                            {account.isActive ? "نشط" : "موقوف"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => handleToggleAccount(account._id)}
+                              className={cn(
+                                "px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition",
+                                account.isActive
+                                  ? "bg-warning/10 text-warning hover:bg-warning/20"
+                                  : "bg-success/10 text-success hover:bg-success/20",
+                              )}
+                            >
+                              {account.isActive ? (
+                                <>
+                                  <XCircle className="size-3.5" /> إيقاف
+                                </>
+                              ) : (
+                                <>
+                                  <CheckCircle className="size-3.5" /> تفعيل
+                                </>
+                              )}
+                            </button>
+                            <button
+                              onClick={() => startEditAccount(account)}
+                              className="p-1.5 rounded-lg text-primary hover:bg-primary/10 transition"
+                              title="تعديل"
+                            >
+                              <Edit className="size-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteAccount(account._id)}
+                              className="p-1.5 rounded-lg text-destructive hover:bg-destructive/10 transition"
+                              title="حذف نهائي"
+                            >
+                              <Trash2 className="size-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+                {accountsList.length === 0 && !loading && (
+                  <tr>
+                    <td
+                      colSpan={8}
+                      className="px-4 py-8 text-center text-muted-foreground font-bold"
+                    >
+                      لا توجد حسابات دفع مسجلة حتى الآن
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {activeTab === "customers" && (
         <div className="animate-in slide-in-from-bottom-2">
           {loading ? (

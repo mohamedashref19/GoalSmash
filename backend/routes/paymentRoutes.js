@@ -2,6 +2,7 @@ const express = require("express");
 const paymentController = require("../controllers/paymentController");
 const authControllers = require("../controllers/authControllers");
 const smsWebhookAuth = require("../middleware/smsWebhookAuth");
+const paymentAccountController = require("../controllers/paymentAccountController");
 
 const router = express.Router();
 
@@ -11,7 +12,10 @@ router.post(
   paymentController.receivePaymentSms,
 );
 router.use(authControllers.protect);
-
+router.get(
+  "/accounts/available",
+  paymentAccountController.getAvailablePaymentAccount,
+);
 router.get(
   "/reports",
   authControllers.restrictTo("owner", "admin", "employee"),
@@ -24,7 +28,21 @@ router.patch(
   paymentController.uploadProofImage,
   paymentController.submitPaymentProof,
 );
+router.use("/accounts", authControllers.restrictTo("admin"));
+router
+  .route("/accounts")
+  .get(paymentAccountController.getAllAccounts)
+  .post(paymentAccountController.createAccount);
 
+router
+  .route("/accounts/:id")
+  .patch(paymentAccountController.updateAccount)
+  .delete(paymentAccountController.deleteAccount);
+
+router.patch(
+  "/accounts/:id/toggle",
+  paymentAccountController.toggleAccountStatus,
+);
 router.use(authControllers.restrictTo("owner", "admin", "employee"));
 
 router.get("/", paymentController.getAllPayments);
