@@ -1,6 +1,15 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { CalendarDays, Clock, Trophy, Wallet, AlertCircle, UploadCloud, X } from "lucide-react";
+import {
+  CalendarDays,
+  Clock,
+  Trophy,
+  Wallet,
+  AlertCircle,
+  UploadCloud,
+  X,
+  AlertTriangle,
+} from "lucide-react";
 import { Header } from "@/components/venue/Header";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -32,7 +41,9 @@ interface BookingType {
   actualPaymentStatus?: string;
 }
 
+// =========================================
 // +++ مكون المودال لرفع إثبات الدفع +++
+// =========================================
 function UploadProofModal({
   paymentId,
   isOpen,
@@ -81,7 +92,10 @@ function UploadProofModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm"
+      dir="rtl"
+    >
       <div className="bg-card w-full max-w-md rounded-2xl border border-border shadow-lg p-5 animate-in fade-in zoom-in-95">
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-bold text-lg">إرفاق إثبات الدفع</h3>
@@ -153,14 +167,98 @@ function UploadProofModal({
   );
 }
 
+// =========================================
+// +++ نافذة تأكيد الإلغاء التحذيرية +++
+// =========================================
+function CancelConfirmModal({
+  isOpen,
+  isCancelling,
+  onClose,
+  onConfirm,
+}: {
+  isOpen: boolean;
+  isCancelling: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm"
+      dir="rtl"
+    >
+      <div className="bg-card w-full max-w-sm rounded-3xl border border-border shadow-2xl p-6 animate-in fade-in zoom-in-95 text-center">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive mb-4">
+          <AlertTriangle className="h-6 w-6" />
+        </div>
+        <h3 className="text-lg font-extrabold text-foreground mb-2">تنبيه قبل الإلغاء!</h3>
+        <p className="text-sm font-bold text-muted-foreground mb-4">
+          هل أنت متأكد من رغبتك في إلغاء هذا الحجز؟
+        </p>
+
+        <div className="bg-muted/50 rounded-xl p-4 text-xs text-right space-y-3 border border-border mb-6">
+          <p className="flex gap-2 items-start font-semibold text-muted-foreground">
+            <span className="text-destructive font-black shrink-0 mt-0.5">•</span>
+            <span>
+              يتم إلغاء الحجز تلقائياً إذا لم يتم إتمام التحويل خلال 10 دقائق من طلب الحجز.
+            </span>
+          </p>
+          <p className="flex gap-2 items-start font-semibold text-muted-foreground">
+            <span className="text-destructive font-black shrink-0 mt-0.5">•</span>
+            <span>
+              عند الإلغاء قبل موعد الحجز بـ <span className="text-foreground">24 ساعة فأكثر</span>،
+              يتم خصم 50% من المبلغ المدفوع.
+            </span>
+          </p>
+          <p className="flex gap-2 items-start font-semibold text-muted-foreground">
+            <span className="text-destructive font-black shrink-0 mt-0.5">•</span>
+            <span>
+              <strong className="text-destructive">لا يمكن استرداد أي مبلغ</strong> في حالة الإلغاء
+              قبل موعد الحجز بمدة أقل من 24 ساعة.
+            </span>
+          </p>
+          <hr className="border-border my-2" />
+          <p className="text-[10px] text-muted-foreground/80 leading-relaxed font-bold flex items-center gap-1.5 justify-center">
+            <Info className="size-3" /> لاسترداد الأموال (حسب الشروط أعلاه)، يرجى التواصل مع الدعم
+            الفني للمنصة.
+          </p>
+        </div>
+
+        <div className="flex gap-3 w-full">
+          <button
+            onClick={onClose}
+            disabled={isCancelling}
+            className="flex-1 rounded-xl bg-muted px-4 py-2.5 text-sm font-bold text-foreground transition hover:bg-muted/80 disabled:opacity-50"
+          >
+            تراجع
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={isCancelling}
+            className="flex-1 rounded-xl bg-destructive px-4 py-2.5 text-sm font-bold text-white transition hover:bg-destructive/90 disabled:opacity-50"
+          >
+            {isCancelling ? "جاري الإلغاء..." : "نعم، أؤكد الإلغاء"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+// +++ نحتاج إضافة أيقونة Info للقائمة فوق +++
+import { Info } from "lucide-react";
+
 function MyBookingsPage() {
   const [tab, setTab] = useState<Tab>("upcoming");
   const [bookings, setBookings] = useState<BookingType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // +++ للتحكم في المودال +++
   const [uploadModalPaymentId, setUploadModalPaymentId] = useState<string | null>(null);
+
+  // +++ حالات نافذة التأكيد +++
+  const [cancelModalBookingId, setCancelModalBookingId] = useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   const loadBookings = async () => {
     try {
@@ -178,14 +276,18 @@ function MyBookingsPage() {
     loadBookings();
   }, []);
 
-  const handleCancel = async (id: string) => {
-    if (!confirm("هل أنت متأكد من إلغاء هذا الحجز؟")) return;
+  const handleConfirmCancel = async () => {
+    if (!cancelModalBookingId) return;
+    setIsCancelling(true);
     try {
-      await cancelBooking(id);
+      await cancelBooking(cancelModalBookingId);
       toast.success("تم إلغاء الحجز بنجاح");
+      setCancelModalBookingId(null);
       loadBookings();
     } catch (err) {
       toast.error(err as string);
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -370,7 +472,6 @@ function MyBookingsPage() {
                     </span>
 
                     <div className="flex items-center gap-2">
-                      {/* +++ زر رفع الإثبات يظهر فقط إذا كان الحجز معلق ولم يتم رفع إثبات له +++ */}
                       {b.paymentId &&
                         b.status === "pending_payment" &&
                         b.actualPaymentStatus === "pending" && (
@@ -385,7 +486,7 @@ function MyBookingsPage() {
 
                       {tab === "upcoming" && !isCancelledOrExpired && !isExpired && (
                         <button
-                          onClick={() => handleCancel(b._id)}
+                          onClick={() => setCancelModalBookingId(b._id)}
                           className="rounded-xl border border-destructive/30 px-3 py-1.5 text-[11px] font-bold text-destructive transition hover:bg-destructive/10"
                         >
                           إلغاء الحجز
@@ -400,15 +501,22 @@ function MyBookingsPage() {
         )}
       </main>
 
-      {/* استدعاء المودال */}
       {uploadModalPaymentId && (
         <UploadProofModal
           paymentId={uploadModalPaymentId}
           isOpen={!!uploadModalPaymentId}
           onClose={() => setUploadModalPaymentId(null)}
-          onSuccess={loadBookings} // إعادة تحميل البيانات لتغيير الحالة لـ "قيد المراجعة"
+          onSuccess={loadBookings}
         />
       )}
+
+      {/* استدعاء نافذة الإلغاء */}
+      <CancelConfirmModal
+        isOpen={!!cancelModalBookingId}
+        isCancelling={isCancelling}
+        onClose={() => setCancelModalBookingId(null)}
+        onConfirm={handleConfirmCancel}
+      />
 
       <Toaster position="top-center" />
     </div>

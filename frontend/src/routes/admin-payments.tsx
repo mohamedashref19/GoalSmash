@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { XCircle } from "lucide-react";
 import { Header } from "@/components/venue/Header";
 import { AdminPaymentsView } from "@/components/admin/AdminPaymentsView";
 import {
@@ -64,13 +65,19 @@ function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void
           >
             <ClipboardList className="h-5 w-5" /> تقفيل اليومية
           </Link>
-          {/* +++ إضافة التقارير للقائمة الجانبية +++ */}
           <Link
             to="/admin-reports"
             onClick={onClose}
             className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary text-muted-foreground"
           >
             <FileText className="h-5 w-5" /> تقارير المنصة
+          </Link>
+          <Link
+            to="/admin-cancellations"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors hover:bg-destructive/10 hover:text-destructive [&.active]:bg-destructive/10 [&.active]:text-destructive text-muted-foreground"
+          >
+            <XCircle className="h-5 w-5" /> سجل الإلغاءات
           </Link>
           <Link
             to="/admin-setup"
@@ -100,37 +107,37 @@ function AdminPaymentsPage() {
           to="/admin-dashboard"
           className="text-sm font-bold flex items-center gap-2 hover:text-primary transition-colors text-muted-foreground [&.active]:text-primary"
         >
-          <LayoutDashboard className="size-4" />
-          الرئيسية
+          <LayoutDashboard className="size-4" /> الرئيسية
         </Link>
         <Link
           to="/admin-payments"
           className="text-sm font-bold flex items-center gap-2 hover:text-primary transition-colors text-muted-foreground [&.active]:text-primary"
         >
-          <Wallet className="size-4" />
-          المدفوعات المركزية
+          <Wallet className="size-4" /> المدفوعات المركزية
         </Link>
         <Link
           to="/admin-daily-closing"
           className="text-sm font-bold flex items-center gap-2 hover:text-primary transition-colors text-muted-foreground [&.active]:text-primary"
         >
-          <ClipboardList className="size-4" />
-          تقفيل اليومية
+          <ClipboardList className="size-4" /> تقفيل اليومية
         </Link>
-        {/* +++ إضافة التقارير للشريط العلوي +++ */}
         <Link
           to="/admin-reports"
           className="text-sm font-bold flex items-center gap-2 hover:text-primary transition-colors text-muted-foreground [&.active]:text-primary"
         >
-          <FileText className="size-4" />
-          تقارير المنصة
+          <FileText className="size-4" /> تقارير المنصة
+        </Link>
+        <Link
+          to="/admin-cancellations"
+          className="text-sm font-bold flex items-center gap-2 hover:text-destructive transition-colors text-muted-foreground [&.active]:text-destructive"
+        >
+          <XCircle className="size-4" /> سجل الإلغاءات
         </Link>
         <Link
           to="/admin-setup"
           className="text-sm font-bold flex items-center gap-2 hover:text-primary transition-colors text-muted-foreground [&.active]:text-primary"
         >
-          <Settings className="size-4" />
-          إعدادات النظام
+          <Settings className="size-4" /> إعدادات النظام
         </Link>
       </div>
 

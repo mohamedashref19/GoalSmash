@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { LayoutDashboard, Wallet, FileText, Settings, X, ClipboardList } from "lucide-react";
+import { XCircle } from "lucide-react";
 import { Header } from "@/components/venue/Header";
 import { AdminReportsView } from "@/components/admin/AdminReportsView";
 import { cn } from "@/lib/utils";
@@ -64,6 +65,13 @@ function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void
             <FileText className="h-5 w-5" /> تقارير المنصة
           </Link>
           <Link
+            to="/admin-cancellations"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors hover:bg-destructive/10 hover:text-destructive [&.active]:bg-destructive/10 [&.active]:text-destructive text-muted-foreground"
+          >
+            <XCircle className="h-5 w-5" /> سجل الإلغاءات
+          </Link>
+          <Link
             to="/admin-setup"
             onClick={onClose}
             className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary text-muted-foreground"
@@ -109,6 +117,12 @@ function AdminReportsPage() {
           className="text-sm font-bold flex items-center gap-2 hover:text-primary transition-colors text-muted-foreground [&.active]:text-primary"
         >
           <FileText className="size-4" /> تقارير المنصة
+        </Link>
+        <Link
+          to="/admin-cancellations"
+          className="text-sm font-bold flex items-center gap-2 hover:text-destructive transition-colors text-muted-foreground [&.active]:text-destructive"
+        >
+          <XCircle className="size-4" /> سجل الإلغاءات
         </Link>
         <Link
           to="/admin-setup"

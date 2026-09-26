@@ -175,3 +175,14 @@ export const deletePaymentAccount = async (id) => {
     throw error.response?.data?.message || "حدث خطأ أثناء حذف الحساب";
   }
 };
+
+// +++ جلب سجل الإلغاءات الشامل للأدمن +++
+export const fetchCancelledBookings = async () => {
+  try {
+    // نجلب الحجوزات الملغية ونرتبها من الأحدث للأقدم
+    const response = await apiClient.get("/bookings?status=cancelled&sort=-updatedAt");
+    return response.data.data.bookings;
+  } catch (error) {
+    throw error.response?.data?.message || "حدث خطأ أثناء جلب سجل الإلغاءات";
+  }
+};

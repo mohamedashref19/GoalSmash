@@ -1,6 +1,18 @@
 import { useState, useEffect, type FormEvent } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { User, Phone, Mail, Lock, Eye, EyeOff, Save, KeyRound } from "lucide-react";
+import {
+  User,
+  Phone,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  Save,
+  KeyRound,
+  Facebook, // +++ أيقونة فيسبوك +++
+  Instagram, // +++ أيقونة إنستجرام +++
+  MessageCircle, // +++ أيقونة الواتساب/المحادثة +++
+} from "lucide-react";
 import { Header } from "@/components/venue/Header";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
@@ -43,7 +55,7 @@ function ProfilePage() {
         setEmail(user.email || "");
         setRole(user.role === "customer" ? "عميل" : "مالك/مدير");
       } catch (e) {
-        console.error("Error parsing user data:", e); // إصلاح no-empty
+        console.error("Error parsing user data:", e);
       }
     } else {
       navigate({ to: "/login" });
@@ -68,7 +80,7 @@ function ProfilePage() {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
       toast.error("كلمتا المرور غير متطابقتين.");
-      return; // إصلاح خطأ TS7030
+      return;
     }
     setSavingPassword(true);
     try {
@@ -89,10 +101,13 @@ function ProfilePage() {
   };
 
   return (
-    <div className="flex min-h-screen w-full flex-col overflow-x-hidden bg-background text-foreground">
+    <div
+      dir="rtl"
+      className="flex min-h-screen w-full flex-col overflow-x-hidden bg-background text-foreground"
+    >
       <Header title="الملف الشخصي" onMenu={() => window.history.back()} />
 
-      <main className="mx-auto w-full max-w-3xl flex-1 p-4 sm:p-6">
+      <main className="mx-auto w-full max-w-3xl flex-1 p-4 sm:p-6 pb-24">
         <div className="card-surface mb-5 flex items-center gap-4 p-5 sm:p-6">
           <div className="gradient-primary grid h-16 w-16 shrink-0 place-items-center rounded-2xl font-display text-xl font-extrabold text-primary-foreground">
             {name.substring(0, 2).toUpperCase()}
@@ -145,14 +160,14 @@ function ProfilePage() {
             <button
               type="submit"
               disabled={savingInfo}
-              className="gradient-primary mt-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white sm:col-span-2"
+              className="gradient-primary mt-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white sm:col-span-2 transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               {savingInfo ? "جارٍ الحفظ..." : "حفظ التعديلات"}
             </button>
           </form>
         </div>
 
-        <div className="card-surface p-5 sm:p-6">
+        <div className="card-surface mb-5 p-5 sm:p-6">
           <h3 className="mb-4 flex items-center gap-2 font-display text-base font-extrabold">
             <KeyRound className="h-5 w-5 text-primary" /> تغيير كلمة المرور
           </h3>
@@ -193,11 +208,50 @@ function ProfilePage() {
             <button
               type="submit"
               disabled={savingPassword}
-              className="gradient-primary mt-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white sm:col-span-2"
+              className="gradient-primary mt-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white sm:col-span-2 transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               {savingPassword ? "جارٍ التغيير..." : "تغيير كلمة المرور"}
             </button>
           </form>
+        </div>
+
+        {/* +++ قسم التواصل مع دعم  +++ */}
+        <div className="card-surface p-5 sm:p-6 space-y-4">
+          <h3 className="flex items-center gap-2 font-display text-base font-extrabold">
+            <MessageCircle className="h-5 w-5 text-primary" /> تواصل مع دعم الابليكشن
+          </h3>
+          <p className="text-xs text-muted-foreground mb-1">
+            لديك استفسار أو واجهت مشكلة؟ نحن هنا لمساعدتك.
+          </p>
+          <div className="flex gap-2">
+            <a
+              href="https://wa.me/201000000000" // قم بوضع رقم الواتساب الخاص  هنا
+              target="_blank"
+              rel="noreferrer"
+              className="flex-1 flex flex-col items-center justify-center gap-1.5 bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 py-3 rounded-xl transition"
+            >
+              <MessageCircle className="size-5" />
+              <span className="text-[11px] font-bold">واتساب</span>
+            </a>
+            <a
+              href="https://facebook.com/YourPageHere" // قم بوضع رابط صفحة الفيسبوك هنا
+              target="_blank"
+              rel="noreferrer"
+              className="flex-1 flex flex-col items-center justify-center gap-1.5 bg-[#1877F2]/10 text-[#1877F2] hover:bg-[#1877F2]/20 py-3 rounded-xl transition"
+            >
+              <Facebook className="size-5" />
+              <span className="text-[11px] font-bold">فيسبوك</span>
+            </a>
+            <a
+              href="https://instagram.com/YourPageHere" // قم بوضع رابط صفحة الإنستجرام هنا
+              target="_blank"
+              rel="noreferrer"
+              className="flex-1 flex flex-col items-center justify-center gap-1.5 bg-[#E1306C]/10 text-[#E1306C] hover:bg-[#E1306C]/20 py-3 rounded-xl transition"
+            >
+              <Instagram className="size-5" />
+              <span className="text-[11px] font-bold">إنستجرام</span>
+            </a>
+          </div>
         </div>
       </main>
       <Toaster position="top-center" />

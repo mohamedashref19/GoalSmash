@@ -1,14 +1,23 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { LayoutDashboard, Wallet, FileText, Settings, X, ClipboardList } from "lucide-react";
-import { XCircle } from "lucide-react";
+import {
+  LayoutDashboard,
+  Wallet,
+  FileText,
+  Settings,
+  X,
+  ClipboardList,
+  XCircle,
+} from "lucide-react";
 import { Header } from "@/components/venue/Header";
-import { AdminDailyClosingView } from "@/components/admin/AdminDailyClosingView";
+import { AdminCancellationsView } from "@/components/admin/AdminCancellationsView";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/admin-daily-closing")({
-  head: () => ({ meta: [{ title: "تقفيل اليومية | GoalSmash" }] }),
-  component: AdminDailyClosingPage,
+export const Route = createFileRoute("/admin-cancellations")({
+  head: () => ({
+    meta: [{ title: "سجل الإلغاءات | الإدارة المركزية" }],
+  }),
+  component: AdminCancellationsPage,
 });
 
 function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -84,14 +93,15 @@ function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void
   );
 }
 
-function AdminDailyClosingPage() {
+function AdminCancellationsPage() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
     <div dir="rtl" className="min-h-screen bg-background text-foreground pb-20">
       <AdminMobileMenu open={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
-      <Header title="تقفيل اليومية (Super Admin)" onMenu={() => setIsMobileMenuOpen(true)} />
+      <Header title="سجل الإلغاءات (Super Admin)" onMenu={() => setIsMobileMenuOpen(true)} />
 
+      {/* شريط التنقل العلوي للشاشات الكبيرة */}
       <div className="hidden lg:flex bg-card border-b border-border px-6 py-3 gap-6 justify-center sticky top-[61px] z-20 shadow-sm print:hidden">
         <Link
           to="/admin-dashboard"
@@ -132,7 +142,7 @@ function AdminDailyClosingPage() {
       </div>
 
       <main className="mx-auto w-full max-w-6xl">
-        <AdminDailyClosingView />
+        <AdminCancellationsView />
       </main>
     </div>
   );

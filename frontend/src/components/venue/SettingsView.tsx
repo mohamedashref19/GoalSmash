@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Clock } from "lucide-react";
+import { Clock, Sun, Moon } from "lucide-react"; // +++ إضافة أيقونات الشمس والقمر +++
 import { toast } from "sonner";
 // @ts-expect-error: API lacks TypeScript definitions
 import { fetchCourts } from "@/api/courtApi";
@@ -8,7 +8,9 @@ interface CourtData {
   _id: string;
   name: string;
   sportType: string;
-  pricePerHour: number;
+  pricePerHour?: number; // للتوافق مع الملاعب القديمة
+  priceMorning?: number; // +++ السعر الصباحي +++
+  priceEvening?: number; // +++ السعر المسائي +++
   status: string;
 }
 
@@ -41,7 +43,7 @@ function CourtsManagement({ venueId }: { venueId: string }) {
         <div>
           <h2 className="font-display text-lg font-extrabold">الملاعب الخاصة بك</h2>
           <p className="text-xs text-muted-foreground mt-1">
-            لإضافة ملاعب جديدة أو تعديل الأسعار، يرجى التواصل مع الإدارة المركزية.
+            لإضافة ملاعب جديدة أو تعديل الأسعار، يرجى التواصل مع اداره الابلبكشن.
           </p>
         </div>
       </div>
@@ -55,20 +57,35 @@ function CourtsManagement({ venueId }: { venueId: string }) {
           لا توجد ملاعب مضافة لهذا النادي بعد.
         </p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-3">
           {courts.map((c) => (
             <li
               key={c._id}
-              className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-surface px-4 py-3"
+              className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-surface px-4 py-4"
             >
               <div className="min-w-0">
-                <p className="truncate font-bold">{c.name}</p>
-                <p className="text-xs text-muted-foreground">
+                <p className="font-bold text-sm">{c.name}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
                   {c.sportType === "padel" ? "بادل" : "خماسي"}
                 </p>
               </div>
-              <div className="font-black text-primary text-sm shrink-0">
-                {c.pricePerHour} ج.م / ساعة
+
+              {/* +++ عرض السعر الصباحي والمسائي +++ */}
+              <div className="flex flex-col items-end gap-1.5 shrink-0">
+                <div className="flex items-center gap-1.5 bg-warning/10 text-warning px-2.5 py-1 rounded-lg">
+                  <Sun className="size-3.5" />
+                  <span className="font-black text-sm">
+                    {c.priceMorning || c.pricePerHour || 0}{" "}
+                    <span className="text-[10px] opacity-80 font-semibold">ج.م / س</span>
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 bg-primary/10 text-primary px-2.5 py-1 rounded-lg">
+                  <Moon className="size-3.5" />
+                  <span className="font-black text-sm">
+                    {c.priceEvening || c.pricePerHour || 0}{" "}
+                    <span className="text-[10px] opacity-80 font-semibold">ج.م / س</span>
+                  </span>
+                </div>
               </div>
             </li>
           ))}
@@ -94,10 +111,7 @@ export function SettingsView({ venueId }: { venueId: string }) {
   return (
     <div className="flex flex-col gap-5 animate-in fade-in">
       <CourtsManagement venueId={venueId} />
-      <PlaceholderSection
-        title="إضافات الحجز (قريباً)"
-        desc="تأجير مضارب، كور، وقمصان لعملائك لزيادة الدخل."
-      />
+      <PlaceholderSection title="إضافات الحجز (قريباً)" desc="تأجير مضارب، كور، وقمصان لعملائك ." />
     </div>
   );
 }

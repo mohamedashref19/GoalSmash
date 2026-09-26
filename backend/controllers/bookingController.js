@@ -350,6 +350,9 @@ exports.getAllBookings = catchAsync(async (req, res, next) => {
 
   if (req.query.court) filter.court = req.query.court;
 
+  // +++ التعديل هنا: إضافة فلتر الحالة (status) لجلب الإلغاءات +++
+  if (req.query.status) filter.status = req.query.status;
+
   if (req.query.date) {
     const startOfLogicalDay = new Date(req.query.date);
     startOfLogicalDay.setHours(8, 0, 0, 0);
@@ -363,7 +366,6 @@ exports.getAllBookings = catchAsync(async (req, res, next) => {
 
   const bookings = await Booking.find(filter)
     .populate({ path: "venue", select: "name address" })
-    // +++ التعديل هنا: جلب السعرين الصباحي والمسائي بدلاً من السعر الموحد +++
     .populate({
       path: "court",
       select: "name sportType priceMorning priceEvening",

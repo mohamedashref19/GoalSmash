@@ -19,8 +19,9 @@ import {
   X,
   LayoutDashboard,
   Settings,
-  FileText, // +++ أيقونة التقارير +++
+  FileText,
   ClipboardList,
+  XCircle, // +++ أيقونة سجل الإلغاءات +++
 } from "lucide-react";
 import { Header } from "@/components/venue/Header";
 import { cn } from "@/lib/utils";
@@ -103,7 +104,6 @@ function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void
           >
             <Wallet className="h-5 w-5" /> المدفوعات المركزية
           </Link>
-          {/* +++ رابط التقارير +++ */}
           <Link
             to="/admin-daily-closing"
             onClick={onClose}
@@ -117,6 +117,14 @@ function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void
             className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary text-muted-foreground"
           >
             <FileText className="h-5 w-5" /> تقارير المنصة
+          </Link>
+          {/* +++ رابط الإلغاءات للموبايل +++ */}
+          <Link
+            to="/admin-cancellations"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors hover:bg-destructive/10 hover:text-destructive [&.active]:bg-destructive/10 [&.active]:text-destructive text-muted-foreground"
+          >
+            <XCircle className="h-5 w-5" /> سجل الإلغاءات
           </Link>
           <Link
             to="/admin-setup"
@@ -182,7 +190,7 @@ function AdminDashboardPage() {
       <AdminMobileMenu open={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
       <Header title="لوحة القيادة (Super Admin)" onMenu={() => setIsMobileMenuOpen(true)} />
 
-      <div className="hidden lg:flex bg-card border-b border-border px-6 py-3 gap-6 justify-center sticky top-[61px] z-20 shadow-sm">
+      <div className="hidden lg:flex bg-card border-b border-border px-6 py-3 gap-6 justify-center sticky top-[61px] z-20 shadow-sm print:hidden">
         <Link
           to="/admin-dashboard"
           className="text-sm font-bold flex items-center gap-2 hover:text-primary transition-colors text-muted-foreground [&.active]:text-primary"
@@ -195,18 +203,24 @@ function AdminDashboardPage() {
         >
           <Wallet className="size-4" /> المدفوعات المركزية
         </Link>
-        {/* +++ رابط التقارير +++ */}
+        <Link
+          to="/admin-daily-closing"
+          className="text-sm font-bold flex items-center gap-2 hover:text-primary transition-colors text-muted-foreground [&.active]:text-primary"
+        >
+          <ClipboardList className="size-4" /> تقفيل اليومية
+        </Link>
         <Link
           to="/admin-reports"
           className="text-sm font-bold flex items-center gap-2 hover:text-primary transition-colors text-muted-foreground [&.active]:text-primary"
         >
           <FileText className="size-4" /> تقارير المنصة
         </Link>
+        {/* +++ رابط الإلغاءات للديسكتوب +++ */}
         <Link
-          to="/admin-daily-closing"
-          className="text-sm font-bold flex items-center gap-2 hover:text-primary transition-colors text-muted-foreground [&.active]:text-primary"
+          to="/admin-cancellations"
+          className="text-sm font-bold flex items-center gap-2 hover:text-destructive transition-colors text-muted-foreground [&.active]:text-destructive"
         >
-          <ClipboardList className="size-4" /> تقفيل اليومية
+          <XCircle className="size-4" /> سجل الإلغاءات
         </Link>
         <Link
           to="/admin-setup"

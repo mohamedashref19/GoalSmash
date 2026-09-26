@@ -89,6 +89,9 @@ function BookingDetailsDialog({
   const typeLabel = KIND_LABEL[booking.bookingType || "app"];
   const typeClass = kindClass[booking.bookingType || "app"];
 
+  // +++ تحديد ما إذا كان الحجز قابل للإلغاء من قبل المالك +++
+  const canCancel = booking.bookingType === "manual";
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6" dir="rtl">
       <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
@@ -198,13 +201,25 @@ function BookingDetailsDialog({
               >
                 إغلاق النافذة
               </button>
-              <button
-                onClick={() => onCancelBooking(booking._id)}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-destructive px-4 py-2.5 text-sm font-bold text-white hover:bg-destructive/90 transition"
-              >
-                <Trash2 size={16} />
-                إلغاء الحجز
-              </button>
+              {/* +++ إخفاء أو تعطيل زر الإلغاء إذا كان الحجز من التطبيق +++ */}
+              {canCancel ? (
+                <button
+                  onClick={() => onCancelBooking(booking._id)}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-destructive px-4 py-2.5 text-sm font-bold text-white hover:bg-destructive/90 transition"
+                >
+                  <Trash2 size={16} />
+                  إلغاء الحجز
+                </button>
+              ) : (
+                <button
+                  disabled
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-muted px-4 py-2.5 text-xs font-bold text-muted-foreground transition opacity-50 cursor-not-allowed"
+                  title="لا يمكن للمالك إلغاء حجز من التطبيق"
+                >
+                  <Trash2 size={16} />
+                  إلغاء غير متاح
+                </button>
+              )}
             </div>
           </div>
         </div>
