@@ -46,6 +46,16 @@ const localNavItems = [
 
 function Dashboard() {
   const [activeView, setActiveView] = useState<ViewKey>("overview");
+
+  // +++ قراءة التاب المحفوظ بعد تحميل الصفحة لتجنب خطأ الخادم (Hydration Error) +++
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedTab = localStorage.getItem("ownerActiveTab") as ViewKey;
+      if (savedTab) {
+        setActiveView(savedTab);
+      }
+    }
+  }, []);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [slot, setSlot] = useState<{ court: string; hour: number; price: number } | null>(null);
@@ -82,6 +92,7 @@ function Dashboard() {
 
   const navigate = (view: ViewKey) => {
     setActiveView(view);
+    localStorage.setItem("ownerActiveTab", view); // تحديث التاب المحفوظ باستمرار
     setIsMobileMenuOpen(false);
   };
 

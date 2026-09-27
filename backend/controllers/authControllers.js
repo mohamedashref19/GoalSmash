@@ -390,3 +390,19 @@ exports.updateMe = catchAsync(async (req, res, next) => {
     },
   });
 });
+
+exports.deleteMe = catchAsync(async (req, res, next) => {
+  // استخدام الحقل الصحيح isActive لتعطيل الحساب
+  await User.findByIdAndUpdate(req.user.id, { isActive: false });
+
+  // مسح التوكن وتسجيل خروجه
+  res.cookie("jwt", "loggedout", {
+    expires: new Date(Date.now() + 10 * 1000),
+    httpOnly: true,
+  });
+
+  res.status(204).json({
+    status: "success",
+    data: null,
+  });
+});

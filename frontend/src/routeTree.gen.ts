@@ -15,6 +15,7 @@ import { Route as AdminDailyClosingRouteImport } from './routes/admin-daily-clos
 import { Route as AdminDashboardRouteImport } from './routes/admin-dashboard'
 import { Route as AdminPaymentsRouteImport } from './routes/admin-payments'
 import { Route as AdminReportsRouteImport } from './routes/admin-reports'
+import { Route as AdminScheduleRouteImport } from './routes/admin-schedule'
 import { Route as AdminSetupRouteImport } from './routes/admin-setup'
 import { Route as ExploreRouteImport } from './routes/explore'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
@@ -54,6 +55,11 @@ const AdminPaymentsRoute = AdminPaymentsRouteImport.update({
 const AdminReportsRoute = AdminReportsRouteImport.update({
   id: '/admin-reports',
   path: '/admin-reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminScheduleRoute = AdminScheduleRouteImport.update({
+  id: '/admin-schedule',
+  path: '/admin-schedule',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminSetupRoute = AdminSetupRouteImport.update({
@@ -114,6 +120,7 @@ export interface FileRoutesByFullPath {
   '/admin-dashboard': typeof AdminDashboardRoute
   '/admin-payments': typeof AdminPaymentsRoute
   '/admin-reports': typeof AdminReportsRoute
+  '/admin-schedule': typeof AdminScheduleRoute
   '/admin-setup': typeof AdminSetupRoute
   '/explore': typeof ExploreRoute
   '/forgot-password': typeof ForgotPasswordRoute
@@ -132,6 +139,7 @@ export interface FileRoutesByTo {
   '/admin-dashboard': typeof AdminDashboardRoute
   '/admin-payments': typeof AdminPaymentsRoute
   '/admin-reports': typeof AdminReportsRoute
+  '/admin-schedule': typeof AdminScheduleRoute
   '/admin-setup': typeof AdminSetupRoute
   '/explore': typeof ExploreRoute
   '/forgot-password': typeof ForgotPasswordRoute
@@ -151,6 +159,7 @@ export interface FileRoutesById {
   '/admin-dashboard': typeof AdminDashboardRoute
   '/admin-payments': typeof AdminPaymentsRoute
   '/admin-reports': typeof AdminReportsRoute
+  '/admin-schedule': typeof AdminScheduleRoute
   '/admin-setup': typeof AdminSetupRoute
   '/explore': typeof ExploreRoute
   '/forgot-password': typeof ForgotPasswordRoute
@@ -171,6 +180,7 @@ export interface FileRouteTypes {
     | '/admin-dashboard'
     | '/admin-payments'
     | '/admin-reports'
+    | '/admin-schedule'
     | '/admin-setup'
     | '/explore'
     | '/forgot-password'
@@ -189,6 +199,7 @@ export interface FileRouteTypes {
     | '/admin-dashboard'
     | '/admin-payments'
     | '/admin-reports'
+    | '/admin-schedule'
     | '/admin-setup'
     | '/explore'
     | '/forgot-password'
@@ -207,6 +218,7 @@ export interface FileRouteTypes {
     | '/admin-dashboard'
     | '/admin-payments'
     | '/admin-reports'
+    | '/admin-schedule'
     | '/admin-setup'
     | '/explore'
     | '/forgot-password'
@@ -226,6 +238,7 @@ export interface RootRouteChildren {
   AdminDashboardRoute: typeof AdminDashboardRoute
   AdminPaymentsRoute: typeof AdminPaymentsRoute
   AdminReportsRoute: typeof AdminReportsRoute
+  AdminScheduleRoute: typeof AdminScheduleRoute
   AdminSetupRoute: typeof AdminSetupRoute
   ExploreRoute: typeof ExploreRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
@@ -280,6 +293,13 @@ declare module '@tanstack/react-router' {
       path: '/admin-reports'
       fullPath: '/admin-reports'
       preLoaderRoute: typeof AdminReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin-schedule': {
+      id: '/admin-schedule'
+      path: '/admin-schedule'
+      fullPath: '/admin-schedule'
+      preLoaderRoute: typeof AdminScheduleRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin-setup': {
@@ -362,6 +382,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminDashboardRoute: AdminDashboardRoute,
   AdminPaymentsRoute: AdminPaymentsRoute,
   AdminReportsRoute: AdminReportsRoute,
+  AdminScheduleRoute: AdminScheduleRoute,
   AdminSetupRoute: AdminSetupRoute,
   ExploreRoute: ExploreRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,

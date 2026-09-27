@@ -1,0 +1,160 @@
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState } from "react";
+import {
+  LayoutDashboard,
+  Wallet,
+  FileText,
+  Settings,
+  X,
+  ClipboardList,
+  XCircle,
+  CalendarDays,
+} from "lucide-react";
+import { Header } from "@/components/venue/Header";
+import { AdminScheduleView } from "@/components/admin/AdminScheduleView";
+import { cn } from "@/lib/utils";
+
+export const Route = createFileRoute("/admin-schedule")({
+  head: () => ({ meta: [{ title: "جدول الأندية | الإدارة المركزية" }] }),
+  component: AdminSchedulePage,
+});
+
+function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <div className={cn("lg:hidden", open ? "" : "pointer-events-none")}>
+      <div
+        onClick={onClose}
+        className={cn(
+          "fixed inset-0 z-40 bg-foreground/40 backdrop-blur-sm transition-opacity duration-300",
+          open ? "visible opacity-100" : "invisible opacity-0",
+        )}
+      />
+      <div
+        className={cn(
+          "fixed inset-y-0 right-0 z-50 w-72 max-w-[85vw] bg-card p-5 shadow-2xl transition-transform duration-300 ease-out",
+          open ? "visible translate-x-0" : "invisible translate-x-full",
+        )}
+      >
+        <div className="mb-6 flex items-center justify-between">
+          <span className="font-display text-lg font-extrabold text-primary">
+            GoalSmash (الإدارة)
+          </span>
+          <button onClick={onClose} className="rounded-xl p-2 text-muted-foreground hover:bg-muted">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <nav className="flex flex-col gap-2 overflow-y-auto max-h-[75vh] pb-4">
+          <Link
+            to="/admin-dashboard"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-muted-foreground hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary"
+          >
+            <LayoutDashboard className="h-5 w-5" /> لوحة القيادة
+          </Link>
+          <Link
+            to="/admin-schedule"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-muted-foreground hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary"
+          >
+            <CalendarDays className="h-5 w-5" /> جدول الأندية
+          </Link>
+          <Link
+            to="/admin-payments"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-muted-foreground hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary"
+          >
+            <Wallet className="h-5 w-5" /> المدفوعات المركزية
+          </Link>
+          <Link
+            to="/admin-daily-closing"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-muted-foreground hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary"
+          >
+            <ClipboardList className="h-5 w-5" /> تقفيل اليومية
+          </Link>
+          <Link
+            to="/admin-reports"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-muted-foreground hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary"
+          >
+            <FileText className="h-5 w-5" /> تقارير المنصة
+          </Link>
+          <Link
+            to="/admin-cancellations"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-muted-foreground hover:bg-destructive/10 hover:text-destructive [&.active]:bg-destructive/10 [&.active]:text-destructive"
+          >
+            <XCircle className="h-5 w-5" /> سجل الإلغاءات
+          </Link>
+          <Link
+            to="/admin-setup"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-muted-foreground hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary"
+          >
+            <Settings className="h-5 w-5" /> إعدادات النظام
+          </Link>
+        </nav>
+      </div>
+    </div>
+  );
+}
+
+function AdminSchedulePage() {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  return (
+    <div dir="rtl" className="min-h-screen bg-background text-foreground pb-20">
+      <AdminMobileMenu open={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
+      <Header title="جدول الأندية (Super Admin)" onMenu={() => setIsMobileMenuOpen(true)} />
+
+      <div className="hidden lg:flex bg-card border-b border-border px-6 py-3 gap-6 justify-center sticky top-[61px] z-20 shadow-sm print:hidden">
+        <Link
+          to="/admin-dashboard"
+          className="text-sm font-bold flex items-center gap-2 hover:text-primary text-muted-foreground [&.active]:text-primary"
+        >
+          <LayoutDashboard className="size-4" /> الرئيسية
+        </Link>
+        <Link
+          to="/admin-schedule"
+          className="text-sm font-bold flex items-center gap-2 hover:text-primary text-muted-foreground [&.active]:text-primary"
+        >
+          <CalendarDays className="size-4" /> جدول الأندية
+        </Link>
+        <Link
+          to="/admin-payments"
+          className="text-sm font-bold flex items-center gap-2 hover:text-primary text-muted-foreground [&.active]:text-primary"
+        >
+          <Wallet className="size-4" /> المدفوعات المركزية
+        </Link>
+        <Link
+          to="/admin-daily-closing"
+          className="text-sm font-bold flex items-center gap-2 hover:text-primary text-muted-foreground [&.active]:text-primary"
+        >
+          <ClipboardList className="size-4" /> تقفيل اليومية
+        </Link>
+        <Link
+          to="/admin-reports"
+          className="text-sm font-bold flex items-center gap-2 hover:text-primary text-muted-foreground [&.active]:text-primary"
+        >
+          <FileText className="size-4" /> تقارير المنصة
+        </Link>
+        <Link
+          to="/admin-cancellations"
+          className="text-sm font-bold flex items-center gap-2 hover:text-destructive text-muted-foreground [&.active]:text-destructive"
+        >
+          <XCircle className="size-4" /> الإلغاءات
+        </Link>
+        <Link
+          to="/admin-setup"
+          className="text-sm font-bold flex items-center gap-2 hover:text-primary text-muted-foreground [&.active]:text-primary"
+        >
+          <Settings className="size-4" /> إعدادات النظام
+        </Link>
+      </div>
+
+      <main className="mx-auto w-full max-w-7xl">
+        <AdminScheduleView />
+      </main>
+    </div>
+  );
+}

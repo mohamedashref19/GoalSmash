@@ -90,3 +90,20 @@ export const resetUserPassword = async (data) => {
     throw error.response?.data?.message || "حدث خطأ أثناء إعادة التعيين";
   }
 };
+
+// دالة حذف الحساب نهائياً
+export const deleteUserAccount = async () => {
+  try {
+    const response = await apiClient.delete("/users/deleteMe");
+
+    // مسح البيانات من المتصفح كأنه تسجيل خروج
+    localStorage.removeItem("token");
+    localStorage.removeItem("userData");
+    sessionStorage.removeItem("token");
+    sessionStorage.removeItem("userData");
+
+    return response.data;
+  } catch (error) {
+    throw error.response?.data?.message || "حدث خطأ أثناء محاولة حذف الحساب";
+  }
+};

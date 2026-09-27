@@ -186,3 +186,23 @@ export const fetchCancelledBookings = async () => {
     throw error.response?.data?.message || "حدث خطأ أثناء جلب سجل الإلغاءات";
   }
 };
+
+// // جلب قائمة الأندية للمدير الشامل (بدون تصفية بالمالك)
+// export const fetchAllVenuesForAdmin = async () => {
+//   try {
+//     const response = await apiClient.get("/venues");
+//     return response.data.data.venues;
+//   } catch (error) {
+//     throw error.response?.data?.message || "حدث خطأ أثناء جلب الأندية";
+//   }
+// };
+
+// جلب حجوزات نادي معين في تاريخ معين (للأدمن)
+export const fetchBookingsForAdminSchedule = async (venueId, dateStr) => {
+  try {
+    const response = await apiClient.get(`/bookings?venue=${venueId}&date=${dateStr}`);
+    return response.data.data.bookings;
+  } catch (error) {
+    throw error.response?.data?.message || "حدث خطأ أثناء جلب جدول الحجوزات";
+  }
+};

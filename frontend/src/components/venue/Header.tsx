@@ -224,13 +224,6 @@ export function Header({ title, onMenu }: { title: string; onMenu: () => void })
               >
                 {user.name.substring(0, 2).toUpperCase()}
               </Link>
-              <button
-                onClick={logoutUser}
-                title="تسجيل الخروج"
-                className="grid h-9 w-9 place-items-center rounded-xl border border-destructive/30 bg-destructive/10 text-destructive transition-colors hover:bg-destructive hover:text-white sm:h-10 sm:w-10"
-              >
-                <LogOut className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-              </button>
             </div>
           ) : (
             <Link

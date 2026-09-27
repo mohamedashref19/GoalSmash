@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from "react";
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   CalendarDays,
   Clock,
@@ -9,6 +9,15 @@ import {
   UploadCloud,
   X,
   AlertTriangle,
+  Info,
+  Home,
+  User,
+  LogOut,
+  LayoutDashboard,
+  ClipboardList,
+  FileText,
+  Settings,
+  XCircle,
 } from "lucide-react";
 import { Header } from "@/components/venue/Header";
 import { cn } from "@/lib/utils";
@@ -18,6 +27,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { fetchMyBookings, cancelBooking } from "@/api/bookingApi";
 // @ts-expect-error: paymentApi lacks TypeScript declarations
 import { submitPaymentProof } from "@/api/paymentApi";
+import { MobileSidebar } from "@/components/venue/Sidebar";
 
 export const Route = createFileRoute("/my-bookings")({
   head: () => ({
@@ -42,8 +52,165 @@ interface BookingType {
 }
 
 // =========================================
-// +++ مكون المودال لرفع إثبات الدفع +++
+// +++ مكون قائمة الإدارة المركزية (Admins) +++
 // =========================================
+function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const navigate = useNavigate();
+  return (
+    <div className={cn("lg:hidden", open ? "" : "pointer-events-none")} dir="rtl">
+      <div
+        onClick={onClose}
+        className={cn(
+          "fixed inset-0 z-40 bg-foreground/40 backdrop-blur-sm transition-opacity duration-300",
+          open ? "visible opacity-100" : "invisible opacity-0",
+        )}
+      />
+      <div
+        className={cn(
+          "fixed inset-y-0 right-0 z-50 w-72 max-w-[85vw] bg-card p-5 shadow-2xl transition-transform duration-300 ease-out",
+          open ? "visible translate-x-0" : "invisible translate-x-full",
+        )}
+      >
+        <div className="mb-6 flex items-center justify-between">
+          <span className="font-display text-lg font-extrabold text-primary">
+            GoalSmash (الإدارة)
+          </span>
+          <button onClick={onClose} className="rounded-xl p-2 text-muted-foreground hover:bg-muted">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <nav className="flex flex-col gap-2 overflow-y-auto max-h-[75vh] pb-4">
+          <Link
+            to="/admin-dashboard"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary text-muted-foreground"
+          >
+            <LayoutDashboard className="h-5 w-5" /> لوحة القيادة
+          </Link>
+          <Link
+            to="/admin-payments"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary text-muted-foreground"
+          >
+            <Wallet className="h-5 w-5" /> المدفوعات المركزية
+          </Link>
+          <Link
+            to="/admin-daily-closing"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary text-muted-foreground"
+          >
+            <ClipboardList className="h-5 w-5" /> تقفيل اليومية
+          </Link>
+          <Link
+            to="/admin-reports"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary text-muted-foreground"
+          >
+            <FileText className="h-5 w-5" /> تقارير المنصة
+          </Link>
+          <Link
+            to="/admin-cancellations"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors hover:bg-destructive/10 hover:text-destructive [&.active]:bg-destructive/10 [&.active]:text-destructive text-muted-foreground"
+          >
+            <XCircle className="h-5 w-5" /> سجل الإلغاءات
+          </Link>
+          <Link
+            to="/admin-setup"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary text-muted-foreground"
+          >
+            <Settings className="h-5 w-5" /> إعدادات النظام
+          </Link>
+          <Link
+            to="/profile"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary text-muted-foreground"
+          >
+            <User className="h-5 w-5" /> الملف الشخصي
+          </Link>
+          <button
+            onClick={() => {
+              localStorage.removeItem("token");
+              localStorage.removeItem("userData");
+              onClose();
+              navigate({ to: "/login" });
+            }}
+            className="mt-4 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-destructive transition hover:bg-destructive/10"
+          >
+            <LogOut className="h-5 w-5" /> تسجيل خروج
+          </button>
+        </nav>
+      </div>
+    </div>
+  );
+}
+
+// =========================================
+// +++ مكون قائمة العميل (Customers) +++
+// =========================================
+function CustomerMobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const navigate = useNavigate();
+  return (
+    <div className={cn("lg:hidden", open ? "" : "pointer-events-none")} dir="rtl">
+      <div
+        onClick={onClose}
+        className={cn(
+          "fixed inset-0 z-40 bg-foreground/40 backdrop-blur-sm transition-opacity duration-300",
+          open ? "visible opacity-100" : "invisible opacity-0",
+        )}
+      />
+      <div
+        className={cn(
+          "fixed inset-y-0 right-0 z-50 w-72 max-w-[85vw] bg-card p-5 shadow-2xl transition-transform duration-300 ease-out",
+          open ? "visible translate-x-0" : "invisible translate-x-full",
+        )}
+      >
+        <div className="mb-6 flex items-center justify-between">
+          <span className="font-display text-lg font-extrabold text-primary">GoalSmash</span>
+          <button onClick={onClose} className="rounded-xl p-2 text-muted-foreground hover:bg-muted">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <nav className="flex flex-col gap-2">
+          <Link
+            to="/explore"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-muted-foreground transition hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary"
+          >
+            <Home className="h-5 w-5" /> الرئيسية
+          </Link>
+          <Link
+            to="/my-bookings"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-muted-foreground transition hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary"
+          >
+            <CalendarDays className="h-5 w-5" /> حجوزاتي
+          </Link>
+          <Link
+            to="/profile"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-muted-foreground transition hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary"
+          >
+            <User className="h-5 w-5" /> الملف الشخصي
+          </Link>
+          <button
+            onClick={() => {
+              localStorage.removeItem("token");
+              localStorage.removeItem("userData");
+              onClose();
+              navigate({ to: "/login" });
+            }}
+            className="mt-4 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-destructive transition hover:bg-destructive/10"
+          >
+            <LogOut className="h-5 w-5" /> تسجيل خروج
+          </button>
+        </nav>
+      </div>
+    </div>
+  );
+}
+
 function UploadProofModal({
   paymentId,
   isOpen,
@@ -65,6 +232,8 @@ function UploadProofModal({
 
   const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
+
+    // +++ إصلاح خطأ الـ void (التأكد من عدم إرجاع قيمة الـ toast) +++
     if (!file) {
       toast.error("يرجى إرفاق صورة إيصال التحويل");
       return;
@@ -103,7 +272,6 @@ function UploadProofModal({
             <X className="size-5" />
           </button>
         </div>
-
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-bold mb-1.5 text-muted-foreground">
@@ -118,7 +286,6 @@ function UploadProofModal({
               dir="ltr"
             />
           </div>
-
           <div>
             <label className="block text-xs font-bold mb-1.5 text-muted-foreground">
               رقم العملية (Transaction ID)
@@ -132,7 +299,6 @@ function UploadProofModal({
               dir="ltr"
             />
           </div>
-
           <div>
             <label className="block text-xs font-bold mb-1.5 text-muted-foreground">
               صورة الإيصال (سكرين شوت)
@@ -153,7 +319,6 @@ function UploadProofModal({
               {file ? file.name : "اختر صورة من جهازك"}
             </button>
           </div>
-
           <button
             type="submit"
             disabled={isSubmitting}
@@ -167,9 +332,6 @@ function UploadProofModal({
   );
 }
 
-// =========================================
-// +++ نافذة تأكيد الإلغاء التحذيرية +++
-// =========================================
 function CancelConfirmModal({
   isOpen,
   isCancelling,
@@ -182,7 +344,6 @@ function CancelConfirmModal({
   onConfirm: () => void;
 }) {
   if (!isOpen) return null;
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm"
@@ -196,7 +357,6 @@ function CancelConfirmModal({
         <p className="text-sm font-bold text-muted-foreground mb-4">
           هل أنت متأكد من رغبتك في إلغاء هذا الحجز؟
         </p>
-
         <div className="bg-muted/50 rounded-xl p-4 text-xs text-right space-y-3 border border-border mb-6">
           <p className="flex gap-2 items-start font-semibold text-muted-foreground">
             <span className="text-destructive font-black shrink-0 mt-0.5">•</span>
@@ -224,7 +384,6 @@ function CancelConfirmModal({
             الفني للمنصة.
           </p>
         </div>
-
         <div className="flex gap-3 w-full">
           <button
             onClick={onClose}
@@ -245,18 +404,16 @@ function CancelConfirmModal({
     </div>
   );
 }
-// +++ نحتاج إضافة أيقونة Info للقائمة فوق +++
-import { Info } from "lucide-react";
 
 function MyBookingsPage() {
   const [tab, setTab] = useState<Tab>("upcoming");
   const [bookings, setBookings] = useState<BookingType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [rawRole, setRawRole] = useState("customer");
 
   const [uploadModalPaymentId, setUploadModalPaymentId] = useState<string | null>(null);
-
-  // +++ حالات نافذة التأكيد +++
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [cancelModalBookingId, setCancelModalBookingId] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
 
@@ -274,6 +431,15 @@ function MyBookingsPage() {
 
   useEffect(() => {
     loadBookings();
+    const userData = localStorage.getItem("userData") || sessionStorage.getItem("userData");
+    if (userData) {
+      try {
+        const user = JSON.parse(userData);
+        setRawRole(user.role || "customer");
+      } catch (e) {
+        console.error(e);
+      }
+    }
   }, []);
 
   const handleConfirmCancel = async () => {
@@ -320,7 +486,6 @@ function MyBookingsPage() {
         </span>
       );
     }
-
     if (endTime && new Date(endTime) < new Date()) {
       return (
         <span className="rounded-lg bg-muted px-2 py-0.5 text-[11px] font-bold text-muted-foreground border border-border">
@@ -328,7 +493,6 @@ function MyBookingsPage() {
         </span>
       );
     }
-
     if (actualPaymentStatus === "pending_verification") {
       return (
         <span className="rounded-lg bg-info/15 px-2 py-0.5 text-[11px] font-bold text-info">
@@ -336,7 +500,6 @@ function MyBookingsPage() {
         </span>
       );
     }
-
     switch (status) {
       case "confirmed":
         return (
@@ -360,9 +523,33 @@ function MyBookingsPage() {
     }
   };
 
+  const isAdmin = rawRole === "admin" || rawRole === "super_admin";
+  const isOwner = rawRole === "owner";
+
   return (
     <div dir="rtl" className="flex min-h-screen flex-col bg-background text-foreground">
-      <Header title="حجوزاتي" onMenu={() => {}} />
+      {/* التوجيه الذكي للقائمة الجانبية بناءً على نوع المستخدم */}
+      {isAdmin && (
+        <AdminMobileMenu open={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
+      )}
+
+      {/* +++ إصلاح خطأ ESLint بإزالة as any وتمرير النص بشكل صحيح +++ */}
+      {isOwner && (
+        <MobileSidebar
+          open={isMobileMenuOpen}
+          activeView="overview"
+          onNavigate={(view) => {
+            localStorage.setItem("ownerActiveTab", view); // حفظ التاب المطلوب
+            window.location.href = "/"; // التوجيه للداشبورد
+          }}
+          onClose={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+      {!isAdmin && !isOwner && (
+        <CustomerMobileMenu open={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
+      )}
+
+      <Header title="حجوزاتي" onMenu={() => setIsMobileMenuOpen(true)} />
 
       <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-6">
         <div className="mb-6 flex gap-2 rounded-2xl border border-border bg-card p-1.5">
@@ -415,13 +602,11 @@ function MyBookingsPage() {
               const startDate = new Date(b.startTime);
               const endDate = new Date(b.endTime);
               const isExpired = endDate < new Date();
-
               const isCancelledOrExpired =
                 b.status === "cancelled" ||
                 b.status === "expired" ||
                 b.paymentStatus === "expired" ||
                 b.actualPaymentStatus === "expired";
-
               const dateStr = startDate.toLocaleDateString("ar-EG", {
                 weekday: "long",
                 day: "numeric",
@@ -464,13 +649,11 @@ function MyBookingsPage() {
                       </div>
                     </div>
                   </div>
-
                   <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3 sm:border-0 sm:pt-0">
                     <span className="flex items-center gap-1.5 text-sm font-bold text-primary">
                       <Wallet className="size-4" />
                       {b.totalPrice} ج.م
                     </span>
-
                     <div className="flex items-center gap-2">
                       {b.paymentId &&
                         b.status === "pending_payment" &&
@@ -479,11 +662,9 @@ function MyBookingsPage() {
                             onClick={() => setUploadModalPaymentId(b.paymentId!)}
                             className="flex items-center gap-1 rounded-xl bg-primary/10 px-3 py-1.5 text-[11px] font-bold text-primary transition hover:bg-primary/20"
                           >
-                            <UploadCloud className="size-3.5" />
-                            إرفاق إيصال الدفع
+                            <UploadCloud className="size-3.5" /> إرفاق إيصال الدفع
                           </button>
                         )}
-
                       {tab === "upcoming" && !isCancelledOrExpired && !isExpired && (
                         <button
                           onClick={() => setCancelModalBookingId(b._id)}
@@ -509,15 +690,12 @@ function MyBookingsPage() {
           onSuccess={loadBookings}
         />
       )}
-
-      {/* استدعاء نافذة الإلغاء */}
       <CancelConfirmModal
         isOpen={!!cancelModalBookingId}
         isCancelling={isCancelling}
         onClose={() => setCancelModalBookingId(null)}
         onConfirm={handleConfirmCancel}
       />
-
       <Toaster position="top-center" />
     </div>
   );

@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { LayoutDashboard, Wallet, FileText, Settings, X, ClipboardList } from "lucide-react";
-import { XCircle } from "lucide-react";
+import { XCircle, CalendarDays } from "lucide-react";
 import { Header } from "@/components/venue/Header";
 import { AdminDailyClosingView } from "@/components/admin/AdminDailyClosingView";
 import { cn } from "@/lib/utils";
@@ -58,6 +58,13 @@ function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void
             <ClipboardList className="h-5 w-5" /> تقفيل اليومية
           </Link>
           <Link
+            to="/admin-schedule"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary text-muted-foreground"
+          >
+            <CalendarDays className="h-5 w-5" /> جدول الأندية
+          </Link>
+          <Link
             to="/admin-reports"
             onClick={onClose}
             className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary text-muted-foreground"
@@ -110,6 +117,12 @@ function AdminDailyClosingPage() {
           className="text-sm font-bold flex items-center gap-2 hover:text-primary transition-colors text-muted-foreground [&.active]:text-primary"
         >
           <ClipboardList className="size-4" /> تقفيل اليومية
+        </Link>
+        <Link
+          to="/admin-schedule"
+          className="text-sm font-bold flex items-center gap-2 hover:text-primary transition-colors text-muted-foreground [&.active]:text-primary"
+        >
+          <CalendarDays className="size-4" /> جدول الأندية
         </Link>
         <Link
           to="/admin-reports"

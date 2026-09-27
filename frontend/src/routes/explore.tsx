@@ -323,7 +323,7 @@ function ExplorePage() {
             <select
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-12 w-full appearance-none rounded-2xl border border-input bg-card pr-11 pl-4 shadow-sm outline-none transition-shadow focus:border-primary focus:ring-2 focus:ring-ring/40"
+              className="h-12 w-full appearance-none rounded-2xl border border-input bg-card pr-11 pl-10 shadow-sm outline-none transition-shadow focus:border-primary focus:ring-2 focus:ring-ring/40 sm:text-base text-sm"
             >
               <option value="">كل المناطق في الإسكندرية</option>
               {/* عرض المناطق المستخرجة من الباك إند تلقائياً */}
@@ -333,6 +333,22 @@ function ExplorePage() {
                 </option>
               ))}
             </select>
+            {/* سهم منسدل مخصص */}
+            <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </div>
           </div>
 
           <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
