@@ -1,4 +1,5 @@
 const multer = require("multer");
+const fs = require("fs");
 const mongoose = require("mongoose");
 const Payment = require("../models/paymentModel");
 const Booking = require("../models/bookingModel");
@@ -500,7 +501,16 @@ exports.manuallyVerifyPayment = catchAsync(async (req, res, next) => {
 
 // 📸 3. دوال العميل (إثبات الدفع اليدوي)
 const multerStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, "public/uploads/payments"),
+  destination: (req, file, cb) => {
+    const uploadPath = "public/uploads/payments";
+
+    // +++ إنشاء المجلد تلقائياً إذا لم يكن موجوداً لمنع خطأ ENOENT +++
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+
+    cb(null, uploadPath);
+  },
   filename: (req, file, cb) => {
     const ext = file.mimetype.split("/")[1];
     cb(null, `payment-${req.user.id}-${Date.now()}.${ext}`);
