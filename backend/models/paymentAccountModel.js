@@ -10,7 +10,7 @@ const paymentAccountSchema = new mongoose.Schema(
     identifier: {
       type: String,
       required: [true, "يجب إدخال رقم المحفظة أو عنوان الإنستا باي"],
-      unique: true,
+      // unique: true,  <--- 1. قم بحذف أو إيقاف هذا السطر
       trim: true,
     },
     accountName: {
@@ -36,6 +36,11 @@ const paymentAccountSchema = new mongoose.Schema(
   },
   { timestamps: true },
 );
+
+// 2. +++ أضف هذا السطر هنا +++
+// هذا السطر يضمن أنك لا تستطيع إضافة نفس الرقم مرتين لنفس النوع (مثلاً اثنين فودافون كاش بنفس الرقم)،
+// لكن يسمح بإضافة نفس الرقم مرة كفودافون ومرة كإنستا باي.
+paymentAccountSchema.index({ identifier: 1, type: 1 }, { unique: true });
 
 const PaymentAccount = mongoose.model("PaymentAccount", paymentAccountSchema);
 module.exports = PaymentAccount;

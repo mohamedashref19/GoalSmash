@@ -1082,7 +1082,7 @@ export function AdminSetupView() {
                 placeholder={
                   accountData.type === "vodafone_cash"
                     ? "رقم المحفظة (مثال: 010...)"
-                    : "عنوان إنستا باي (مثال: name@instapay)"
+                    : "رقم حساب انستا باى"
                 }
                 required
                 value={accountData.identifier}

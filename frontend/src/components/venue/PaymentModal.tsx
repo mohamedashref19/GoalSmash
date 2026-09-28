@@ -242,13 +242,13 @@ export function PaymentModal({
                 <p className="text-sm font-bold flex items-center gap-1.5">
                   طريقة الدفع المختارة:
                   <span className="text-primary bg-primary/10 px-2 py-0.5 rounded-md">
-                    {isInstapay ? "إنستا باي" : "فودافون كاش"}
+                    {isInstapay ? "إنستا باي" : "المحفظة"}
                   </span>
                 </p>
                 <div className="flex items-center justify-between rounded-xl border border-border bg-surface p-3 transition hover:border-primary/30">
                   <div className="flex flex-col">
                     <span className="text-[11px] text-muted-foreground font-semibold">
-                      {isInstapay ? "عنوان إنستا باي (IPA)" : "رقم المحفظة للتحويل"}
+                      {isInstapay ? "رقم الحساب لتحويل" : "رقم المحفظة للتحويل"}
                     </span>
                     <span className="font-bold text-lg" dir="ltr">
                       {targetAddress}
