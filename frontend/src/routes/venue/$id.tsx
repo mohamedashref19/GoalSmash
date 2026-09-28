@@ -243,7 +243,12 @@ function VenueDetailsPage() {
         const bookedHours = bookingsArray
           .filter(
             (b: BookingResponse) =>
-              b && b.startTime && typeof b.startTime === "string" && b.status !== "cancelled",
+              b &&
+              b.startTime &&
+              typeof b.startTime === "string" &&
+              // الحجوزات الملغاة أو المنتهية (لم يتم الدفع) لا تقفل الخانة
+              b.status !== "cancelled" &&
+              b.status !== "expired",
           )
           .map((b: BookingResponse) => {
             try {
