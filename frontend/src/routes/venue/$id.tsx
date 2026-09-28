@@ -621,7 +621,7 @@ function VenueDetailsPage() {
                       : "border-border text-muted-foreground",
                   )}
                 >
-                  فودافون كاش
+                  محفظة
                 </button>
                 <button
                   onClick={() => setSelectedPaymentMethod("instapay")}
@@ -669,7 +669,7 @@ function VenueDetailsPage() {
                     : "border-border bg-surface text-muted-foreground",
                 )}
               >
-                فودافون كاش
+                محفظة
               </button>
               <button
                 onClick={() => setSelectedPaymentMethod("instapay")}

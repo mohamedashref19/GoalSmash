@@ -9,14 +9,13 @@ import {
   X,
   Home,
   CalendarDays,
-  Sparkles,
   Trophy,
   Users,
   Target,
   ChevronRight,
   ChevronLeft,
-  ShoppingBag, // +++ أيقونة المتجر +++
-  Dumbbell, // +++ أيقونة الجيم والمكملات +++
+  ShoppingBag,
+  Dumbbell,
 } from "lucide-react";
 import { Header } from "@/components/venue/Header";
 import { cn } from "@/lib/utils";
@@ -25,10 +24,13 @@ import { fetchAllVenues } from "@/api/venueApi";
 // @ts-expect-error API has no TypeScript declaration
 import { BACKEND_URL } from "@/api/axiosConfig";
 
+// +++ تعديل الواجهة لدعم الأسعار الصباحية والمسائية +++
 interface CourtType {
   _id: string;
   sportType: string;
-  pricePerHour: number;
+  priceMorning?: number;
+  priceEvening?: number;
+  pricePerHour?: number;
 }
 
 interface VenueType {
@@ -41,6 +43,7 @@ interface VenueType {
   courts?: CourtType[];
   image?: string;
 }
+
 const getImageUrl = (imagePath?: string) => {
   if (!imagePath) return "/default-placeholder.png";
   if (imagePath.startsWith("http")) return imagePath;
@@ -54,7 +57,6 @@ export const Route = createFileRoute("/explore")({
   component: ExplorePage,
 });
 
-// +++ مكون القائمة الجانبية المخصص للعميل +++
 function CustomerMobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
     <div className={cn("lg:hidden", open ? "" : "pointer-events-none")}>
@@ -97,11 +99,7 @@ function CustomerMobileMenu({ open, onClose }: { open: boolean; onClose: () => v
     </div>
   );
 }
-// +++++++++++++++++++++++++++++++++++++++++
 
-// =========================================
-// +++ مكون الـ Slider الجديد (العروض التشويقية) +++
-// =========================================
 function PromoSlider() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [touchStartX, setTouchStartX] = useState(0);
@@ -136,7 +134,6 @@ function PromoSlider() {
       accent: "text-indigo-400",
       Icon: Target,
     },
-    // +++ تم إضافة خانة المتجر والتشيرتات +++
     {
       id: 4,
       title: "متجر رياضي",
@@ -146,7 +143,6 @@ function PromoSlider() {
       accent: "text-rose-400",
       Icon: ShoppingBag,
     },
-    // +++ تم إضافة خانة الجيم والمكملات +++
     {
       id: 5,
       title: "جيم ومكملات",
@@ -158,7 +154,6 @@ function PromoSlider() {
     },
   ];
 
-  // تشغيل تلقائي كل 5 ثواني
   useEffect(() => {
     if (isHovered) return;
     const timer = setInterval(() => {
@@ -170,15 +165,14 @@ function PromoSlider() {
   const nextSlide = () => setCurrentIndex((prev) => (prev === slides.length - 1 ? 0 : prev + 1));
   const prevSlide = () => setCurrentIndex((prev) => (prev === 0 ? slides.length - 1 : prev - 1));
 
-  // منطق سحب الشاشة (التاتش) مع حماية ضد undefined
   const handleTouchStart = (e: React.TouchEvent) =>
     setTouchStartX(e.targetTouches[0]?.clientX || 0);
   const handleTouchMove = (e: React.TouchEvent) => setTouchEndX(e.targetTouches[0]?.clientX || 0);
   const handleTouchEnd = () => {
     if (!touchStartX || !touchEndX) return;
     const distance = touchStartX - touchEndX;
-    if (distance > 50) prevSlide(); // سحب لليسار
-    if (distance < -50) nextSlide(); // سحب لليمين
+    if (distance > 50) prevSlide();
+    if (distance < -50) nextSlide();
     setTouchStartX(0);
     setTouchEndX(0);
   };
@@ -204,16 +198,11 @@ function PromoSlider() {
               slide.bg,
             )}
           >
-            {/* تأثير الإضاءة في الخلفية */}
             <div className="absolute inset-0 opacity-20 pointer-events-none bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-white/10 to-transparent" />
-
-            {/* الـ Badge */}
             <div className="absolute bottom-0 right-0 bg-warning text-black px-4 py-1.5 sm:px-6 sm:py-2 rounded-tl-2xl font-bold text-xs sm:text-sm z-20 shadow-md">
               {slide.badge}
             </div>
-
             <div className="relative z-10 flex flex-1 items-center justify-between">
-              {/* النصوص */}
               <div className="flex flex-col items-start gap-1 sm:gap-2">
                 <h2 className="text-4xl sm:text-5xl font-black text-white">{slide.title}</h2>
                 <div className="flex items-center gap-2">
@@ -223,8 +212,6 @@ function PromoSlider() {
                   </span>
                 </div>
               </div>
-
-              {/* اللوجو / الأيقونة */}
               <div className="ml-2 sm:ml-8 w-24 h-24 sm:w-32 sm:h-32 bg-black/40 rounded-full border-4 border-slate-800 flex items-center justify-center shadow-xl">
                 <slide.Icon className={cn("w-12 h-12 sm:w-16 sm:h-16", slide.accent)} />
               </div>
@@ -232,8 +219,6 @@ function PromoSlider() {
           </div>
         ))}
       </div>
-
-      {/* أزرار التحكم (تظهر عند تمرير الماوس) */}
       <button
         onClick={nextSlide}
         className="absolute left-3 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/30 text-white p-2 sm:p-3 rounded-full backdrop-blur opacity-0 group-hover:opacity-100 transition duration-300 z-30"
@@ -246,8 +231,6 @@ function PromoSlider() {
       >
         <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
       </button>
-
-      {/* المؤشرات (Dots) */}
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 z-30">
         {slides.map((_, idx) => (
           <button
@@ -263,7 +246,6 @@ function PromoSlider() {
     </div>
   );
 }
-// =========================================
 
 function ExplorePage() {
   const [venues, setVenues] = useState<VenueType[]>([]);
@@ -290,28 +272,22 @@ function ExplorePage() {
     getVenues();
   }, []);
 
-  // 1. استخراج المناطق المتاحة من الداتا بيز بدون تكرار
   const uniqueAreas = Array.from(
     new Set(venues.map((venue) => venue.address?.area).filter(Boolean)),
   ) as string[];
 
-  // 2. فلترة الملاعب
   const filteredVenues = venues.filter((venue) => {
-    // لو مفيش منطقة متحددة (searchQuery فاضي) هات الكل، غير كده طابق المنطقة
     const matchesSearch = searchQuery === "" || venue.address?.area === searchQuery;
-
     let matchesFilter = true;
     if (activeFilter !== "all" && venue.courts && venue.courts.length > 0) {
       matchesFilter = venue.courts.some((court: CourtType) => court.sportType === activeFilter);
     }
-
     return matchesSearch && matchesFilter;
   });
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-background text-foreground overflow-x-hidden">
       <CustomerMobileMenu open={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
-
       <Header title="استكشف الملاعب" onMenu={() => setIsMobileMenuOpen(true)} />
 
       <main className="mx-auto w-full max-w-5xl flex-1 p-4 sm:p-6 lg:p-8">
@@ -326,14 +302,12 @@ function ExplorePage() {
               className="h-12 w-full appearance-none rounded-2xl border border-input bg-card pr-11 pl-10 shadow-sm outline-none transition-shadow focus:border-primary focus:ring-2 focus:ring-ring/40 sm:text-base text-sm"
             >
               <option value="">كل المناطق في الإسكندرية</option>
-              {/* عرض المناطق المستخرجة من الباك إند تلقائياً */}
               {uniqueAreas.map((area, index) => (
                 <option key={index} value={area}>
                   {area}
                 </option>
               ))}
             </select>
-            {/* سهم منسدل مخصص */}
             <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -404,62 +378,72 @@ function ExplorePage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                {filteredVenues.map((venue) => (
-                  <div
-                    key={venue._id}
-                    className="card-surface group flex flex-col overflow-hidden transition-all hover:shadow-md"
-                  >
-                    <div className="relative h-48 w-full bg-muted overflow-hidden">
-                      {venue.image ? (
-                        <img
-                          src={getImageUrl(venue.image)}
-                          alt={venue.name}
-                          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-                        />
-                      ) : (
-                        <div className="absolute inset-0 bg-gradient-to-br from-primary/40 to-emerald-900/60 mix-blend-multiply" />
-                      )}
+                {filteredVenues.map((venue) => {
+                  // +++ حساب أقل سعر للملعب (سواء كان صباحي أو مسائي) +++
+                  let minPrice = Infinity;
+                  if (venue.courts && venue.courts.length > 0) {
+                    venue.courts.forEach((court) => {
+                      const morning = court.priceMorning || court.pricePerHour || Infinity;
+                      const evening = court.priceEvening || court.pricePerHour || Infinity;
+                      const courtMin = Math.min(morning, evening);
+                      if (courtMin < minPrice) minPrice = courtMin;
+                    });
+                  }
 
-                      <div className="absolute left-3 top-3 flex items-center gap-1 rounded-lg bg-background/90 px-2 py-1 text-xs font-bold backdrop-blur">
-                        <Star className="h-3.5 w-3.5 fill-warning text-warning" />
-                        4.8
-                      </div>
-                    </div>
-
-                    <div className="flex flex-1 flex-col p-4">
-                      <h3 className="font-display text-lg font-extrabold">{venue.name}</h3>
-
-                      <div className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
-                        <MapPin className="h-4 w-4 shrink-0" />
-                        <span className="truncate">
-                          {venue.address?.city}، {venue.address?.area}
-                        </span>
-                      </div>
-
-                      <div className="mt-4 mt-auto flex items-end justify-between border-t pt-4">
-                        <div>
-                          <p className="text-xs font-semibold text-muted-foreground">يبدأ من</p>
-                          <p className="font-display text-lg font-bold text-primary">
-                            {venue.courts && venue.courts.length > 0
-                              ? `${Math.min(...venue.courts.map((court) => court.pricePerHour))} ج`
-                              : "--- ج"}
-                            <span className="text-sm font-normal text-muted-foreground">
-                              {" "}
-                              / ساعة
-                            </span>
-                          </p>
+                  return (
+                    <div
+                      key={venue._id}
+                      className="card-surface group flex flex-col overflow-hidden transition-all hover:shadow-md"
+                    >
+                      <div className="relative h-48 w-full bg-muted overflow-hidden">
+                        {venue.image ? (
+                          <img
+                            src={getImageUrl(venue.image)}
+                            alt={venue.name}
+                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                          />
+                        ) : (
+                          <div className="absolute inset-0 bg-gradient-to-br from-primary/40 to-emerald-900/60 mix-blend-multiply" />
+                        )}
+                        <div className="absolute left-3 top-3 flex items-center gap-1 rounded-lg bg-background/90 px-2 py-1 text-xs font-bold backdrop-blur">
+                          <Star className="h-3.5 w-3.5 fill-warning text-warning" /> 4.8
                         </div>
-                        <Link
-                          to="/venue/$id"
-                          params={{ id: venue._id }}
-                          className="rounded-xl bg-primary/10 px-4 py-2 text-sm font-bold text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
-                        >
-                          احجز الآن
-                        </Link>
+                      </div>
+
+                      <div className="flex flex-1 flex-col p-4">
+                        <h3 className="font-display text-lg font-extrabold">{venue.name}</h3>
+
+                        <div className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+                          <MapPin className="h-4 w-4 shrink-0" />
+                          <span className="truncate">
+                            {venue.address?.city}، {venue.address?.area}
+                          </span>
+                        </div>
+
+                        <div className="mt-4 mt-auto flex items-end justify-between border-t pt-4">
+                          <div>
+                            <p className="text-xs font-semibold text-muted-foreground">يبدأ من</p>
+                            <p className="font-display text-lg font-bold text-primary">
+                              {/* +++ عرض أقل سعر حقيقي +++ */}
+                              {minPrice !== Infinity ? `${minPrice} ج` : "--- ج"}
+                              <span className="text-sm font-normal text-muted-foreground">
+                                {" "}
+                                / ساعة
+                              </span>
+                            </p>
+                          </div>
+                          <Link
+                            to="/venue/$id"
+                            params={{ id: venue._id }}
+                            className="rounded-xl bg-primary/10 px-4 py-2 text-sm font-bold text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
+                          >
+                            احجز الآن
+                          </Link>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </>

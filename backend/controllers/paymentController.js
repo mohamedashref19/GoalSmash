@@ -28,7 +28,9 @@ const parsePaymentSMS = (sender, message) => {
   if (
     senderLower.includes("instapay") ||
     message.includes("انستا باى") ||
-    message.includes("instapay")
+    message.includes("instapay") ||
+    message.includes("تحويل لحظي") ||
+    message.includes("رقم مرجعي")
   ) {
     method = "instapay";
     const nameMatch = message.match(/من\s+(.*?)\s+رقم مرجعي/);
