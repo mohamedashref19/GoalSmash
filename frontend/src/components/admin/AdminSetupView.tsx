@@ -19,6 +19,7 @@ import {
   Clock,
   Moon,
   Sun,
+  Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -36,8 +37,13 @@ import {
   togglePaymentAccount,
   updatePaymentAccount,
   deletePaymentAccount,
+  blockCourtSlots,
+  fetchCourtBlocks,
+  deleteCourtBlock,
   // @ts-expect-error: API lacks TypeScript definitions
 } from "@/api/adminApi";
+// @ts-expect-error: API lacks TypeScript definitions
+import { fetchCourts } from "@/api/courtApi";
 
 interface Owner {
   _id: string;
@@ -48,7 +54,7 @@ interface Owner {
 interface Court {
   _id: string;
   name: string;
-  pricePerHour?: number; // لضمان التوافق مع البيانات القديمة
+  pricePerHour?: number;
   priceMorning: number;
   priceEvening: number;
   sportType: string;
@@ -87,7 +93,17 @@ interface PaymentAccount {
   totalMoneyCollected?: number;
 }
 
-type TabKey = "owner" | "venue" | "court" | "manage" | "customers" | "accounts";
+interface CourtBlock {
+  _id: string;
+  venue: { _id: string; name: string };
+  court: { _id: string; name: string; sportType: string };
+  blockType: string;
+  startTime: string;
+  endTime: string;
+  notes: string;
+}
+
+type TabKey = "owner" | "venue" | "court" | "manage" | "block" | "customers" | "accounts";
 
 const calculateHours = (open: string, close: string) => {
   if (!open || !close) return 24;
@@ -104,7 +120,21 @@ export function AdminSetupView() {
   const [venuesList, setVenuesList] = useState<Venue[]>([]);
   const [customersList, setCustomersList] = useState<Customer[]>([]);
   const [accountsList, setAccountsList] = useState<PaymentAccount[]>([]);
+  const [blocksList, setBlocksList] = useState<CourtBlock[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const [blockData, setBlockData] = useState({
+    venueId: "",
+    courtId: "",
+    dateFrom: "",
+    dateTo: "",
+    startTimeHour: "08",
+    endTimeHour: "10",
+    blockType: "maintenance",
+    notes: "",
+  });
+  const [dynamicCourts, setDynamicCourts] = useState<Court[]>([]);
+  const [isBlocking, setIsBlocking] = useState(false);
 
   const [ownerData, setOwnerData] = useState({
     name: "",
@@ -125,6 +155,7 @@ export function AdminSetupView() {
     eveningStartTime: "18:00",
   });
   const [venueImage, setVenueImage] = useState<File | null>(null);
+
   const [courtData, setCourtData] = useState({
     venueId: "",
     name: "",
@@ -176,6 +207,7 @@ export function AdminSetupView() {
       toast.error(err as string);
     }
   };
+
   const loadOwners = async () => {
     try {
       setOwnersList(await fetchAllOwners());
@@ -183,6 +215,7 @@ export function AdminSetupView() {
       toast.error(err as string);
     }
   };
+
   const loadAccounts = async () => {
     setLoading(true);
     try {
@@ -194,9 +227,29 @@ export function AdminSetupView() {
     }
   };
 
+  // +++ الدالة التي كانت مفقودة وتسبب خطأ Cannot find name 'loadBlocks' +++
+  const loadBlocks = async () => {
+    try {
+      setBlocksList(await fetchCourtBlocks());
+    } catch (err: unknown) {
+      toast.error(err as string);
+    }
+  };
+
   useEffect(() => {
-    if ((activeTab === "venue" || activeTab === "manage") && ownersList.length === 0) loadOwners();
-    if ((activeTab === "court" || activeTab === "manage") && venuesList.length === 0) loadVenues();
+    if (
+      (activeTab === "venue" || activeTab === "manage" || activeTab === "block") &&
+      ownersList.length === 0
+    )
+      loadOwners();
+    if (
+      (activeTab === "court" || activeTab === "manage" || activeTab === "block") &&
+      venuesList.length === 0
+    )
+      loadVenues();
+    if (activeTab === "block" && blocksList.length === 0) {
+      loadBlocks();
+    }
     if (activeTab === "customers" && customersList.length === 0) {
       setLoading(true);
       fetchAllCustomers()
@@ -205,7 +258,24 @@ export function AdminSetupView() {
         .finally(() => setLoading(false));
     }
     if (activeTab === "accounts" && accountsList.length === 0) loadAccounts();
-  }, [activeTab, customersList.length, ownersList.length, venuesList.length, accountsList.length]);
+  }, [
+    activeTab,
+    customersList.length,
+    ownersList.length,
+    venuesList.length,
+    accountsList.length,
+    blocksList.length,
+  ]);
+
+  useEffect(() => {
+    if (blockData.venueId) {
+      fetchCourts(blockData.venueId)
+        .then(setDynamicCourts)
+        .catch(() => toast.error("فشل جلب ملاعب النادي المختار"));
+    } else {
+      setDynamicCourts([]);
+    }
+  }, [blockData.venueId]);
 
   const handleCreateOwner = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
@@ -263,6 +333,18 @@ export function AdminSetupView() {
       toast.error(err as string);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteBlock = async (id: string) => {
+    if (window.confirm("هل أنت متأكد من فتح هذا الموعد للعملاء؟")) {
+      try {
+        await deleteCourtBlock(id);
+        toast.success("تم إعادة فتح الموعد بنجاح");
+        loadBlocks();
+      } catch (err: unknown) {
+        toast.error(err as string);
+      }
     }
   };
 
@@ -424,6 +506,64 @@ export function AdminSetupView() {
     }
   };
 
+  const handleBlockSlots = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!blockData.venueId || !blockData.courtId || !blockData.dateFrom) {
+      toast.error("يرجى تحديد النادي، الملعب، وتاريخ البداية على الأقل.");
+      return;
+    }
+
+    const startHr = parseInt(blockData.startTimeHour, 10);
+    const endHr = parseInt(blockData.endTimeHour, 10);
+    if (startHr === endHr) {
+      toast.error("وقت البداية لا يمكن أن يساوي وقت النهاية.");
+      return;
+    }
+
+    setIsBlocking(true);
+    try {
+      const datesToBlock: string[] = [];
+      const currentDate = new Date(blockData.dateFrom);
+      const endDate = blockData.dateTo ? new Date(blockData.dateTo) : new Date(blockData.dateFrom);
+
+      while (currentDate <= endDate) {
+        datesToBlock.push(currentDate.toISOString().slice(0, 10));
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      const response = await blockCourtSlots({
+        venue: blockData.venueId,
+        court: blockData.courtId,
+        dates: datesToBlock,
+        startTimeHour: startHr,
+        endTimeHour: endHr,
+        blockType: blockData.blockType,
+        notes: blockData.notes,
+      });
+
+      toast.success(
+        response.message || `تم إغلاق المواعيد بنجاح من ${startHr}:00 إلى ${endHr}:00.`,
+      );
+
+      setBlockData({
+        venueId: "",
+        courtId: "",
+        dateFrom: "",
+        dateTo: "",
+        startTimeHour: "08",
+        endTimeHour: "10",
+        blockType: "maintenance",
+        notes: "",
+      });
+      setDynamicCourts([]);
+      loadBlocks();
+    } catch (err) {
+      toast.error(err as string);
+    } finally {
+      setIsBlocking(false);
+    }
+  };
+
   return (
     <div className="card-surface p-4 sm:p-6 mt-8 animate-in fade-in">
       <div className="flex items-center justify-between border-b border-border pb-4 mb-6">
@@ -438,6 +578,7 @@ export function AdminSetupView() {
           { id: "venue", icon: Building2, label: "إنشاء نادي" },
           { id: "court", icon: Dribbble, label: "إضافة ملعب" },
           { id: "manage", icon: Edit, label: "إدارة الملاعب" },
+          { id: "block", icon: Lock, label: "إغلاق وصيانة" },
           { id: "customers", icon: Users, label: "العملاء" },
           { id: "accounts", icon: Wallet, label: "حسابات الدفع" },
         ].map((tab) => (
@@ -928,7 +1069,6 @@ export function AdminSetupView() {
                             className="w-full rounded-md border px-2 py-1.5 text-xs"
                             placeholder="اسم الملعب"
                           />
-                          {/* +++ التعديل المطلوب: إضافة عناوين الأسعار الصباحية والمسائية +++ */}
                           <div className="flex gap-2">
                             <div className="w-1/2">
                               <label className="text-[10px] font-bold text-muted-foreground flex items-center gap-1 mb-1">
@@ -1058,6 +1198,262 @@ export function AdminSetupView() {
         </div>
       )}
 
+      {/* +++ التاب الجديد: إغلاق وصيانة الملاعب تم إصلاحه هنا +++ */}
+      {activeTab === "block" && (
+        <div className="animate-in slide-in-from-bottom-2">
+          <form onSubmit={handleBlockSlots} className="space-y-4 max-w-2xl mx-auto">
+            <div className="bg-destructive/5 border border-destructive/20 rounded-xl p-4 mb-4">
+              <h3 className="font-bold text-destructive mb-2 flex items-center gap-2">
+                <Lock className="size-4" /> إغلاق ساعات الملاعب
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                يمكنك استخدام هذه الواجهة لحجب الساعات عن العملاء سواء للصيانة أو لحجوزات
+                الأكاديميات الثابتة. المواعيد المغلقة لا يمكن للعميل حجزها.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <select
+                required
+                value={blockData.venueId}
+                onChange={(e) =>
+                  setBlockData({ ...blockData, venueId: e.target.value, courtId: "" })
+                }
+                className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none cursor-pointer"
+              >
+                <option value="">-- اختر النادي --</option>
+                {venuesList.map((venue) => (
+                  <option key={venue._id} value={venue._id}>
+                    {venue.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                required
+                disabled={!blockData.venueId || dynamicCourts.length === 0}
+                value={blockData.courtId}
+                onChange={(e) => setBlockData({ ...blockData, courtId: e.target.value })}
+                className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none cursor-pointer disabled:opacity-50"
+              >
+                <option value="">-- اختر الملعب --</option>
+                {dynamicCourts.map((c) => (
+                  <option key={c._id} value={c._id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-muted/30 p-3 rounded-xl border border-border">
+              <div>
+                <label className="text-[11px] font-bold text-muted-foreground mb-1.5 block">
+                  من تاريخ
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={blockData.dateFrom}
+                  onChange={(e) => setBlockData({ ...blockData, dateFrom: e.target.value })}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-muted-foreground mb-1.5 block">
+                  إلى تاريخ (اختياري للتكرار)
+                </label>
+                <input
+                  type="date"
+                  min={blockData.dateFrom}
+                  value={blockData.dateTo}
+                  onChange={(e) => setBlockData({ ...blockData, dateTo: e.target.value })}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none"
+                />
+                <p className="text-[9px] text-muted-foreground mt-1">
+                  اتركه فارغاً لغلق يوم واحد فقط.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="text-[11px] font-bold text-muted-foreground mb-1.5 block">
+                  من الساعة
+                </label>
+                <select
+                  value={blockData.startTimeHour}
+                  onChange={(e) => setBlockData({ ...blockData, startTimeHour: e.target.value })}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none"
+                  dir="ltr"
+                >
+                  {Array.from({ length: 24 }).map((_, i) => {
+                    const val = String(i).padStart(2, "0");
+                    return (
+                      <option key={`start-${val}`} value={val}>
+                        {val}:00
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-muted-foreground mb-1.5 block">
+                  إلى الساعة (مش متضمن الساعه فى الجدول)
+                </label>
+                <select
+                  value={blockData.endTimeHour}
+                  onChange={(e) => setBlockData({ ...blockData, endTimeHour: e.target.value })}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none"
+                  dir="ltr"
+                >
+                  {Array.from({ length: 24 }).map((_, i) => {
+                    const val = String(i).padStart(2, "0");
+                    return (
+                      <option key={`end-${val}`} value={val}>
+                        {val}:00
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-muted-foreground mb-1.5 block">
+                  نوع الإغلاق
+                </label>
+                <select
+                  value={blockData.blockType}
+                  onChange={(e) => setBlockData({ ...blockData, blockType: e.target.value })}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none"
+                >
+                  <option value="maintenance">صيانة دورية</option>
+                  <option value="academy">حجز أكاديمية</option>
+                </select>
+              </div>
+            </div>
+
+            <input
+              type="text"
+              placeholder="ملاحظات (مثال: صيانة أرضية، أكاديمية كابتن محمد...)"
+              value={blockData.notes}
+              onChange={(e) => setBlockData({ ...blockData, notes: e.target.value })}
+              className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none"
+            />
+
+            <button
+              disabled={isBlocking}
+              type="submit"
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-destructive px-4 py-3 font-bold text-white transition disabled:opacity-50 hover:bg-destructive/90"
+            >
+              {isBlocking ? (
+                <Loader2 className="size-5 animate-spin" />
+              ) : (
+                <Lock className="size-5" />
+              )}{" "}
+              تأكيد إغلاق المواعيد
+            </button>
+          </form>
+
+          {/* جدول المواعيد المغلقة */}
+          <div className="mt-10 max-w-4xl mx-auto">
+            <h3 className="font-bold mb-4 flex items-center gap-2">
+              <Clock className="size-5 text-primary" /> المواعيد المغلقة حالياً
+            </h3>
+            <div className="overflow-x-auto rounded-xl border border-border">
+              <table className="w-full text-sm text-right">
+                <thead className="bg-muted/50 text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3 font-bold">النادي والملعب</th>
+                    <th className="px-4 py-3 font-bold">نوع الإغلاق</th>
+                    <th className="px-4 py-3 font-bold">تاريخ البداية والنهاية</th>
+                    <th className="px-4 py-3 font-bold max-w-[150px]">ملاحظات</th>
+                    <th className="px-4 py-3 font-bold text-center">إجراء</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {blocksList.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="px-4 py-8 text-center text-muted-foreground font-bold"
+                      >
+                        لا توجد مواعيد مغلقة حالياً.
+                      </td>
+                    </tr>
+                  ) : (
+                    blocksList.map((block) => {
+                      const start = new Date(block.startTime);
+                      const end = new Date(block.endTime);
+                      const isAcademy = block.blockType === "academy";
+
+                      return (
+                        <tr key={block._id} className="border-b border-border/50 hover:bg-muted/20">
+                          <td className="px-4 py-3">
+                            <div className="font-bold">{block.venue?.name}</div>
+                            <div className="text-[11px] text-muted-foreground">
+                              {block.court?.name}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={cn(
+                                "px-2 py-1 rounded-md text-[10px] font-bold",
+                                isAcademy
+                                  ? "bg-purple-500/10 text-purple-600"
+                                  : "bg-destructive/10 text-destructive",
+                              )}
+                            >
+                              {isAcademy ? "حجز أكاديمية" : "صيانة / إداري"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="text-xs font-semibold">
+                              من:{" "}
+                              <span dir="ltr">
+                                {start.toLocaleString("ar-EG", {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            </div>
+                            <div className="text-xs font-semibold text-primary mt-1">
+                              إلى:{" "}
+                              <span dir="ltr">
+                                {end.toLocaleString("ar-EG", {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            </div>
+                          </td>
+                          <td
+                            className="px-4 py-3 text-[11px] text-muted-foreground max-w-[150px] truncate"
+                            title={block.notes}
+                          >
+                            {block.notes || "---"}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              onClick={() => handleDeleteBlock(block._id)}
+                              className="p-1.5 rounded-lg text-destructive hover:bg-destructive/10 transition"
+                              title="إلغاء الإغلاق وفتح الموعد"
+                            >
+                              <Trash2 className="size-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeTab === "accounts" && (
         <div className="space-y-6 animate-in slide-in-from-bottom-2">
           <form
@@ -1074,7 +1470,7 @@ export function AdminSetupView() {
                 onChange={(e) => setAccountData({ ...accountData, type: e.target.value })}
                 className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm outline-none focus:border-primary"
               >
-                <option value="vodafone_cash">فودافون كاش</option>
+                <option value="vodafone_cash">محفظة إلكترونية</option>
                 <option value="instapay">إنستا باي</option>
               </select>
               <input
@@ -1092,7 +1488,7 @@ export function AdminSetupView() {
               />
               <input
                 type="text"
-                placeholder="اسم صاحب الحساب (للتأكيد)"
+                placeholder="اسم صاحب الحساب (للإدارة فقط)"
                 required
                 value={accountData.accountName}
                 onChange={(e) => setAccountData({ ...accountData, accountName: e.target.value })}
@@ -1145,7 +1541,7 @@ export function AdminSetupView() {
                             }
                             className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-xs outline-none"
                           >
-                            <option value="vodafone_cash">فودافون</option>
+                            <option value="vodafone_cash">محفظة إلكترونية</option>
                             <option value="instapay">إنستا باي</option>
                           </select>
                         </td>
@@ -1202,7 +1598,7 @@ export function AdminSetupView() {
                     ) : (
                       <>
                         <td className="px-4 py-3 font-bold text-foreground">
-                          {account.type === "vodafone_cash" ? "فودافون كاش" : "إنستا باي"}
+                          {account.type === "vodafone_cash" ? "محفظة إلكترونية" : "إنستا باي"}
                         </td>
                         <td className="px-4 py-3 font-semibold text-muted-foreground" dir="ltr">
                           {account.identifier}

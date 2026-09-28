@@ -281,7 +281,8 @@ exports.getAllPayments = catchAsync(async (req, res, next) => {
   let payments = await Payment.find(filter)
     .populate({
       path: "booking",
-      select: "startTime endTime status venue user court guestData",
+      select:
+        "startTime endTime status venue user court guestData deposit totalPrice", // +++ أضفنا deposit و totalPrice
       populate: [
         { path: "user", select: "name phone" },
         { path: "court", select: "name" },
@@ -290,7 +291,16 @@ exports.getAllPayments = catchAsync(async (req, res, next) => {
     })
     .sort("-createdAt");
 
-  // +++ قفل الأمان 1: المالك يرى مدفوعات ملاعبه فقط +++
+  // +++ استبعاد المدفوعات التي ارتبطت بحجوزات تم إلغاؤها +++
+  payments = payments.filter((p) => {
+    // لو مفيش حجز، اعرضه. لكن لو فيه حجز وحالته ملغية، اخفيه.
+    if (p.booking && p.booking.status === "cancelled") {
+      return false;
+    }
+    return true;
+  });
+
+  // قفل الأمان 1: المالك يرى مدفوعات ملاعبه فقط
   if (req.user && req.user.role === "owner") {
     const myVenues = await Venue.find({ owner: req.user.id }).select("_id");
     const myVenueIds = myVenues.map((v) => v._id.toString());
@@ -304,7 +314,7 @@ exports.getAllPayments = catchAsync(async (req, res, next) => {
     });
   }
 
-  // فلترة إضافية برقم الملعب لو اتبعت في الـ Query (بيستخدمها الـ Admin)
+  // فلترة إضافية برقم الملعب لو اتبعت في الـ Query
   if (req.query.venue) {
     payments = payments.filter((p) => {
       if (!p.booking || !p.booking.venue) return false;

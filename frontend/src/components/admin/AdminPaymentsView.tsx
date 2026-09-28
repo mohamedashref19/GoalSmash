@@ -13,7 +13,8 @@ import {
   ArchiveRestore,
   Ban,
   Info,
-  AlertCircle, // +++ أضفنا الأيقونة دي للتنبيه +++
+  AlertCircle,
+  Banknote, // أيقونة للكاش
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -43,6 +44,8 @@ interface Payment {
   booking?: {
     startTime: string;
     status: string;
+    deposit?: number; // العربون
+    totalPrice?: number; // الإجمالي
     venue?: { name: string };
     user?: { name: string; phone: string };
     court?: { name: string };
@@ -114,14 +117,23 @@ export function AdminPaymentsView() {
   const summary = useMemo(() => {
     const totalOnlineConfirmed = payments
       .filter((p) => p.status === "verified" && p.method !== "cash")
-      .reduce((sum, p) => sum + p.expectedAmount, 0);
+      // نعتمد على amountReceived لو موجود، وإلا expectedAmount
+      .reduce((sum, p) => sum + (p.amountReceived || p.expectedAmount), 0);
+
+    // +++ إضافة حساب الإيرادات الكاش المؤكدة +++
+    const totalCashConfirmed = payments
+      .filter((p) => p.status === "verified" && p.method === "cash")
+      .reduce((sum, p) => sum + (p.amountReceived || p.expectedAmount), 0);
+
     const totalPending = payments
       .filter((p) => p.status === "pending" || p.status === "pending_verification")
       .reduce((sum, p) => sum + p.expectedAmount, 0);
+
     const totalUnmatched = unmatched
       .filter((u) => !u.processed)
       .reduce((sum, u) => sum + u.amount, 0);
-    return { totalOnlineConfirmed, totalPending, totalUnmatched };
+
+    return { totalOnlineConfirmed, totalCashConfirmed, totalPending, totalUnmatched };
   }, [payments, unmatched]);
 
   const handleVerify = async (id: string, isExpired: boolean = false) => {
@@ -189,29 +201,45 @@ export function AdminPaymentsView() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="card-surface p-4 border-b-4 border-b-destructive">
-          <p className="text-sm font-semibold text-muted-foreground mb-1 flex items-center gap-1">
-            <AlertTriangle className="size-4" /> أموال غير مطابقة (معلقة)
-          </p>
-          <p className="font-display text-2xl font-black text-destructive">
-            {summary.totalUnmatched} ج.م
-          </p>
-        </div>
+      {/* +++ تحديث الإحصائيات لإضافة كارت الدفع النقدي (كاش) +++ */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card-surface p-4 border-b-4 border-b-success">
-          <p className="text-sm font-semibold text-muted-foreground mb-1 flex items-center gap-1">
-            <TrendingUp className="size-4" /> إيرادات إلكترونية مؤكدة
+          <p className="text-xs font-bold text-muted-foreground mb-1 flex items-center gap-1">
+            <TrendingUp className="size-3.5" /> إيرادات إلكترونية
           </p>
-          <p className="font-display text-2xl font-black text-success">
-            {summary.totalOnlineConfirmed} ج.م
+          <p className="font-display text-xl lg:text-2xl font-black text-success">
+            {summary.totalOnlineConfirmed}{" "}
+            <span className="text-sm font-bold text-muted-foreground">ج.م</span>
           </p>
         </div>
-        <div className="card-surface p-4 border-b-4 border-b-warning">
-          <p className="text-sm font-semibold text-muted-foreground mb-1 flex items-center gap-1">
-            <Clock className="size-4" /> تحويلات قيد المراجعة
+
+        <div className="card-surface p-4 border-b-4 border-b-blue-500">
+          <p className="text-xs font-bold text-muted-foreground mb-1 flex items-center gap-1">
+            <Banknote className="size-3.5" /> إيرادات نقديـة (كاش)
           </p>
-          <p className="font-display text-2xl font-black text-warning">
-            {summary.totalPending} ج.م
+          <p className="font-display text-xl lg:text-2xl font-black text-blue-500">
+            {summary.totalCashConfirmed}{" "}
+            <span className="text-sm font-bold text-muted-foreground">ج.م</span>
+          </p>
+        </div>
+
+        <div className="card-surface p-4 border-b-4 border-b-warning">
+          <p className="text-xs font-bold text-muted-foreground mb-1 flex items-center gap-1">
+            <Clock className="size-3.5" /> قيد المراجعة
+          </p>
+          <p className="font-display text-xl lg:text-2xl font-black text-warning">
+            {summary.totalPending}{" "}
+            <span className="text-sm font-bold text-muted-foreground">ج.م</span>
+          </p>
+        </div>
+
+        <div className="card-surface p-4 border-b-4 border-b-destructive">
+          <p className="text-xs font-bold text-muted-foreground mb-1 flex items-center gap-1">
+            <AlertTriangle className="size-3.5" /> أموال معلقة
+          </p>
+          <p className="font-display text-xl lg:text-2xl font-black text-destructive">
+            {summary.totalUnmatched}{" "}
+            <span className="text-sm font-bold text-muted-foreground">ج.م</span>
           </p>
         </div>
       </div>
@@ -334,158 +362,202 @@ export function AdminPaymentsView() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filteredPayments.map((p) => (
-            <div
-              key={p._id}
-              className={cn(
-                "card-surface p-5 flex flex-col justify-between transition-all duration-200",
-                // +++ ستايل خاص للكارت المنتهي +++
-                p.status === "expired"
-                  ? "border-dashed border-2 border-destructive/30 bg-destructive/5 grayscale-[15%]"
-                  : "hover:shadow-md",
-              )}
-            >
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <p className="text-[10px] font-bold text-muted-foreground bg-background border border-border px-2 py-1 rounded-md inline-block mb-2 shadow-sm">
-                    {p.booking?.venue?.name} <span className="mx-1">•</span>{" "}
-                    {p.booking?.court?.name}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    {/* +++ شطب المبلغ لو كان منتهي +++ */}
-                    <p
-                      className={cn(
-                        "font-display text-xl font-black",
-                        p.status === "expired"
-                          ? "text-muted-foreground line-through opacity-70"
-                          : "text-primary",
-                      )}
-                    >
-                      {p.expectedAmount} ج.م
+          {filteredPayments.map((p) => {
+            // +++ حساب وعرض العربون والإجمالي بشكل دقيق +++
+            const isPartial =
+              p.booking &&
+              p.booking.deposit &&
+              p.booking.totalPrice &&
+              p.booking.deposit < p.booking.totalPrice;
+            const displayedAmount = p.amountReceived || p.expectedAmount;
+
+            return (
+              <div
+                key={p._id}
+                className={cn(
+                  "card-surface p-5 flex flex-col justify-between transition-all duration-200",
+                  p.status === "expired"
+                    ? "border-dashed border-2 border-destructive/30 bg-destructive/5 grayscale-[15%]"
+                    : "hover:shadow-md",
+                )}
+              >
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <p className="text-[10px] font-bold text-muted-foreground bg-background border border-border px-2 py-1 rounded-md inline-block mb-2 shadow-sm">
+                      {p.booking?.venue?.name} <span className="mx-1">•</span>{" "}
+                      {p.booking?.court?.name}
                     </p>
-                    {p.status === "expired" && (
-                      <span className="text-[10px] font-bold text-destructive bg-destructive/10 px-2 py-0.5 rounded-md border border-destructive/20">
-                        لم يُدفع
-                      </span>
-                    )}
+
+                    {/* +++ عرض المبلغ مع إيضاح لو كان عربون +++ */}
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-2">
+                        <p
+                          className={cn(
+                            "font-display text-xl font-black flex items-baseline gap-1",
+                            p.status === "expired"
+                              ? "text-muted-foreground line-through opacity-70"
+                              : "text-primary",
+                          )}
+                        >
+                          {displayedAmount}{" "}
+                          <span className="text-xs text-muted-foreground">ج.م</span>
+                        </p>
+
+                        {p.status === "expired" ? (
+                          <span className="text-[10px] font-bold text-destructive bg-destructive/10 px-2 py-0.5 rounded-md border border-destructive/20">
+                            لم يُدفع
+                          </span>
+                        ) : isPartial ? (
+                          <span className="text-[10px] font-bold text-warning bg-warning/10 px-2 py-0.5 rounded-md border border-warning/20">
+                            دفع عربون
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold text-success bg-success/10 px-2 py-0.5 rounded-md border border-success/20">
+                            دفع كامل
+                          </span>
+                        )}
+                      </div>
+                      {isPartial && p.booking?.totalPrice && p.status !== "expired" && (
+                        <p className="text-[11px] font-semibold text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-md self-start">
+                          من إجمالي: {p.booking.totalPrice} ج.م
+                        </p>
+                      )}
+                    </div>
                   </div>
-                </div>
-                {/* +++ تغيير البادج ليصبح أحمر وواضح +++ */}
-                <span
-                  className={cn(
-                    "px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 shadow-sm border",
-                    p.status === "verified"
-                      ? "bg-success/10 text-success border-success/20"
+
+                  <span
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 shadow-sm border",
+                      p.status === "verified"
+                        ? "bg-success/10 text-success border-success/20"
+                        : p.status === "expired"
+                          ? "bg-destructive/10 text-destructive border-destructive/20"
+                          : "bg-warning/10 text-warning border-warning/20",
+                    )}
+                  >
+                    {p.status === "verified"
+                      ? "مؤكد"
                       : p.status === "expired"
-                        ? "bg-destructive/10 text-destructive border-destructive/20"
-                        : "bg-warning/10 text-warning border-warning/20",
-                  )}
-                >
-                  {p.status === "verified"
-                    ? "مؤكد"
-                    : p.status === "expired"
-                      ? "ملغي (لم يُدفع)"
-                      : "في الانتظار"}
-                </span>
-              </div>
-
-              {/* +++ رسالة تنبيه واضحة للكارت المنتهي +++ */}
-              {p.status === "expired" && (
-                <div className="mb-4 bg-background border border-destructive/20 rounded-xl p-3 flex items-start gap-2 shadow-sm">
-                  <AlertCircle className="size-4 text-destructive shrink-0 mt-0.5" />
-                  <p className="text-[11px] text-muted-foreground font-semibold leading-relaxed">
-                    هذا مجرد سجل لطلب حجز. العميل لم يقم بتحويل المبلغ وتم إلغاء حجزه آلياً.
-                  </p>
+                        ? "ملغي (لم يُدفع)"
+                        : "في الانتظار"}
+                  </span>
                 </div>
-              )}
 
-              <div className="space-y-2 text-sm mb-4">
-                <p className="flex justify-between border-b border-border pb-2">
-                  <span className="text-muted-foreground">موعد الحجز</span>
-                  <span
-                    className={cn(
-                      "font-bold text-[11px] px-2 py-0.5 rounded-md",
-                      p.status === "expired"
-                        ? "bg-muted text-muted-foreground border border-border"
-                        : "bg-primary/10 text-primary",
-                    )}
-                  >
-                    {formatDateTime(p.booking?.startTime)}
-                  </span>
-                </p>
+                {p.status === "expired" && (
+                  <div className="mb-4 bg-background border border-destructive/20 rounded-xl p-3 flex items-start gap-2 shadow-sm">
+                    <AlertCircle className="size-4 text-destructive shrink-0 mt-0.5" />
+                    <p className="text-[11px] text-muted-foreground font-semibold leading-relaxed">
+                      هذا مجرد سجل لطلب حجز. العميل لم يقم بتحويل المبلغ وتم إلغاء حجزه آلياً.
+                    </p>
+                  </div>
+                )}
 
-                {/* +++ تغيير المسميات حسب حالة الكارت +++ */}
-                <p className="flex justify-between border-b border-border pb-2">
-                  <span className="text-muted-foreground">
-                    {p.status === "expired" ? "هاتف العميل" : "الرقم المحول"}
-                  </span>
-                  <span
-                    className={cn(
-                      "font-bold",
-                      p.status === "expired" ? "text-muted-foreground" : "text-primary",
-                    )}
-                    dir="ltr"
-                  >
-                    {p.senderPhone ||
-                      p.booking?.user?.phone ||
-                      p.booking?.guestData?.phone ||
-                      "---"}
-                  </span>
-                </p>
-
-                <p className="flex justify-between border-b border-border pb-2">
-                  <span className="text-muted-foreground">
-                    {p.status === "expired" ? "وقت الطلب" : "وقت التحويل"}
-                  </span>
-                  <span className="font-bold text-[11px] text-muted-foreground" dir="ltr">
-                    {formatDateTime(p.createdAt)}
-                  </span>
-                </p>
-
-                {p.manualTransactionId && (
+                <div className="space-y-2 text-sm mb-4">
                   <p className="flex justify-between border-b border-border pb-2">
-                    <span className="text-muted-foreground">المرجع</span>
-                    <span className="font-bold text-muted-foreground" dir="ltr">
-                      {p.manualTransactionId}
+                    <span className="text-muted-foreground">العميل</span>
+                    <span className="font-bold text-[11px] text-foreground">
+                      {p.booking?.guestData?.name || p.booking?.user?.name || "---"}
                     </span>
                   </p>
-                )}
-                <p className="flex justify-between">
-                  <span className="text-muted-foreground">طريقة الدفع</span>
-                  <span className="font-bold text-muted-foreground">{p.method}</span>
-                </p>
-              </div>
 
-              {p.verificationNotes && (
-                <div className="mb-4 rounded-xl bg-success/5 border border-success/10 p-3 text-xs">
-                  <p className="font-bold flex items-center gap-1.5 text-success mb-1">
-                    <Info className="size-4" /> ملاحظات:
+                  <p className="flex justify-between border-b border-border pb-2">
+                    <span className="text-muted-foreground">موعد الحجز</span>
+                    <span
+                      className={cn(
+                        "font-bold text-[11px] px-2 py-0.5 rounded-md",
+                        p.status === "expired"
+                          ? "bg-muted text-muted-foreground border border-border"
+                          : "bg-primary/10 text-primary",
+                      )}
+                    >
+                      {formatDateTime(p.booking?.startTime)}
+                    </span>
                   </p>
-                  <p className="text-muted-foreground leading-relaxed">{p.verificationNotes}</p>
-                </div>
-              )}
 
-              {p.proofImage && (
-                <a
-                  href={`${BACKEND_URL}${p.proofImage}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center justify-center gap-2 rounded-xl bg-info/10 text-info border border-info/20 hover:bg-info hover:text-white transition py-2 text-xs font-bold mb-2"
-                >
-                  <FileImage className="size-4" /> الإثبات المرفوع
-                </a>
-              )}
-              {(p.status === "pending" || p.status === "pending_verification") &&
-                p.method !== "cash" && (
-                  <button
-                    onClick={() => handleVerify(p._id, false)}
-                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-success/10 text-success border border-success/20 hover:bg-success hover:text-white transition py-2.5 text-sm font-bold"
-                  >
-                    <Check className="size-4" /> تأكيد التحويل للإدارة
-                  </button>
+                  <p className="flex justify-between border-b border-border pb-2">
+                    <span className="text-muted-foreground">
+                      {p.status === "expired"
+                        ? "هاتف العميل"
+                        : p.method === "cash"
+                          ? "هاتف العميل"
+                          : "الرقم المحول"}
+                    </span>
+                    <span
+                      className={cn(
+                        "font-bold text-[11px]",
+                        p.status === "expired" ? "text-muted-foreground" : "text-primary",
+                      )}
+                      dir="ltr"
+                    >
+                      {p.senderPhone ||
+                        p.booking?.user?.phone ||
+                        p.booking?.guestData?.phone ||
+                        "---"}
+                    </span>
+                  </p>
+
+                  <p className="flex justify-between border-b border-border pb-2">
+                    <span className="text-muted-foreground">
+                      {p.status === "expired" ? "وقت الطلب" : "وقت الإدخال"}
+                    </span>
+                    <span className="font-bold text-[11px] text-muted-foreground" dir="ltr">
+                      {formatDateTime(p.createdAt)}
+                    </span>
+                  </p>
+
+                  {p.manualTransactionId && (
+                    <p className="flex justify-between border-b border-border pb-2">
+                      <span className="text-muted-foreground">المرجع</span>
+                      <span className="font-bold text-muted-foreground" dir="ltr">
+                        {p.manualTransactionId}
+                      </span>
+                    </p>
+                  )}
+                  <p className="flex justify-between">
+                    <span className="text-muted-foreground">طريقة الدفع</span>
+                    <span className="font-bold text-muted-foreground">
+                      {p.method === "cash"
+                        ? "كاش (نقدي)"
+                        : p.method === "vodafone_cash"
+                          ? "فودافون كاش"
+                          : p.method === "instapay"
+                            ? "إنستا باي"
+                            : p.method}
+                    </span>
+                  </p>
+                </div>
+
+                {p.verificationNotes && (
+                  <div className="mb-4 rounded-xl bg-success/5 border border-success/10 p-3 text-xs">
+                    <p className="font-bold flex items-center gap-1.5 text-success mb-1">
+                      <Info className="size-4" /> ملاحظات:
+                    </p>
+                    <p className="text-muted-foreground leading-relaxed">{p.verificationNotes}</p>
+                  </div>
                 )}
-            </div>
-          ))}
+
+                {p.proofImage && (
+                  <a
+                    href={`${BACKEND_URL}${p.proofImage}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-center gap-2 rounded-xl bg-info/10 text-info border border-info/20 hover:bg-info hover:text-white transition py-2 text-xs font-bold mb-2"
+                  >
+                    <FileImage className="size-4" /> الإثبات المرفوع
+                  </a>
+                )}
+                {(p.status === "pending" || p.status === "pending_verification") &&
+                  p.method !== "cash" && (
+                    <button
+                      onClick={() => handleVerify(p._id, false)}
+                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-success/10 text-success border border-success/20 hover:bg-success hover:text-white transition py-2.5 text-sm font-bold"
+                    >
+                      <Check className="size-4" /> تأكيد التحويل للإدارة
+                    </button>
+                  )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

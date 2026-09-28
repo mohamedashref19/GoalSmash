@@ -22,8 +22,9 @@ const bookingSchema = new mongoose.Schema(
     },
     bookingType: {
       type: String,
-      enum: ["app", "manual"],
-      required: [true, "يجب تحديد نوع الحجز (تطبيق أو يدوي)"],
+      // +++ تمت إضافة maintenance و academy +++
+      enum: ["app", "manual", "maintenance", "academy"],
+      required: [true, "يجب تحديد نوع الحجز"],
     },
     deposit: {
       type: Number,
@@ -47,14 +48,26 @@ const bookingSchema = new mongoose.Schema(
     },
     status: {
       type: String,
+      // +++ تمت إضافة blocked للإغلاقات الإدارية +++
       enum: [
         "pending_payment",
         "confirmed",
         "cancelled",
         "completed",
         "expired",
+        "blocked",
       ],
       default: "pending_payment",
+    },
+    cancelledBy: {
+      type: mongoose.Schema.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    cancellationReason: {
+      // اختياري، لمعرفة سبب الإلغاء
+      type: String,
+      default: null,
     },
     paymentStatus: {
       type: String,
@@ -67,6 +80,11 @@ const bookingSchema = new mongoose.Schema(
       default: "cash",
     },
     notes: String,
+    // +++ حقل جديد لمعرفة إذا كان الإغلاق جزء من سلسلة متكررة +++
+    recurrenceId: {
+      type: String,
+      default: null,
+    },
     expiresAt: {
       type: Date,
       default: null,
@@ -76,12 +94,14 @@ const bookingSchema = new mongoose.Schema(
     timestamps: true,
   },
 );
+
 bookingSchema.index({
   court: 1,
   startTime: 1,
   endTime: 1,
   status: 1,
 });
+
 bookingSchema.pre(/^find/, function () {
   this.populate({
     path: "court",

@@ -8,6 +8,8 @@ const Notification = require("../models/notificationModel");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
 const PaymentAccount = require("../models/paymentAccountModel");
+// +++ استدعاء موديل الإغلاقات +++
+const CourtBlock = require("../models/courtBlockModel");
 
 const courtMutexes = new Map();
 
@@ -51,7 +53,6 @@ exports.createBooking = catchAsync(async (req, res, next) => {
     paymentMethod,
   } = req.body;
 
-  // جلب بيانات النادي لتحديد موعد الفترة المسائية وصلاحيات المالك
   const venueObj = await Venue.findById(venue);
   if (!venueObj) {
     return next(new AppError("هذا النادي غير موجود", 404));
@@ -92,10 +93,7 @@ exports.createBooking = catchAsync(async (req, res, next) => {
     !["vodafone_cash", "instapay"].includes(paymentMethod)
   ) {
     return next(
-      new AppError(
-        "يرجى اختيار طريقة دفع صحيحة (فودافون كاش أو انستاباي)",
-        400,
-      ),
+      new AppError("يرجى اختيار طريقة دفع صحيحة (محفظة أو انستاباي)", 400),
     );
   }
 
@@ -105,7 +103,6 @@ exports.createBooking = catchAsync(async (req, res, next) => {
   const durationInHours =
     (newEnd.getTime() - newStart.getTime()) / (1000 * 60 * 60);
 
-  // +++ حساب السعر ديناميكياً بناءً على الفترة (صباحي / مسائي) +++
   const bookingHour = newStart.getHours();
   const eveningStartHour = parseInt(
     (venueObj.eveningStartTime || "18:00").split(":")[0],
@@ -116,12 +113,19 @@ exports.createBooking = catchAsync(async (req, res, next) => {
     10,
   );
 
-  // يعتبر مسائياً إذا كان وقت الحجز بعد موعد المساء، أو في الفجر (قبل موعد الفتح الصباحي)
   const isEvening =
     bookingHour >= eveningStartHour || bookingHour < morningStartHour;
-  const hourlyPrice = isEvening
-    ? courtExists.priceEvening
-    : courtExists.priceMorning;
+
+  // +++ التعديل الأول: حل مشكلة الخطأ 400 للملاعب القديمة التي تفتقر للسعر الصباحي والمسائي +++
+  const eveningPrice =
+    courtExists.priceEvening !== undefined
+      ? courtExists.priceEvening
+      : courtExists.pricePerHour;
+  const morningPrice =
+    courtExists.priceMorning !== undefined
+      ? courtExists.priceMorning
+      : courtExists.pricePerHour;
+  const hourlyPrice = isEvening ? eveningPrice : morningPrice;
 
   const calculatedTotalPrice = Number(
     (durationInHours * hourlyPrice).toFixed(2),
@@ -140,15 +144,22 @@ exports.createBooking = catchAsync(async (req, res, next) => {
   const mutex = getCourtMutex(courtIdString);
 
   await mutex.runExclusive(async () => {
+    // التحقق من الحجوزات العادية
     const conflictingBooking = await Booking.findOne({
       court: court,
       status: { $in: ["confirmed", "pending_payment"] },
       $and: [{ startTime: { $lt: newEnd } }, { endTime: { $gt: newStart } }],
     });
 
-    if (conflictingBooking) {
+    // +++ التعديل الثاني: التحقق من الإغلاقات لمنع العميل من حجز وقت مغلق للصيانة/الأكاديمية +++
+    const conflictingBlock = await CourtBlock.findOne({
+      court: court,
+      $and: [{ startTime: { $lt: newEnd } }, { endTime: { $gt: newStart } }],
+    });
+
+    if (conflictingBooking || conflictingBlock) {
       throw new AppError(
-        "عذراً، هذا الملعب محجوز بالفعل أو في انتظار الدفع",
+        "عذراً، هذا الملعب محجوز بالفعل أو مغلق في هذا الوقت",
         409,
       );
     }
@@ -170,7 +181,7 @@ exports.createBooking = catchAsync(async (req, res, next) => {
 
         if (!activePaymentAccount) {
           throw new AppError(
-            `عذراً، لا توجد حسابات (${paymentMethod === "instapay" ? "إنستا باي" : "فودافون كاش"}) نشطة حالياً. يرجى المحاولة لاحقاً.`,
+            `عذراً، لا توجد حسابات متاحة حالياً. يرجى المحاولة لاحقاً.`,
             404,
           );
         }
@@ -349,15 +360,15 @@ exports.getAllBookings = catchAsync(async (req, res, next) => {
   }
 
   if (req.query.court) filter.court = req.query.court;
-
-  // +++ التعديل هنا: إضافة فلتر الحالة (status) لجلب الإلغاءات +++
   if (req.query.status) filter.status = req.query.status;
 
+  let startOfLogicalDay, endOfLogicalDay;
+
   if (req.query.date) {
-    const startOfLogicalDay = new Date(req.query.date);
+    startOfLogicalDay = new Date(req.query.date);
     startOfLogicalDay.setHours(8, 0, 0, 0);
 
-    const endOfLogicalDay = new Date(req.query.date);
+    endOfLogicalDay = new Date(req.query.date);
     endOfLogicalDay.setDate(endOfLogicalDay.getDate() + 1);
     endOfLogicalDay.setHours(7, 59, 59, 999);
 
@@ -368,17 +379,17 @@ exports.getAllBookings = catchAsync(async (req, res, next) => {
     .populate({ path: "venue", select: "name address" })
     .populate({
       path: "court",
-      select: "name sportType priceMorning priceEvening",
+      select: "name sportType priceMorning priceEvening pricePerHour",
     })
     .populate({ path: "user", select: "name phone" })
+    .populate({ path: "cancelledBy", select: "name role" })
     .sort("startTime");
 
-  let processedBookings = bookings;
+  let processedBookings = bookings.map((b) => b.toObject());
 
   if (req.user && req.user.role === "customer") {
     processedBookings = await Promise.all(
-      bookings.map(async (booking) => {
-        const b = booking.toObject();
+      processedBookings.map(async (b) => {
         const isMyBooking = b.user && b.user._id.toString() === req.user.id;
 
         if (!isMyBooking) {
@@ -402,6 +413,52 @@ exports.getAllBookings = catchAsync(async (req, res, next) => {
         return b;
       }),
     );
+  }
+
+  // +++ الحل 2: دمج قواعد الإغلاق الوهمية ودعم صفحة الأدمن (عن طريق venue أو court) +++
+  if (req.query.date && startOfLogicalDay && endOfLogicalDay) {
+    let blockFilter = {
+      startTime: { $lt: endOfLogicalDay },
+      endTime: { $gt: startOfLogicalDay },
+    };
+
+    if (req.query.court) {
+      blockFilter.court = req.query.court;
+    } else if (filter.venue) {
+      blockFilter.venue = filter.venue;
+    }
+
+    const blocks = await CourtBlock.find(blockFilter);
+
+    blocks.forEach((block) => {
+      // حصر اللوب في الوقت المتقاطع مع اليوم المطلوب فقط
+      const blockStart = new Date(block.startTime);
+      const blockEnd = new Date(block.endTime);
+
+      const overlapStart =
+        blockStart > startOfLogicalDay ? blockStart : startOfLogicalDay;
+      const overlapEnd =
+        blockEnd < endOfLogicalDay ? blockEnd : endOfLogicalDay;
+
+      let current = new Date(overlapStart);
+
+      // +++ Fix: Use <= instead of < to include the last hour if needed, or ensure proper rounding +++
+      // The issue is likely timezone related where current.getTime() + 1 hour exceeds overlapEnd slightly.
+      // A more robust approach is to compare the hours directly if they are on the same day.
+
+      while (current < overlapEnd) {
+        processedBookings.push({
+          _id: block._id.toString() + current.getHours(),
+          court: block.court,
+          startTime: new Date(current).toISOString(),
+          endTime: new Date(current.getTime() + 60 * 60 * 1000).toISOString(),
+          status: "blocked",
+          bookingType: block.blockType,
+          notes: block.notes,
+        });
+        current.setHours(current.getHours() + 1);
+      }
+    });
   }
 
   res.status(200).json({
@@ -468,6 +525,8 @@ exports.cancelBooking = catchAsync(async (req, res, next) => {
   }
 
   booking.status = "cancelled";
+  // +++ التعديل هنا: تسجيل من قام بالإلغاء +++
+  booking.cancelledBy = req.user.id;
   await booking.save();
 
   res.status(200).json({
@@ -520,5 +579,194 @@ exports.updatePayment = catchAsync(async (req, res, next) => {
     status: "success",
     message: "تم تحديث بيانات الدفع بنجاح",
     data: { booking },
+  });
+});
+
+// +++ دالة إغلاق الملاعب المحدثة (تدعم الاستبدال الذكي للإغلاقات القديمة Smart Overwrite) +++
+exports.blockCourtSlots = catchAsync(async (req, res, next) => {
+  const { venue, court, dates, startTimeHour, endTimeHour, blockType, notes } =
+    req.body;
+
+  if (
+    !venue ||
+    !court ||
+    !dates ||
+    !dates.length ||
+    startTimeHour === undefined ||
+    endTimeHour === undefined
+  ) {
+    return next(
+      new AppError(
+        "يرجى إرسال جميع بيانات الإغلاق (النادي، الملعب، التواريخ، وساعات البداية والنهاية).",
+        400,
+      ),
+    );
+  }
+
+  // التحقق من صلاحيات المالك
+  const venueObj = await Venue.findById(venue);
+  if (!venueObj) return next(new AppError("النادي غير موجود", 404));
+
+  if (req.user.role === "owner" && venueObj.owner.toString() !== req.user.id) {
+    return next(new AppError("غير مصرح لك بتعديل مواعيد هذا النادي", 403));
+  }
+
+  const courtIdString = court.toString();
+  const mutex = getCourtMutex(courtIdString);
+  const recurrenceId = `BLOCK-${Date.now()}`;
+
+  let createdCount = 0;
+  let failedCount = 0;
+
+  await mutex.runExclusive(async () => {
+    const blocksToInsert = [];
+
+    let minDate = new Date("2100-01-01");
+    let maxDate = new Date("1970-01-01");
+
+    for (const dateStr of dates) {
+      const startDateTime = new Date(dateStr);
+      startDateTime.setHours(startTimeHour, 0, 0, 0);
+
+      const endDateTime = new Date(dateStr);
+      endDateTime.setHours(endTimeHour, 0, 0, 0);
+
+      if (endTimeHour <= startTimeHour) {
+        endDateTime.setDate(endDateTime.getDate() + 1);
+      }
+      if (startTimeHour < 8) {
+        startDateTime.setDate(startDateTime.getDate() + 1);
+        endDateTime.setDate(endDateTime.getDate() + 1);
+      }
+
+      if (startDateTime < minDate) minDate = startDateTime;
+      if (endDateTime > maxDate) maxDate = endDateTime;
+
+      blocksToInsert.push({
+        venue,
+        court,
+        blockType: blockType || "maintenance",
+        startTime: startDateTime,
+        endTime: endDateTime,
+        notes: notes || "تم الإغلاق بواسطة الإدارة",
+        recurrenceId: recurrenceId,
+      });
+    }
+
+    // 1. البحث عن التعارضات في الحجوزات الفعلية فقط (Bookings) وليس الإغلاقات
+    const allBookingsInRange = await Booking.find({
+      court: court,
+      status: { $in: ["confirmed", "pending_payment"] },
+      startTime: { $lt: maxDate },
+      endTime: { $gt: minDate },
+    });
+
+    const finalBlocksToInsert = [];
+
+    for (const block of blocksToInsert) {
+      const hasBookingConflict = allBookingsInRange.some(
+        (cb) => cb.startTime < block.endTime && cb.endTime > block.startTime,
+      );
+
+      // لو فيه حجز حقيقي لعميل، ارفض القفل
+      if (hasBookingConflict) {
+        failedCount++;
+      } else {
+        finalBlocksToInsert.push(block);
+      }
+    }
+
+    // 2. إدخال الإغلاقات الجديدة واستبدال القديمة المتقاطعة معها
+    if (finalBlocksToInsert.length > 0) {
+      // تجهيز شروط للبحث عن الإغلاقات الإدارية القديمة اللي بتتعارض مع الجديد
+      const orConditions = finalBlocksToInsert.map((b) => ({
+        startTime: { $lt: b.endTime },
+        endTime: { $gt: b.startTime },
+      }));
+
+      if (orConditions.length > 0) {
+        // مسح الإغلاقات القديمة (عشان نعمل Overwrite بسلاسة)
+        await CourtBlock.deleteMany({
+          court: court,
+          $or: orConditions,
+        });
+      }
+
+      // إدخال المواعيد الجديدة
+      await CourtBlock.insertMany(finalBlocksToInsert);
+      createdCount = finalBlocksToInsert.length;
+    }
+  });
+
+  res.status(201).json({
+    status: "success",
+    message: `تمت العملية بنجاح. (${createdCount} تم إغلاقها/تحديثها، ${failedCount} فشلت لوجود حجوزات للعملاء)`,
+    data: {
+      createdCount,
+      failedCount,
+    },
+  });
+});
+// +++ دالة جلب قائمة الإغلاقات (لعرضها في لوحة الإدارة) +++
+exports.getAllBlocks = catchAsync(async (req, res, next) => {
+  let filter = {};
+
+  // قصر عرض الإغلاقات للمالك على أنديته فقط
+  if (req.user && req.user.role === "owner") {
+    const myVenues = await Venue.find({ owner: req.user.id }).select("_id");
+    const myVenueIds = myVenues.map((v) => v._id.toString());
+
+    if (req.query.venue) {
+      if (!myVenueIds.includes(req.query.venue)) {
+        return next(new AppError("غير مصرح لك بعرض إغلاقات هذا الملعب!", 403));
+      }
+      filter.venue = req.query.venue;
+    } else {
+      filter.venue = { $in: myVenueIds };
+    }
+  } else if (req.query.venue) {
+    filter.venue = req.query.venue;
+  }
+
+  if (req.query.court) filter.court = req.query.court;
+
+  // إخفاء الإغلاقات القديمة جداً لتنظيف الجدول (اختياري)
+  filter.endTime = { $gte: new Date() };
+
+  const blocks = await CourtBlock.find(filter)
+    .populate({ path: "venue", select: "name" })
+    .populate({ path: "court", select: "name sportType" })
+    .sort("startTime");
+
+  res.status(200).json({
+    status: "success",
+    results: blocks.length,
+    data: { blocks },
+  });
+});
+
+// +++ دالة حذف الإغلاق (لإعادة فتح الموعد للعملاء) +++
+exports.deleteBlock = catchAsync(async (req, res, next) => {
+  const block = await CourtBlock.findById(req.params.id).populate("venue");
+
+  if (!block) {
+    return next(new AppError("هذا الإغلاق غير موجود أو تم حذفه بالفعل", 404));
+  }
+
+  // حماية: التأكد أن المالك يحذف إغلاقات ملعبه فقط
+  if (
+    req.user &&
+    req.user.role === "owner" &&
+    block.venue.owner.toString() !== req.user.id
+  ) {
+    return next(new AppError("غير مصرح لك بفتح مواعيد هذا النادي", 403));
+  }
+
+  await CourtBlock.findByIdAndDelete(req.params.id);
+
+  res.status(200).json({
+    status: "success",
+    message: "تم إلغاء الإغلاق وفتح الموعد بنجاح",
+    data: null,
   });
 });

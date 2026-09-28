@@ -206,3 +206,32 @@ export const fetchBookingsForAdminSchedule = async (venueId, dateStr) => {
     throw error.response?.data?.message || "حدث خطأ أثناء جلب جدول الحجوزات";
   }
 };
+
+// +++ دالة إغلاق الساعات والأيام للملاعب (صيانة / أكاديمية) +++
+export const blockCourtSlots = async (blockData) => {
+  try {
+    const response = await apiClient.post("/bookings/block-slots", blockData);
+    return response.data;
+  } catch (error) {
+    throw error.response?.data?.message || "حدث خطأ أثناء محاولة إغلاق الساعات.";
+  }
+};
+// +++ جلب قائمة الإغلاقات النشطة (للإدارة) +++
+export const fetchCourtBlocks = async () => {
+  try {
+    const response = await apiClient.get("/bookings/block-slots");
+    return response.data.data.blocks;
+  } catch (error) {
+    throw error.response?.data?.message || "حدث خطأ أثناء جلب قائمة الإغلاقات.";
+  }
+};
+
+// +++ إلغاء الإغلاق (لإعادة فتح الموعد) +++
+export const deleteCourtBlock = async (id) => {
+  try {
+    const response = await apiClient.delete(`/bookings/block-slots/${id}`);
+    return response.data;
+  } catch (error) {
+    throw error.response?.data?.message || "حدث خطأ أثناء إلغاء الإغلاق.";
+  }
+};

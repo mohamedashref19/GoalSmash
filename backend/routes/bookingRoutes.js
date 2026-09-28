@@ -11,6 +11,16 @@ router
   .get(bookingController.getAllBookings)
   .post(bookingController.createBooking);
 
+router
+  .route("/block-slots")
+  .get(authController.restrictTo("admin"), bookingController.getAllBlocks)
+  .post(authController.restrictTo("admin"), bookingController.blockCourtSlots);
+router.delete(
+  "/block-slots/:id",
+  authController.restrictTo("admin"),
+  bookingController.deleteBlock,
+);
+
 router.route("/:id").get(bookingController.getBooking);
 
 router.patch("/:id/cancel", bookingController.cancelBooking);

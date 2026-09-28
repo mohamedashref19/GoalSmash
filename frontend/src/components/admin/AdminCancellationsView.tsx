@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2, UserX, ShieldAlert, MonitorX } from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -12,9 +12,10 @@ interface CancelledBooking {
   createdAt: string;
   updatedAt: string;
   court?: { name: string };
-  venue?: { name: string };
-  user?: { name: string; phone: string };
+  venue?: { name: string; owner?: string };
+  user?: { _id: string; name: string; phone: string };
   guestData?: { name: string; phone: string };
+  cancelledBy?: { _id: string; name: string; role: string }; // الحقل الجديد من الباك إند
 }
 
 export function AdminCancellationsView() {
@@ -28,6 +29,43 @@ export function AdminCancellationsView() {
       .catch((err: unknown) => toast.error(err as string))
       .finally(() => setLoading(false));
   }, []);
+
+  // دالة مساعدة لتحديد من قام بالإلغاء وشكل العرض الخاص به
+  const getCancelledByDetails = (booking: CancelledBooking) => {
+    if (!booking.cancelledBy) {
+      return {
+        text: "إلغاء تلقائي (تجاوز الوقت)",
+        icon: MonitorX,
+        color: "text-muted-foreground",
+        bg: "bg-muted/50",
+      };
+    }
+
+    if (booking.cancelledBy.role === "customer" || booking.cancelledBy._id === booking.user?._id) {
+      return {
+        text: "العميل (عبر التطبيق)",
+        icon: UserX,
+        color: "text-orange-500",
+        bg: "bg-orange-500/10",
+      };
+    }
+
+    if (booking.cancelledBy.role === "owner" || booking.cancelledBy.role === "admin") {
+      return {
+        text: "صاحب الملعب / الإدارة",
+        icon: ShieldAlert,
+        color: "text-destructive",
+        bg: "bg-destructive/10",
+      };
+    }
+
+    return {
+      text: booking.cancelledBy.name,
+      icon: UserX,
+      color: "text-muted-foreground",
+      bg: "bg-muted/50",
+    };
+  };
 
   return (
     <div dir="rtl" className="card-surface p-4 sm:p-6 mt-8 animate-in fade-in max-w-7xl mx-auto">
@@ -53,8 +91,8 @@ export function AdminCancellationsView() {
                 <th className="px-5 py-4 font-bold">العميل / الهاتف</th>
                 <th className="px-5 py-4 font-bold">النادي / الملعب</th>
                 <th className="px-5 py-4 font-bold text-center">موعد اللعب (الأساسي)</th>
-                <th className="px-5 py-4 font-bold text-center">وقت إنشاء الحجز</th>
-                <th className="px-5 py-4 font-bold text-center text-destructive">وقت الإلغاء</th>
+                <th className="px-5 py-4 font-bold text-center">تم الإلغاء بواسطة</th>
+                <th className="px-5 py-4 font-bold text-center text-destructive">توقيت الإلغاء</th>
               </tr>
             </thead>
             <tbody className="bg-card">
@@ -70,11 +108,13 @@ export function AdminCancellationsView() {
               ) : (
                 cancelledList.map((m: CancelledBooking) => {
                   const playDate = new Date(m.startTime);
-                  const createdDate = m.createdAt ? new Date(m.createdAt) : null;
                   const cancelledDate = m.updatedAt ? new Date(m.updatedAt) : null;
 
                   const clientName = m.user?.name || m.guestData?.name || "بدون اسم";
                   const clientPhone = m.user?.phone || m.guestData?.phone || "";
+
+                  const cancelInfo = getCancelledByDetails(m);
+                  const CancelIcon = cancelInfo.icon;
 
                   return (
                     <tr
@@ -118,26 +158,17 @@ export function AdminCancellationsView() {
                           </span>
                         </div>
                       </td>
-                      <td className="px-5 py-4 text-center text-muted-foreground">
-                        {createdDate ? (
-                          <div className="flex flex-col items-center">
-                            <span className="font-semibold">
-                              {createdDate.toLocaleDateString("ar-EG", {
-                                day: "numeric",
-                                month: "short",
-                              })}
-                            </span>
-                            <span className="text-[10px] mt-0.5">
-                              {createdDate.toLocaleTimeString("ar-EG", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </span>
-                          </div>
-                        ) : (
-                          "--"
-                        )}
+
+                      {/* +++ العمود الجديد: مصدر الإلغاء +++ */}
+                      <td className="px-5 py-4 text-center">
+                        <div
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold ${cancelInfo.bg} ${cancelInfo.color}`}
+                        >
+                          <CancelIcon className="size-3.5" />
+                          {cancelInfo.text}
+                        </div>
                       </td>
+
                       <td className="px-5 py-4 text-center text-destructive">
                         {cancelledDate ? (
                           <div className="flex flex-col items-center">

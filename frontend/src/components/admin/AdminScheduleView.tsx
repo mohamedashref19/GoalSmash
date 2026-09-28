@@ -28,6 +28,7 @@ interface BookingData {
   status: string;
   totalPrice?: number;
   deposit?: number;
+  notes?: string;
   guestData?: { name: string; phone?: string };
   user?: { name: string; phone?: string };
   court?: { _id: string; name: string } | string;
@@ -120,8 +121,8 @@ export function AdminScheduleView() {
         bDate.getMonth() === cellDate.getMonth() &&
         bDate.getFullYear() === cellDate.getFullYear();
 
-      // إظهار الحجوزات المؤكدة وقيد الدفع
-      const isBooked = ["confirmed", "pending_payment"].includes(b.status);
+      // +++ التعديل هنا: إضافة "blocked" لكي يقرأ الجدول المواعيد المغلقة +++
+      const isBooked = ["confirmed", "pending_payment", "blocked"].includes(b.status);
 
       return bCourtId === courtId && startHour === hour && isBooked && isSameDay;
     });
@@ -253,6 +254,32 @@ export function AdminScheduleView() {
                     const b = getBookingForCell(court._id, hour);
 
                     if (b) {
+                      // +++ إضافة شكل مخصص للمواعيد المغلقة (أكاديمية أو صيانة) +++
+                      if (b.status === "blocked") {
+                        const isAcademy = b.bookingType === "academy";
+                        return (
+                          <div
+                            key={hour}
+                            className={cn(
+                              "m-1 overflow-hidden rounded-xl border p-1.5 text-right relative",
+                              isAcademy
+                                ? "bg-purple-500/10 border-purple-500/40 text-purple-700"
+                                : "bg-destructive/10 border-destructive/40 text-destructive",
+                            )}
+                          >
+                            <p className="truncate text-[10px] font-extrabold pr-1">
+                              {isAcademy ? "أكاديمية (محجوز)" : "مغلق / صيانة"}
+                            </p>
+                            <div className="flex justify-between items-center mt-1 pr-1">
+                              <span className="text-[9px] font-bold opacity-80 truncate">
+                                {b.notes || "إغلاق إداري"}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // الشكل الطبيعي للحجوزات العادية
                       const kind = b.bookingType || "app";
                       const remaining = Math.max((b.totalPrice || 0) - (b.deposit || 0), 0);
 
@@ -284,6 +311,7 @@ export function AdminScheduleView() {
                       );
                     }
 
+                    // الشكل الطبيعي للساعات الفارغة المتاحة
                     return (
                       <div
                         key={hour}
