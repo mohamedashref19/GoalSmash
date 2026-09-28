@@ -48,6 +48,30 @@ if (process.env.NODE_ENV === "development") {
   app.use(morgan("dev"));
 }
 
+// SMS webhook body parser (MUST come before express.json)
+// Macrodroid inserts the raw SMS text inside the JSON string, and multi-line
+// SMS contain real newline characters, which makes the JSON invalid
+// ("Bad control character in string literal"). We read this one route as text,
+// replace control characters (newlines/tabs) with a space, then parse it.
+// express.text marks the request as already parsed, so express.json below
+// skips it.
+app.use(
+  "/api/v1/payments/webhook/sms",
+  express.text({ type: "*/*", limit: "10kb" }),
+  (req, res, next) => {
+    if (typeof req.body === "string") {
+      try {
+        // eslint-disable-next-line no-control-regex
+        const cleaned = req.body.replace(/[\u0000-\u001F]+/g, " ");
+        req.body = JSON.parse(cleaned);
+      } catch (err) {
+        return next(new AppError("Invalid JSON body", 400));
+      }
+    }
+    next();
+  },
+);
+
 //  Body Parser
 app.use(express.json({ limit: "10kb" }));
 
