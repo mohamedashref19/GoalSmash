@@ -83,7 +83,7 @@ export function SidebarContent({ activeView, venueId, onNavigate, onClose }: Pro
         })}
       </nav>
 
-      <div className="mt-auto rounded-2xl bg-surface p-4 border border-border shadow-sm">
+      {/* <div className="mt-auto rounded-2xl bg-surface p-4 border border-border shadow-sm">
         <p className="text-sm font-bold text-muted-foreground">نسبة الإشغال اليوم</p>
         <p className="mt-1 font-display text-2xl font-extrabold text-primary">{occupancy}</p>
         <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted border border-border">
@@ -92,7 +92,7 @@ export function SidebarContent({ activeView, venueId, onNavigate, onClose }: Pro
             style={{ width: occupancy }}
           />
         </div>
-      </div>
+      </div> */}
     </div>
   );
 }

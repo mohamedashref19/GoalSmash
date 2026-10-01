@@ -14,5 +14,6 @@ router.post("/owners", adminController.createOwner);
 router.get("/owners", adminController.getAllOwners);
 router.get("/customers", adminController.getAllCustomers);
 router.get("/daily-closing", adminController.getDailyClosing);
+router.post("/daily-closing/settle", adminController.toggleDailySettlement);
 
 module.exports = router;

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import React from "react";
 import {
   UserPlus,
   Building2,
@@ -40,6 +41,7 @@ import {
   blockCourtSlots,
   fetchCourtBlocks,
   deleteCourtBlock,
+  deleteCourtBlockSeries,
   // @ts-expect-error: API lacks TypeScript definitions
 } from "@/api/adminApi";
 // @ts-expect-error: API lacks TypeScript definitions
@@ -101,6 +103,19 @@ interface CourtBlock {
   startTime: string;
   endTime: string;
   notes: string;
+  recurrenceId?: string;
+}
+interface GroupedCourtBlock {
+  recurrenceId: string;
+  venue: { _id: string; name: string };
+  court: { _id: string; name: string; sportType: string };
+  blockType: string;
+  notes: string;
+  startTimeHour: string;
+  endTimeHour: string;
+  minDate: Date;
+  maxDate: Date;
+  blocks: CourtBlock[];
 }
 
 type TabKey = "owner" | "venue" | "court" | "manage" | "block" | "customers" | "accounts";
@@ -121,6 +136,7 @@ export function AdminSetupView() {
   const [customersList, setCustomersList] = useState<Customer[]>([]);
   const [accountsList, setAccountsList] = useState<PaymentAccount[]>([]);
   const [blocksList, setBlocksList] = useState<CourtBlock[]>([]);
+  const [expandedBlocks, setExpandedBlocks] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [blockData, setBlockData] = useState({
@@ -347,7 +363,17 @@ export function AdminSetupView() {
       }
     }
   };
-
+  const handleDeleteBlockSeries = async (recurrenceId: string) => {
+    if (window.confirm("هل أنت متأكد من إلغاء هذه السلسلة بالكامل (كل الأيام)؟")) {
+      try {
+        await deleteCourtBlockSeries(recurrenceId);
+        toast.success("تم إعادة فتح المواعيد بالكامل بنجاح");
+        loadBlocks();
+      } catch (err: unknown) {
+        toast.error(err as string);
+      }
+    }
+  };
   const handleCreateCourt = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -1202,7 +1228,7 @@ export function AdminSetupView() {
       {activeTab === "block" && (
         <div className="animate-in slide-in-from-bottom-2">
           <form onSubmit={handleBlockSlots} className="space-y-4 max-w-2xl mx-auto">
-            <div className="bg-destructive/5 border border-destructive/20 rounded-xl p-4 mb-4">
+            {/* <div className="bg-destructive/5 border border-destructive/20 rounded-xl p-4 mb-4">
               <h3 className="font-bold text-destructive mb-2 flex items-center gap-2">
                 <Lock className="size-4" /> إغلاق ساعات الملاعب
               </h3>
@@ -1210,7 +1236,7 @@ export function AdminSetupView() {
                 يمكنك استخدام هذه الواجهة لحجب الساعات عن العملاء سواء للصيانة أو لحجوزات
                 الأكاديميات الثابتة. المواعيد المغلقة لا يمكن للعميل حجزها.
               </p>
-            </div>
+            </div> */}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <select
@@ -1353,103 +1379,196 @@ export function AdminSetupView() {
           </form>
 
           {/* جدول المواعيد المغلقة */}
-          <div className="mt-10 max-w-4xl mx-auto">
-            <h3 className="font-bold mb-4 flex items-center gap-2">
-              <Clock className="size-5 text-primary" /> المواعيد المغلقة حالياً
-            </h3>
-            <div className="overflow-x-auto rounded-xl border border-border">
-              <table className="w-full text-sm text-right">
-                <thead className="bg-muted/50 text-muted-foreground">
+          <div className="overflow-x-auto rounded-xl border border-border">
+            <table className="w-full text-sm text-right">
+              <thead className="bg-muted/50 text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3 font-bold">النادي والملعب</th>
+                  <th className="px-4 py-3 font-bold">نوع الإغلاق</th>
+                  <th className="px-4 py-3 font-bold">الملخص (التاريخ والوقت)</th>
+                  <th className="px-4 py-3 font-bold max-w-[150px]">ملاحظات</th>
+                  <th className="px-4 py-3 font-bold text-center">إجراءات المجموعة</th>
+                </tr>
+              </thead>
+              <tbody>
+                {blocksList.length === 0 ? (
                   <tr>
-                    <th className="px-4 py-3 font-bold">النادي والملعب</th>
-                    <th className="px-4 py-3 font-bold">نوع الإغلاق</th>
-                    <th className="px-4 py-3 font-bold">تاريخ البداية والنهاية</th>
-                    <th className="px-4 py-3 font-bold max-w-[150px]">ملاحظات</th>
-                    <th className="px-4 py-3 font-bold text-center">إجراء</th>
+                    <td
+                      colSpan={5}
+                      className="px-4 py-8 text-center text-muted-foreground font-bold"
+                    >
+                      لا توجد مواعيد مغلقة حالياً.
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {blocksList.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={5}
-                        className="px-4 py-8 text-center text-muted-foreground font-bold"
-                      >
-                        لا توجد مواعيد مغلقة حالياً.
-                      </td>
-                    </tr>
-                  ) : (
-                    blocksList.map((block) => {
-                      const start = new Date(block.startTime);
-                      const end = new Date(block.endTime);
-                      const isAcademy = block.blockType === "academy";
+                ) : (
+                  (() => {
+                    // تجميع الإغلاقات بناءً على recurrenceId
+                    const groupedBlocks = blocksList.reduce(
+                      (acc, block) => {
+                        const key = block.recurrenceId || block._id; // لو مفيش، اعتبره مجموعة من يوم واحد
+                        if (!acc[key]) {
+                          acc[key] = {
+                            recurrenceId: key,
+                            venue: block.venue,
+                            court: block.court,
+                            blockType: block.blockType,
+                            notes: block.notes,
+                            startTimeHour: new Date(block.startTime).toLocaleTimeString("ar-EG", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            }),
+                            endTimeHour: new Date(block.endTime).toLocaleTimeString("ar-EG", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            }),
+                            minDate: new Date(block.startTime),
+                            maxDate: new Date(block.endTime),
+                            blocks: [block],
+                          };
+                        } else {
+                          acc[key].blocks.push(block);
+                          const bStart = new Date(block.startTime);
+                          const bEnd = new Date(block.endTime);
+                          if (bStart < acc[key].minDate) acc[key].minDate = bStart;
+                          if (bEnd > acc[key].maxDate) acc[key].maxDate = bEnd;
+                        }
+                        return acc;
+                      },
+                      {} as Record<string, GroupedCourtBlock>,
+                    ); // +++ تم التعديل هنا +++
+
+                    return Object.values(groupedBlocks).map((group: GroupedCourtBlock) => {
+                      // +++ تم التعديل هنا +++
+                      const isAcademy = group.blockType === "academy";
+                      const isExpanded = expandedBlocks.includes(group.recurrenceId);
+                      const isSingleDay = group.blocks.length === 1;
 
                       return (
-                        <tr key={block._id} className="border-b border-border/50 hover:bg-muted/20">
-                          <td className="px-4 py-3">
-                            <div className="font-bold">{block.venue?.name}</div>
-                            <div className="text-[11px] text-muted-foreground">
-                              {block.court?.name}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={cn(
-                                "px-2 py-1 rounded-md text-[10px] font-bold",
-                                isAcademy
-                                  ? "bg-purple-500/10 text-purple-600"
-                                  : "bg-destructive/10 text-destructive",
-                              )}
-                            >
-                              {isAcademy ? "حجز أكاديمية" : "صيانة / إداري"}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="text-xs font-semibold">
-                              من:{" "}
-                              <span dir="ltr">
-                                {start.toLocaleString("ar-EG", {
-                                  month: "short",
-                                  day: "numeric",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
-                              </span>
-                            </div>
-                            <div className="text-xs font-semibold text-primary mt-1">
-                              إلى:{" "}
-                              <span dir="ltr">
-                                {end.toLocaleString("ar-EG", {
-                                  month: "short",
-                                  day: "numeric",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
-                              </span>
-                            </div>
-                          </td>
-                          <td
-                            className="px-4 py-3 text-[11px] text-muted-foreground max-w-[150px] truncate"
-                            title={block.notes}
+                        <React.Fragment key={group.recurrenceId}>
+                          {/* صف المجموعة الرئيسي */}
+                          <tr
+                            className={cn(
+                              "border-b border-border/50 transition-colors",
+                              isExpanded ? "bg-muted/30" : "hover:bg-muted/10",
+                            )}
                           >
-                            {block.notes || "---"}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <button
-                              onClick={() => handleDeleteBlock(block._id)}
-                              className="p-1.5 rounded-lg text-destructive hover:bg-destructive/10 transition"
-                              title="إلغاء الإغلاق وفتح الموعد"
+                            <td className="px-4 py-3">
+                              <div className="font-bold">{group.venue?.name}</div>
+                              <div className="text-[11px] text-muted-foreground">
+                                {group.court?.name}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={cn(
+                                  "px-2 py-1 rounded-md text-[10px] font-bold",
+                                  isAcademy
+                                    ? "bg-purple-500/10 text-purple-600"
+                                    : "bg-destructive/10 text-destructive",
+                                )}
+                              >
+                                {isAcademy ? "حجز أكاديمية" : "صيانة / إداري"}
+                              </span>
+                              {!isSingleDay && (
+                                <span className="block mt-1 text-[10px] font-bold text-muted-foreground">
+                                  ({group.blocks.length} أيام)
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="text-xs font-semibold mb-1">
+                                ⏰ من {group.startTimeHour} إلى {group.endTimeHour}
+                              </div>
+                              <div className="text-[10px] font-bold text-muted-foreground">
+                                📅{" "}
+                                {group.minDate.toLocaleDateString("ar-EG", {
+                                  month: "short",
+                                  day: "numeric",
+                                })}
+                                {!isSingleDay &&
+                                  ` - ${group.maxDate.toLocaleDateString("ar-EG", { month: "short", day: "numeric" })}`}
+                              </div>
+                            </td>
+                            <td
+                              className="px-4 py-3 text-[11px] text-muted-foreground max-w-[150px] truncate"
+                              title={group.notes}
                             >
-                              <Trash2 className="size-4" />
-                            </button>
-                          </td>
-                        </tr>
+                              {group.notes || "---"}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center justify-center gap-2">
+                                {!isSingleDay && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setExpandedBlocks((prev) =>
+                                        isExpanded
+                                          ? prev.filter((id) => id !== group.recurrenceId)
+                                          : [...prev, group.recurrenceId],
+                                      )
+                                    }
+                                    className="p-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition text-xs font-bold"
+                                  >
+                                    {isExpanded ? "إخفاء الأيام" : "عرض الأيام"}
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    isSingleDay && group.blocks[0]
+                                      ? handleDeleteBlock(group.blocks[0]._id)
+                                      : handleDeleteBlockSeries(group.recurrenceId)
+                                  }
+                                  className="p-1.5 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition text-xs font-bold"
+                                  title="إلغاء السلسلة بالكامل"
+                                >
+                                  حذف {isSingleDay ? "اليوم" : "المجموعة"}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* الصفوف الفرعية للأيام (تظهر فقط لو القائمة مفتوحة) */}
+                          {isExpanded &&
+                            !isSingleDay &&
+                            group.blocks.map((block: CourtBlock) => (
+                              // +++ تم التعديل هنا +++
+                              <tr key={block._id} className="bg-muted/10 border-b border-border/30">
+                                <td colSpan={2} className="px-4 py-2 text-left">
+                                  <div className="inline-flex items-center gap-1 opacity-50">
+                                    <div className="w-4 h-px bg-border"></div>
+                                    <div className="w-px h-4 bg-border"></div>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-2">
+                                  <span className="text-xs font-bold text-foreground">
+                                    {new Date(block.startTime).toLocaleDateString("ar-EG", {
+                                      weekday: "long",
+                                      year: "numeric",
+                                      month: "short",
+                                      day: "numeric",
+                                    })}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2"></td>
+                                <td className="px-4 py-2 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteBlock(block._id)}
+                                    className="p-1 text-destructive hover:text-destructive/70 transition text-[10px] font-bold flex items-center justify-center gap-1 mx-auto"
+                                  >
+                                    <Trash2 className="size-3" /> حذف هذا اليوم فقط
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                        </React.Fragment>
                       );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    });
+                  })()
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

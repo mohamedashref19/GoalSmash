@@ -11,6 +11,7 @@ import {
   TrendingUp,
   Banknote,
   Ban,
+  XOctagon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -23,7 +24,7 @@ import { BACKEND_URL } from "@/api/axiosConfig";
 interface Payment {
   _id: string;
   expectedAmount: number;
-  baseAmount?: number; // +++ تم إضافة الحقل ده للاعتماد عليه +++
+  baseAmount?: number;
   amountReceived?: number;
   method: string;
   status: string;
@@ -35,9 +36,11 @@ interface Payment {
   proofImage?: string;
   manualTransactionId?: string;
   booking?: {
+    _id: string;
     startTime: string;
     status: string;
-    totalPrice?: number; // +++ لضمان قراءة السعر الصافي +++
+    totalPrice?: number;
+    deposit?: number;
     venue?: { name: string };
     user?: { name: string; phone: string };
     court?: { name: string };
@@ -96,22 +99,21 @@ export function PaymentsView({ venueId }: { venueId: string }) {
     loadData();
   }, [loadData]);
 
-  // +++ دالة مساعدة للحصول على السعر الصافي بدون كسور للمالك +++
   const getDisplayAmount = (p: Payment) => {
     if (p.method === "cash" && p.amountReceived !== undefined) return p.amountReceived;
     if (p.baseAmount) return p.baseAmount;
     if (p.booking?.totalPrice) return p.booking.totalPrice;
-    return p.expectedAmount; // آخر حل لو مفيش غيره
+    return p.expectedAmount;
   };
 
   const summary = useMemo(() => {
     const totalConfirmed = payments
       .filter((p) => p.status === "verified" && p.method !== "cash")
-      .reduce((sum, p) => sum + getDisplayAmount(p), 0); // +++ استخدام السعر الصافي +++
+      .reduce((sum, p) => sum + getDisplayAmount(p), 0);
 
     const totalCash = payments
       .filter((p) => p.method === "cash")
-      .reduce((sum, p) => sum + getDisplayAmount(p), 0); // +++ استخدام السعر الصافي +++
+      .reduce((sum, p) => sum + getDisplayAmount(p), 0);
 
     const totalOverall = totalConfirmed + totalCash;
 
@@ -180,6 +182,21 @@ export function PaymentsView({ venueId }: { venueId: string }) {
     if (method === "instapay") return "إنستا باي";
     return "فودافون كاش";
   };
+
+  const groupedPayments = useMemo(() => {
+    const groups: Record<string, Payment[]> = {};
+    filteredPayments.forEach((p) => {
+      const key = p.booking?._id || p._id;
+      if (!groups[key]) {
+        groups[key] = [];
+      }
+      groups[key].push(p);
+    });
+
+    return Object.values(groups).sort(
+      (a, b) => new Date(b[0]?.createdAt ?? 0).getTime() - new Date(a[0]?.createdAt ?? 0).getTime(),
+    );
+  }, [filteredPayments]);
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in">
@@ -269,7 +286,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
         <div className="flex justify-center p-10">
           <Clock className="size-6 animate-spin text-primary" />
         </div>
-      ) : filteredPayments.length === 0 ? (
+      ) : groupedPayments.length === 0 ? (
         <div className="card-surface p-10 text-center flex flex-col items-center justify-center border border-dashed border-border/60">
           <Wallet className="size-10 text-muted-foreground/30 mb-3" />
           <p className="text-muted-foreground font-bold text-sm">
@@ -278,145 +295,262 @@ export function PaymentsView({ venueId }: { venueId: string }) {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filteredPayments.map((p) => (
-            <div
-              key={p._id}
-              className={cn(
-                "card-surface p-5 flex flex-col justify-between transition-all hover:shadow-md",
-                p.status === "expired" && "opacity-75",
-              )}
-            >
-              <div>
-                <div className="flex justify-between items-start mb-4">
-                  <div className="flex-1 ml-3">
-                    <p className="text-xs font-semibold text-muted-foreground">المبلغ</p>
-                    <p
-                      className={cn(
-                        "font-display text-xl font-black",
-                        p.method === "cash" ? "text-info" : "text-primary",
-                      )}
-                    >
-                      {/* +++ استخدام السعر الصافي بدون كسور في الكارت +++ */}
-                      {getDisplayAmount(p)} ج.م
+          {groupedPayments.map((group) => {
+            const firstPayment = group[0];
+            const booking = firstPayment?.booking;
+            const isCancelled = booking?.status === "cancelled";
+            const isExpired = firstPayment?.status === "expired";
+
+            // +++ استخدام بيانات الحجز الأصلية للحصول على السعر والمتبقي بدقة +++
+            const totalDisplayAmt =
+              booking?.totalPrice || group.reduce((sum, p) => sum + getDisplayAmount(p), 0);
+            const price = booking?.totalPrice || 0;
+            const deposit = booking?.deposit || 0;
+            const remaining = booking ? Math.max(price - deposit, 0) : 0;
+
+            return (
+              <div
+                key={firstPayment?._id}
+                className={cn(
+                  "card-surface p-5 flex flex-col justify-between transition-all duration-200 relative overflow-hidden",
+                  isExpired
+                    ? "border-dashed border-2 border-destructive/30 bg-destructive/5 grayscale-[15%]"
+                    : isCancelled
+                      ? "border-2 border-gray-400/50 bg-gray-100/50"
+                      : "hover:shadow-md",
+                )}
+              >
+                <div className="flex justify-between items-start mb-4 relative z-10">
+                  <div>
+                    <p className="text-[10px] font-bold text-muted-foreground bg-background border border-border px-2 py-1 rounded-md inline-block mb-2 shadow-sm">
+                      {booking?.venue?.name || "معاملة مستقلة"} <span className="mx-1">•</span>{" "}
+                      {booking?.court?.name || "---"}
                     </p>
+
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-2">
+                        <p
+                          className={cn(
+                            "font-display text-xl font-black flex items-baseline gap-1",
+                            isExpired || isCancelled
+                              ? "text-muted-foreground line-through opacity-70"
+                              : "text-primary",
+                          )}
+                        >
+                          {totalDisplayAmt}{" "}
+                          <span className="text-xs text-muted-foreground">ج.م</span>
+                        </p>
+                      </div>
+                      {/* +++ مؤشر دقيق للمتبقي أو الخالص يعتمد على الحجز وليس التبويب +++ */}
+                      {!isCancelled && !isExpired && booking && remaining > 0 && (
+                        <span className="text-[10px] font-bold text-destructive bg-destructive/10 px-2 py-0.5 rounded-md border border-destructive/20 self-start mt-1">
+                          يُدفع في الملعب: {remaining} ج.م
+                        </span>
+                      )}
+                      {!isCancelled && !isExpired && booking && remaining === 0 && (
+                        <span className="text-[10px] font-bold text-success bg-success/10 px-2 py-0.5 rounded-md border border-success/20 self-start mt-1 flex items-center gap-1">
+                          <CheckCircle2 className="size-3" /> مدفوع بالكامل
+                        </span>
+                      )}
+                    </div>
                   </div>
+
                   <span
                     className={cn(
-                      "px-3 py-1 rounded-lg text-xs font-bold shrink-0",
-                      p.status === "verified"
-                        ? "bg-success/15 text-success"
-                        : p.status === "expired"
-                          ? "bg-muted border border-border text-muted-foreground"
-                          : "bg-warning/15 text-warning",
+                      "px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 shadow-sm border",
+                      isCancelled
+                        ? "bg-gray-200 text-gray-600 border-gray-300"
+                        : isExpired
+                          ? "bg-destructive/10 text-destructive border-destructive/20"
+                          : "bg-primary/10 text-primary border-primary/20",
                     )}
                   >
-                    {p.status === "verified"
-                      ? "مؤكد"
-                      : p.status === "expired"
-                        ? "منتهي"
-                        : "قيد الانتظار (كاش)"}
+                    {isCancelled ? "حجز مُلغى" : isExpired ? "ملغي (لم يُدفع)" : "حجز نشط"}
                   </span>
                 </div>
 
-                <div className="space-y-2 text-sm mb-4">
-                  <p className="flex justify-between border-b border-border pb-2">
-                    <span className="text-muted-foreground">موعد الحجز</span>
-                    <span className="font-bold text-[11px] bg-primary/10 text-primary px-2 py-0.5 rounded-md">
-                      {formatDateTime(p.booking?.startTime)}
-                    </span>
-                  </p>
-
-                  <p className="flex justify-between border-b border-border pb-2">
-                    <span className="text-muted-foreground">العميل</span>
-                    <span className="font-bold">
-                      {p.booking?.user?.name || p.booking?.guestData?.name || "غير مسجل"}
-                    </span>
-                  </p>
-                  <p className="flex justify-between border-b border-border pb-2">
-                    <span className="text-muted-foreground">الهاتف</span>
-                    <span className="font-bold" dir="ltr">
-                      {p.booking?.user?.phone || p.booking?.guestData?.phone || "---"}
-                    </span>
-                  </p>
-
-                  <p className="flex justify-between border-b border-border pb-2">
-                    <span className="text-muted-foreground">وقت الإنشاء</span>
-                    <span className="font-bold text-[11px] text-muted-foreground" dir="ltr">
-                      {formatDateTime(p.createdAt)}
-                    </span>
-                  </p>
-
-                  <p className="flex justify-between border-b border-border pb-2">
-                    <span className="text-muted-foreground">الملعب</span>
-                    <span className="font-bold">{p.booking?.court?.name}</span>
-                  </p>
-                  <p className="flex justify-between">
-                    <span className="text-muted-foreground">طريقة الدفع</span>
-                    <span className="font-bold">{getMethodName(p.method)}</span>
-                  </p>
-                </div>
-
-                {p.verificationNotes && (
-                  <div className="mb-4 flex items-start gap-2 bg-muted/50 p-2.5 rounded-lg text-xs leading-relaxed border border-border/50">
-                    <Info className="size-4 text-primary shrink-0 mt-0.5" />
-                    <div>
-                      <span className="font-bold text-muted-foreground block mb-0.5">ملاحظات:</span>
-                      <span className="font-semibold text-foreground">{p.verificationNotes}</span>
-                    </div>
+                {isCancelled && (
+                  <div className="mb-4 bg-gray-100 border border-gray-300 rounded-xl p-3 flex items-start gap-2 shadow-sm relative z-10">
+                    <XOctagon className="size-4 text-gray-600 shrink-0 mt-0.5" />
+                    <p className="text-[11px] text-gray-700 font-semibold leading-relaxed">
+                      هذا الحجز تم إلغاؤه.
+                    </p>
                   </div>
                 )}
 
-                <div className="mt-3 flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="إضافة ملاحظة"
-                    value={paymentNotesInput[p._id] || ""}
-                    onChange={(e) =>
-                      setPaymentNotesInput({ ...paymentNotesInput, [p._id]: e.target.value })
-                    }
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs outline-none focus:border-primary"
-                  />
-                  <button
-                    onClick={() => handleSavePaymentNote(p._id, p.verificationNotes)}
-                    className="shrink-0 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-white transition hover:bg-primary/90"
-                  >
-                    حفظ
-                  </button>
+                <div className="space-y-2 text-sm mb-4 relative z-10">
+                  <p className="flex justify-between border-b border-border pb-2">
+                    <span className="text-muted-foreground">العميل</span>
+                    <span className="font-bold text-[11px] text-foreground">
+                      {booking?.guestData?.name || booking?.user?.name || "بدون اسم"}
+                    </span>
+                  </p>
+
+                  <p className="flex justify-between border-b border-border pb-2">
+                    <span className="text-muted-foreground">موعد الحجز</span>
+                    <span
+                      className={cn(
+                        "font-bold text-[11px] px-2 py-0.5 rounded-md",
+                        isExpired || isCancelled
+                          ? "bg-muted text-muted-foreground border border-border"
+                          : "bg-primary/10 text-primary",
+                      )}
+                    >
+                      {formatDateTime(booking?.startTime)}
+                    </span>
+                  </p>
+
+                  <p className="flex justify-between border-b border-border pb-2">
+                    <span className="text-muted-foreground">
+                      {isExpired || isCancelled ? "هاتف العميل" : "الهاتف المسجل"}
+                    </span>
+                    <span
+                      className={cn(
+                        "font-bold text-[11px]",
+                        isExpired || isCancelled ? "text-muted-foreground" : "text-primary",
+                      )}
+                      dir="ltr"
+                    >
+                      {firstPayment?.senderPhone ||
+                        booking?.user?.phone ||
+                        booking?.guestData?.phone ||
+                        "---"}
+                    </span>
+                  </p>
+                </div>
+
+                <div className="mt-2 flex flex-col gap-2 relative z-10 border-t border-border pt-4">
+                  <h4 className="text-[11px] font-extrabold text-muted-foreground mb-1">
+                    دفعات الحجز المقسمة:
+                  </h4>
+                  {group.map((p) => {
+                    const displayedAmount = getDisplayAmount(p);
+                    const isPaymentCancelled = isCancelled;
+
+                    return (
+                      <div
+                        key={p._id}
+                        className="bg-muted/40 border border-border/60 rounded-xl p-3 flex flex-col gap-2"
+                      >
+                        <div className="flex justify-between items-center mb-1">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={cn(
+                                "font-black text-sm",
+                                isPaymentCancelled
+                                  ? "text-muted-foreground line-through"
+                                  : p.method === "cash"
+                                    ? "text-info"
+                                    : "text-success",
+                              )}
+                            >
+                              {displayedAmount} ج.م
+                            </span>
+                            <span className="text-[10px] font-bold text-muted-foreground bg-background px-1.5 py-0.5 rounded border border-border">
+                              {getMethodName(p.method)}
+                            </span>
+                          </div>
+                          <span
+                            className={cn(
+                              "text-[10px] font-bold px-2 py-0.5 rounded",
+                              p.status === "verified"
+                                ? "bg-success/15 text-success"
+                                : p.status === "expired" || isPaymentCancelled
+                                  ? "bg-destructive/15 text-destructive"
+                                  : "bg-warning/15 text-warning",
+                            )}
+                          >
+                            {p.status === "verified"
+                              ? "مؤكد"
+                              : p.status === "expired" || isPaymentCancelled
+                                ? "غير صالح"
+                                : "بانتظار التأكيد"}
+                          </span>
+                        </div>
+
+                        <div className="flex justify-between items-center text-[10px] text-muted-foreground mt-0.5 pb-1 border-b border-border/40 border-dashed">
+                          <span className="flex items-center gap-1">
+                            <Clock className="size-3" /> وقت الحركة:
+                          </span>
+                          <span className="font-bold text-foreground" dir="ltr">
+                            {formatDateTime(p.createdAt)}
+                          </span>
+                        </div>
+
+                        {p.manualTransactionId && (
+                          <p className="text-[10px] text-muted-foreground flex justify-between mt-1">
+                            <span>المرجع:</span>
+                            <span className="font-bold text-foreground" dir="ltr">
+                              {p.manualTransactionId}
+                            </span>
+                          </p>
+                        )}
+
+                        {p.verificationNotes && (
+                          <div className="mt-1.5 rounded bg-background/60 p-2 text-[10px] text-muted-foreground border border-border/50">
+                            <span className="font-bold text-primary block mb-0.5">ملاحظات:</span>
+                            {p.verificationNotes}
+                          </div>
+                        )}
+
+                        <div className="mt-2 flex gap-2">
+                          <input
+                            type="text"
+                            placeholder="إضافة ملاحظة"
+                            value={paymentNotesInput[p._id] || ""}
+                            onChange={(e) =>
+                              setPaymentNotesInput({
+                                ...paymentNotesInput,
+                                [p._id]: e.target.value,
+                              })
+                            }
+                            className="w-full rounded-md border border-border bg-background px-2 py-1 text-[11px] outline-none focus:border-primary"
+                          />
+                          <button
+                            onClick={() => handleSavePaymentNote(p._id, p.verificationNotes)}
+                            className="shrink-0 rounded-md bg-primary px-3 py-1 text-[11px] font-bold text-white transition hover:bg-primary/90"
+                          >
+                            حفظ
+                          </button>
+                        </div>
+
+                        {p.proofImage && (
+                          <a
+                            href={`${BACKEND_URL}${p.proofImage}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-2 flex items-center justify-center gap-1.5 rounded-lg bg-info/10 text-info border border-info/20 hover:bg-info hover:text-white transition py-1.5 text-[11px] font-bold"
+                          >
+                            <FileImage className="size-3.5" /> عرض الإثبات
+                          </a>
+                        )}
+
+                        {p.method === "cash" &&
+                          (p.status === "pending" || p.status === "pending_verification") &&
+                          !isCancelled && (
+                            <button
+                              onClick={() => handleVerify(p._id, false)}
+                              className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-lg bg-success/10 text-success border border-success/20 hover:bg-success hover:text-white transition py-2 text-[11px] font-bold"
+                            >
+                              <Check className="size-3.5" /> تأكيد استلام الكاش
+                            </button>
+                          )}
+
+                        {p.method === "cash" && p.status === "expired" && !isCancelled && (
+                          <button
+                            onClick={() => handleVerify(p._id, true)}
+                            className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-lg bg-warning/10 text-warning border border-warning/30 hover:bg-warning hover:text-white transition py-2 text-[11px] font-bold"
+                          >
+                            <CheckCircle2 className="size-3.5" /> تأكيد وإحياء الحجز
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-
-              <div className="mt-4 flex flex-col gap-2">
-                {p.proofImage && (
-                  <a
-                    href={`${BACKEND_URL}${p.proofImage}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center justify-center gap-2 rounded-xl bg-info/10 text-info border border-info/20 hover:bg-info py-2 text-xs font-bold transition"
-                  >
-                    <FileImage className="size-4" /> الإثبات المرفوع
-                  </a>
-                )}
-
-                {p.method === "cash" &&
-                  (p.status === "pending" || p.status === "pending_verification") && (
-                    <button
-                      onClick={() => handleVerify(p._id, false)}
-                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-success/10 text-success border border-success/20 hover:bg-success hover:text-white transition py-2.5 text-sm font-bold"
-                    >
-                      <Check className="size-4" /> تأكيد استلام الكاش
-                    </button>
-                  )}
-                {p.method === "cash" && p.status === "expired" && (
-                  <button
-                    onClick={() => handleVerify(p._id, true)}
-                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-warning/10 text-warning border border-warning/30 hover:bg-warning hover:text-white transition py-2.5 text-sm font-bold"
-                  >
-                    <CheckCircle2 className="size-4" /> تأكيد وإحياء الحجز
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

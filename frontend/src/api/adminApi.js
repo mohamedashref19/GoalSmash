@@ -124,6 +124,19 @@ export const fetchDailyClosing = async (date = null, venueId = "all") => {
     throw error.response?.data?.message || "حدث خطأ أثناء جلب تفاصيل اليومية";
   }
 };
+// +++ دالة إرسال حالة التصفية للباك إند +++
+export const toggleVenueSettlement = async (venueId, date, isSettled) => {
+  try {
+    const response = await apiClient.post("/admin/daily-closing/settle", {
+      venue: venueId,
+      date,
+      isSettled,
+    });
+    return response.data;
+  } catch (error) {
+    throw error.response?.data?.message || "حدث خطأ أثناء حفظ التصفية";
+  }
+};
 
 // --- دوال إدارة حسابات الدفع ---
 
@@ -233,5 +246,15 @@ export const deleteCourtBlock = async (id) => {
     return response.data;
   } catch (error) {
     throw error.response?.data?.message || "حدث خطأ أثناء إلغاء الإغلاق.";
+  }
+};
+
+// +++ إلغاء سلسلة إغلاقات بالكامل +++
+export const deleteCourtBlockSeries = async (recurrenceId) => {
+  try {
+    const response = await apiClient.delete(`/bookings/block-slots/series/${recurrenceId}`);
+    return response.data;
+  } catch (error) {
+    throw error.response?.data?.message || "حدث خطأ أثناء إلغاء المجموعة.";
   }
 };

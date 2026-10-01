@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const Booking = require("../models/bookingModel");
 const Venue = require("../models/venueModel");
 const User = require("../models/userModel");
+const DailySettlement = require("../models/dailySettlementModel");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
 
@@ -276,7 +277,6 @@ exports.getAllCustomers = catchAsync(async (req, res, next) => {
 exports.getDailyClosing = catchAsync(async (req, res, next) => {
   const { date, venue } = req.query;
 
-  // تحديد بداية ونهاية اليوم المطلوب (أو اليوم الحالي افتراضياً)
   const targetDate = date ? new Date(date) : new Date();
   const startOfDay = new Date(targetDate);
   startOfDay.setHours(0, 0, 0, 0);
@@ -312,10 +312,52 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
   }
 
   pipeline.push(
+    // +++ تجميع فواتير الحجز الواحد معاً لمنع التكرار +++
+    {
+      $group: {
+        _id: "$bookingDetails._id",
+        court: { $first: "$bookingDetails.court" },
+        venue: { $first: "$bookingDetails.venue" },
+        startTime: { $first: "$bookingDetails.startTime" },
+        endTime: { $first: "$bookingDetails.endTime" },
+        savedCommission: { $first: "$bookingDetails.commission" },
+        bookingOnlineRevenue: {
+          $sum: { $cond: [{ $ne: ["$method", "cash"] }, "$baseAmount", 0] },
+        },
+        bookingCashRevenue: {
+          $sum: { $cond: [{ $eq: ["$method", "cash"] }, "$baseAmount", 0] },
+        },
+      },
+    },
+    {
+      $addFields: {
+        durationInHours: {
+          $divide: [{ $subtract: ["$endTime", "$startTime"] }, 1000 * 60 * 60],
+        },
+        totalBookingRevenue: {
+          $add: ["$bookingOnlineRevenue", "$bookingCashRevenue"],
+        },
+      },
+    },
+    {
+      $addFields: {
+        calculatedCommission: {
+          $ifNull: [
+            "$savedCommission",
+            {
+              $multiply: [
+                "$totalBookingRevenue",
+                { $cond: [{ $gte: ["$durationInHours", 2] }, 0.1, 0.05] },
+              ],
+            },
+          ],
+        },
+      },
+    },
     {
       $lookup: {
         from: "courts",
-        localField: "bookingDetails.court",
+        localField: "court",
         foreignField: "_id",
         as: "courtDetails",
       },
@@ -324,64 +366,22 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
     {
       $lookup: {
         from: "venues",
-        localField: "bookingDetails.venue",
+        localField: "venue",
         foreignField: "_id",
         as: "venueDetails",
       },
     },
     { $unwind: { path: "$venueDetails", preserveNullAndEmptyArrays: true } },
-    // حساب مدة الحجز
-    {
-      $addFields: {
-        "bookingDetails.durationInHours": {
-          $divide: [
-            {
-              $subtract: [
-                "$bookingDetails.endTime",
-                "$bookingDetails.startTime",
-              ],
-            },
-            1000 * 60 * 60,
-          ],
-        },
-      },
-    },
-    // حساب العمولة
-    {
-      $addFields: {
-        "bookingDetails.calculatedCommission": {
-          $ifNull: [
-            "$bookingDetails.commission",
-            {
-              $multiply: [
-                "$baseAmount",
-                {
-                  $cond: [
-                    { $gte: ["$bookingDetails.durationInHours", 2] },
-                    0.1,
-                    0.05,
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-      },
-    },
     {
       $group: {
-        _id: { venue: "$bookingDetails.venue", court: "$bookingDetails.court" },
+        _id: { venue: "$venue", court: "$court" },
         venueName: { $first: "$venueDetails.name" },
         courtName: { $first: "$courtDetails.name" },
-        totalOnline: {
-          $sum: { $cond: [{ $ne: ["$method", "cash"] }, "$baseAmount", 0] },
-        },
-        totalCash: {
-          $sum: { $cond: [{ $eq: ["$method", "cash"] }, "$baseAmount", 0] },
-        },
-        totalRevenue: { $sum: "$baseAmount" },
-        totalCommission: { $sum: "$bookingDetails.calculatedCommission" },
-        bookingsCount: { $sum: 1 },
+        totalOnline: { $sum: "$bookingOnlineRevenue" },
+        totalCash: { $sum: "$bookingCashRevenue" },
+        totalRevenue: { $sum: "$totalBookingRevenue" },
+        totalCommission: { $sum: "$calculatedCommission" },
+        bookingsCount: { $sum: 1 }, // العد الصحيح للحجوزات الفريدة
       },
     },
     {
@@ -419,7 +419,19 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
 
   const dailyClosing = await mongoose.model("Payment").aggregate(pipeline);
 
-  // حساب الإجماليات لكل الأندية في هذا اليوم
+  const DailySettlement = require("../models/dailySettlementModel");
+  const targetDateStr = targetDate.toISOString().split("T")[0];
+  const settlements = await DailySettlement.find({ dateString: targetDateStr });
+
+  const settlementMap = {};
+  settlements.forEach((s) => {
+    settlementMap[s.venue.toString()] = s.isSettled;
+  });
+
+  dailyClosing.forEach((venue) => {
+    venue.isSettled = settlementMap[venue._id.toString()] || false;
+  });
+
   const platformTotals = dailyClosing.reduce(
     (acc, curr) => ({
       totalRevenue: acc.totalRevenue + curr.venueTotalRevenue,
@@ -440,9 +452,45 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
   res.status(200).json({
     status: "success",
     data: {
-      date: targetDate,
+      date: targetDateStr,
       platformTotals,
       venuesClosing: dailyClosing,
     },
+  });
+});
+
+exports.toggleDailySettlement = catchAsync(async (req, res, next) => {
+  const { venue, date, isSettled } = req.body;
+  const DailySettlement = require("../models/dailySettlementModel");
+
+  if (!venue || !date || isSettled === undefined) {
+    return next(new AppError("بيانات التصفية غير مكتملة", 400));
+  }
+
+  // توحيد صيغة التاريخ YYYY-MM-DD
+  const targetDateStr = new Date(date).toISOString().split("T")[0];
+
+  let settlement = await DailySettlement.findOne({
+    venue,
+    dateString: targetDateStr,
+  });
+
+  if (settlement) {
+    settlement.isSettled = isSettled;
+    settlement.settledBy = req.user.id;
+    await settlement.save();
+  } else {
+    settlement = await DailySettlement.create({
+      venue,
+      dateString: targetDateStr,
+      isSettled,
+      settledBy: req.user.id,
+    });
+  }
+
+  res.status(200).json({
+    status: "success",
+    message: isSettled ? "تم تأكيد تصفية الحساب" : "تم إلغاء تأكيد التصفية",
+    data: { isSettled: settlement.isSettled },
   });
 });

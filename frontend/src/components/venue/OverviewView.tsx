@@ -1,11 +1,23 @@
 import { useEffect, useState } from "react";
-import { CalendarCheck, Wallet, Users, Activity, Ticket, Clock, AlertCircle } from "lucide-react";
+import {
+  CalendarCheck,
+  Wallet,
+  Users,
+  Activity,
+  Ticket,
+  Clock,
+  AlertCircle,
+  CheckCircle2,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner"; // +++ إضافة sonner للتنبيهات
 
 // @ts-expect-error: API lacks TypeScript definitions
 import { fetchTodayStats, fetchTopCustomers } from "@/api/dashboardApi";
 // @ts-expect-error: API lacks TypeScript definitions
 import { fetchMyBookings } from "@/api/bookingApi";
+// @ts-expect-error: API lacks TypeScript definitions
+import apiClient from "@/api/axiosConfig"; // +++ إضافة apiClient للتواصل المباشر في تحديث الدفع
 
 interface StatsData {
   todayBookings: number;
@@ -27,7 +39,7 @@ interface BookingData {
   startTime: string;
   status: string;
   totalPrice: number;
-  deposit?: number; // +++ إضافة deposit +++
+  deposit?: number;
   user?: { name: string; phone?: string };
   guestData?: { name: string; phone?: string };
   court?: { name: string };
@@ -62,47 +74,69 @@ export function OverviewView({
   const [stats, setStats] = useState<StatsData | null>(null);
   const [customers, setCustomers] = useState<CustomerData[]>([]);
   const [upcomingBookings, setUpcomingBookings] = useState<BookingData[]>([]);
+  const [updatingPaymentId, setUpdatingPaymentId] = useState<string | null>(null); // +++ حالة زر التحديث
+
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true);
+
+      const [statsData, topCustomersData, allBookingsData] = await Promise.all([
+        fetchTodayStats(venueId),
+        fetchTopCustomers(venueId),
+        fetchMyBookings(),
+      ]);
+
+      setStats(statsData);
+      setCustomers(topCustomersData || []);
+
+      const now = new Date();
+      const safeBookings = Array.isArray(allBookingsData) ? allBookingsData : [];
+      const upcoming = safeBookings
+        .filter(
+          (b: BookingData) =>
+            b &&
+            b.startTime &&
+            new Date(b.startTime) >= now &&
+            b.venue?._id === venueId &&
+            b.status === "confirmed",
+        )
+        .slice(0, 5); // يعرض أول 5 حجوزات قادمة
+      setUpcomingBookings(upcoming);
+    } catch (err) {
+      setError(err as string);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (!venueId) return;
-
-    const loadDashboardData = async () => {
-      try {
-        setLoading(true);
-
-        const [statsData, topCustomersData, allBookingsData] = await Promise.all([
-          fetchTodayStats(venueId),
-          fetchTopCustomers(venueId),
-          fetchMyBookings(),
-        ]);
-
-        setStats(statsData);
-        setCustomers(topCustomersData || []);
-
-        const now = new Date();
-        const safeBookings = Array.isArray(allBookingsData) ? allBookingsData : [];
-        const upcoming = safeBookings
-          .filter(
-            (b: BookingData) =>
-              b &&
-              b.startTime &&
-              new Date(b.startTime) >= now &&
-              b.venue?._id === venueId &&
-              b.status === "confirmed",
-          )
-          .slice(0, 5);
-        setUpcomingBookings(upcoming);
-      } catch (err) {
-        setError(err as string);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadDashboardData();
+    if (venueId) {
+      loadDashboardData();
+    }
   }, [venueId]);
 
-  if (loading) {
+  // +++ دالة تأكيد استلام الكاش من صفحة النظرة العامة +++
+  const handleMarkAsPaid = async (id: string, fullPrice: number) => {
+    if (!window.confirm("هل تأكدت من استلام باقي المبلغ نقداً؟")) return;
+
+    setUpdatingPaymentId(id);
+    try {
+      await apiClient.patch(`/bookings/${id}/payment`, {
+        deposit: fullPrice,
+        paymentStatus: "paid",
+      });
+
+      toast.success("تم تأكيد استلام باقي المبلغ بنجاح");
+      // تحديث البيانات لعرض التغيير فوراً
+      await loadDashboardData();
+    } catch (err) {
+      toast.error("حدث خطأ أثناء تحديث بيانات الدفع");
+    } finally {
+      setUpdatingPaymentId(null);
+    }
+  };
+
+  if (loading && !updatingPaymentId) {
     return (
       <div className="grid h-64 place-items-center text-muted-foreground">
         <Clock className="h-8 w-8 animate-spin text-primary" />
@@ -124,12 +158,11 @@ export function OverviewView({
     { label: "حجوزات اليوم", value: stats?.todayBookings || 0, icon: CalendarCheck },
     { label: "إيرادات اليوم", value: `${stats?.todayRevenue || 0} ج`, icon: Wallet },
     { label: "الملاعب المتاحة", value: stats?.activeCourts || 0, change: "نشط", icon: Users },
-    { label: "نسبة الإشغال", value: stats?.occupancyRate || "0%", change: "اليوم", icon: Activity },
   ];
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {statCards.map(({ label, value, change, icon: Icon }) => (
           <div key={label} className="card-surface p-5">
             <div className="flex items-start justify-between gap-3">
@@ -160,7 +193,7 @@ export function OverviewView({
                 <th className="px-5 py-3 font-semibold">التاريخ</th>
                 <th className="px-5 py-3 font-semibold">الوقت</th>
                 <th className="px-5 py-3 font-semibold">الحالة</th>
-                <th className="px-5 py-3 font-semibold">المبلغ المطلوب</th>
+                <th className="px-5 py-3 font-semibold">المبلغ المطلوب / المتبقي</th>
               </tr>
             </thead>
             <tbody>
@@ -176,7 +209,6 @@ export function OverviewView({
                   const clientName = m.user?.name || m.guestData?.name || "بدون اسم";
                   const clientPhone = m.user?.phone || m.guestData?.phone || "";
 
-                  // +++ حساب المبلغ المتبقي +++
                   const remaining = Math.max((m.totalPrice || 0) - (m.deposit || 0), 0);
 
                   return (
@@ -207,16 +239,39 @@ export function OverviewView({
                       <td className="px-5 py-3">
                         <StatusBadge status={m.status} />
                       </td>
-                      {/* +++ إظهار المبلغ الكلي وإذا كان هناك متبقي +++ */}
+                      {/* +++ التعديل هنا: إظهار المتبقي مع زر تفاعلي لتأكيد الدفع +++ */}
                       <td className="px-5 py-3">
-                        <div className="flex flex-col">
-                          <span className="font-bold">{m.totalPrice} ج.م</span>
-                          {remaining > 0 ? (
-                            <span className="text-[10px] font-bold text-destructive">
-                              باقي: {remaining} ج
-                            </span>
-                          ) : (
-                            <span className="text-[10px] font-bold text-success">خالص</span>
+                        <div className="flex items-center gap-3">
+                          <div className="flex flex-col">
+                            <span className="font-bold">{m.totalPrice} ج.م</span>
+                            {remaining > 0 ? (
+                              <span className="text-[10px] font-bold text-destructive">
+                                باقي: {remaining} ج
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold text-success flex items-center gap-1">
+                                <CheckCircle2 className="size-3" /> خالص
+                              </span>
+                            )}
+                          </div>
+
+                          {/* زر تأكيد استلام المتبقي */}
+                          {remaining > 0 && (
+                            <button
+                              onClick={() => handleMarkAsPaid(m._id, m.totalPrice)}
+                              disabled={updatingPaymentId === m._id}
+                              className="mr-auto inline-flex items-center gap-1.5 rounded-lg bg-success/10 px-3 py-1.5 text-[11px] font-bold text-success border border-success/20 hover:bg-success hover:text-white transition disabled:opacity-50"
+                            >
+                              {updatingPaymentId === m._id ? (
+                                <>
+                                  <Clock className="size-3.5 animate-spin" /> جاري...
+                                </>
+                              ) : (
+                                <>
+                                  <CheckCircle2 className="size-3.5" /> تأكيد الدفع
+                                </>
+                              )}
+                            </button>
                           )}
                         </div>
                       </td>
@@ -241,7 +296,6 @@ export function OverviewView({
                 <th className="px-5 py-3 font-semibold">الاسم والرقم</th>
                 <th className="px-5 py-3 font-semibold">إجمالي الحجوزات</th>
                 <th className="px-5 py-3 font-semibold">إجمالي الإنفاق</th>
-                {/* <th className="px-5 py-3 font-semibold">إجراء</th> */}
               </tr>
             </thead>
             <tbody>
@@ -277,14 +331,6 @@ export function OverviewView({
                     </td>
                     <td className="px-5 py-3 text-muted-foreground">{c.totalBookings} حجز</td>
                     <td className="px-5 py-3 font-bold text-primary">{c.totalSpent} ج.م</td>
-                    {/* <td className="px-5 py-3">
-                      <button
-                        onClick={() => onSendCode(c.name || "")}
-                        className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-xs font-bold text-primary-foreground transition-opacity hover:opacity-90"
-                      >
-                        <Ticket className="h-4 w-4" /> إرسال كود خصم
-                      </button>
-                    </td> */}
                   </tr>
                 ))
               )}

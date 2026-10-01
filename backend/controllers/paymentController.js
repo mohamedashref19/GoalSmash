@@ -282,7 +282,7 @@ exports.getAllPayments = catchAsync(async (req, res, next) => {
     .populate({
       path: "booking",
       select:
-        "startTime endTime status venue user court guestData deposit totalPrice", // +++ أضفنا deposit و totalPrice
+        "startTime endTime status venue user court guestData deposit totalPrice",
       populate: [
         { path: "user", select: "name phone" },
         { path: "court", select: "name" },
@@ -291,14 +291,7 @@ exports.getAllPayments = catchAsync(async (req, res, next) => {
     })
     .sort("-createdAt");
 
-  // +++ استبعاد المدفوعات التي ارتبطت بحجوزات تم إلغاؤها +++
-  payments = payments.filter((p) => {
-    // لو مفيش حجز، اعرضه. لكن لو فيه حجز وحالته ملغية، اخفيه.
-    if (p.booking && p.booking.status === "cancelled") {
-      return false;
-    }
-    return true;
-  });
+  // +++ تم إزالة كود إخفاء الحجوزات الملغية (cancelled) لتظهر في التبويب الجديد للفرونت إند +++
 
   // قفل الأمان 1: المالك يرى مدفوعات ملاعبه فقط
   if (req.user && req.user.role === "owner") {
@@ -632,7 +625,6 @@ exports.addPaymentNote = catchAsync(async (req, res, next) => {
 // +++ دالة تصفية الحسابات والتقارير للمالك (محدثة بتفاصيل الملاعب) +++
 // +++ دالة تصفية الحسابات والتقارير (تدعم المالك والأدمن وتصلح مشكلة الكسور) +++
 // +++ دالة تصفية الحسابات والتقارير (تدعم المالك والأدمن وتصلح مشكلة الحجوزات القديمة) +++
-// +++ دالة تصفية الحسابات والتقارير (تدعم المالك والأدمن وتفصل الكاش والأونلاين وتحسب الصافي) +++
 exports.getFinancialReports = catchAsync(async (req, res, next) => {
   const { startDate, endDate, venue } = req.query;
 
@@ -697,10 +689,60 @@ exports.getFinancialReports = catchAsync(async (req, res, next) => {
   }
 
   pipeline.push(
+    // +++ التعديل الجوهري: تجميع الفواتير المتعددة لنفس الحجز في سطر واحد +++
+    {
+      $group: {
+        _id: "$bookingDetails._id",
+        court: { $first: "$bookingDetails.court" },
+        venue: { $first: "$bookingDetails.venue" },
+        startTime: { $first: "$bookingDetails.startTime" },
+        endTime: { $first: "$bookingDetails.endTime" },
+        savedCommission: { $first: "$bookingDetails.commission" },
+        bookingOnlineRevenue: {
+          $sum: { $cond: [{ $ne: ["$method", "cash"] }, "$baseAmount", 0] },
+        },
+        bookingCashRevenue: {
+          $sum: { $cond: [{ $eq: ["$method", "cash"] }, "$baseAmount", 0] },
+        },
+        hasOnlinePayment: {
+          $max: { $cond: [{ $ne: ["$method", "cash"] }, 1, 0] },
+        },
+        hasCashPayment: {
+          $max: { $cond: [{ $eq: ["$method", "cash"] }, 1, 0] },
+        },
+      },
+    },
+    // +++ حساب مدة الحجز والسعر الإجمالي للحجز بعد جمع فواتيره +++
+    {
+      $addFields: {
+        durationInHours: {
+          $divide: [{ $subtract: ["$endTime", "$startTime"] }, 1000 * 60 * 60],
+        },
+        totalBookingRevenue: {
+          $add: ["$bookingOnlineRevenue", "$bookingCashRevenue"],
+        },
+      },
+    },
+    // +++ حساب العمولة (ستحسب مرة واحدة فقط لكل حجز) +++
+    {
+      $addFields: {
+        calculatedCommission: {
+          $ifNull: [
+            "$savedCommission",
+            {
+              $multiply: [
+                "$totalBookingRevenue",
+                { $cond: [{ $gte: ["$durationInHours", 2] }, 0.1, 0.05] },
+              ],
+            },
+          ],
+        },
+      },
+    },
     {
       $lookup: {
         from: "courts",
-        localField: "bookingDetails.court",
+        localField: "court",
         foreignField: "_id",
         as: "courtDetails",
       },
@@ -709,51 +751,12 @@ exports.getFinancialReports = catchAsync(async (req, res, next) => {
     {
       $lookup: {
         from: "venues",
-        localField: "bookingDetails.venue",
+        localField: "venue",
         foreignField: "_id",
         as: "venueDetails",
       },
     },
     { $unwind: { path: "$venueDetails", preserveNullAndEmptyArrays: true } },
-
-    // +++ معالجة الحجوزات القديمة: حساب العمولة لو مش موجودة في الداتا بيز +++
-    {
-      $addFields: {
-        "bookingDetails.durationInHours": {
-          $divide: [
-            {
-              $subtract: [
-                "$bookingDetails.endTime",
-                "$bookingDetails.startTime",
-              ],
-            },
-            1000 * 60 * 60,
-          ],
-        },
-      },
-    },
-    {
-      $addFields: {
-        "bookingDetails.calculatedCommission": {
-          $ifNull: [
-            "$bookingDetails.commission", // استخدم المحفوظ لو موجود (للحجوزات الجديدة)
-            {
-              // احسبه لو مش موجود (للحجوزات القديمة)
-              $multiply: [
-                "$baseAmount",
-                {
-                  $cond: [
-                    { $gte: ["$bookingDetails.durationInHours", 2] },
-                    0.1,
-                    0.05,
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-      },
-    },
 
     {
       $facet: {
@@ -761,51 +764,27 @@ exports.getFinancialReports = catchAsync(async (req, res, next) => {
           {
             $group: {
               _id: null,
-              totalOnline: {
-                $sum: {
-                  $cond: [{ $ne: ["$method", "cash"] }, "$baseAmount", 0],
-                },
-              },
-              totalCash: {
-                $sum: {
-                  $cond: [{ $eq: ["$method", "cash"] }, "$baseAmount", 0],
-                },
-              },
-              // +++ استخدام الحقل الجديد الذي يعالج القديم والجديد +++
-              totalCommission: { $sum: "$bookingDetails.calculatedCommission" },
-              onlineCount: {
-                $sum: { $cond: [{ $ne: ["$method", "cash"] }, 1, 0] },
-              },
-              cashCount: {
-                $sum: { $cond: [{ $eq: ["$method", "cash"] }, 1, 0] },
-              },
+              totalOnline: { $sum: "$bookingOnlineRevenue" },
+              totalCash: { $sum: "$bookingCashRevenue" },
+              totalCommission: { $sum: "$calculatedCommission" },
+              onlineCount: { $sum: "$hasOnlinePayment" },
+              cashCount: { $sum: "$hasCashPayment" },
             },
           },
         ],
         courtsBreakdown: [
           {
             $group: {
-              _id: "$bookingDetails.court",
+              _id: "$court",
               courtName: { $first: "$courtDetails.name" },
               venueName: { $first: "$venueDetails.name" },
-              totalRevenue: { $sum: "$baseAmount" },
-              // +++ تجميع أموال الأونلاين والكاش لكل ملعب +++
-              totalOnline: {
-                $sum: {
-                  $cond: [{ $ne: ["$method", "cash"] }, "$baseAmount", 0],
-                },
-              },
-              totalCash: {
-                $sum: {
-                  $cond: [{ $eq: ["$method", "cash"] }, "$baseAmount", 0],
-                },
-              },
-              // +++ استخدام الحقل الجديد للملاعب الفردية +++
-              totalCommission: { $sum: "$bookingDetails.calculatedCommission" },
-              bookingsCount: { $sum: 1 },
+              totalRevenue: { $sum: "$totalBookingRevenue" },
+              totalOnline: { $sum: "$bookingOnlineRevenue" },
+              totalCash: { $sum: "$bookingCashRevenue" },
+              totalCommission: { $sum: "$calculatedCommission" },
+              bookingsCount: { $sum: 1 }, // الآن سيعد الحجوزات الفريدة بشكل صحيح
             },
           },
-          // +++ إضافة حساب الصافي لكل ملعب مباشرة من الباك إند +++
           {
             $addFields: {
               netAmount: { $subtract: ["$totalOnline", "$totalCommission"] },

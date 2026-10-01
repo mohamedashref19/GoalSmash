@@ -9,9 +9,11 @@ import {
   X,
   User,
   Phone,
-  DollarSign,
-  Trash2,
   CheckCircle,
+  Trash2,
+  Hourglass,
+  Loader2,
+  CheckCircle2, // +++ أيقونة للدفع المكتمل +++
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -30,18 +32,20 @@ interface CourtData {
   name: string;
   status: string;
   pricePerHour?: number;
-  priceMorning?: number; // السعر الصباحي
-  priceEvening?: number; // السعر المسائي
+  priceMorning?: number;
+  priceEvening?: number;
   sportType?: string;
 }
 
 interface BookingData {
   _id: string;
   startTime: string;
+  endTime: string;
   bookingType: string;
   status: string;
   totalPrice?: number;
   deposit?: number;
+  notes?: string;
   guestData?: { name: string; phone?: string };
   user?: { name: string; phone?: string };
   court?: { _id: string; name: string } | string;
@@ -54,8 +58,8 @@ const KIND_LABEL: Record<string, string> = {
 };
 
 const kindClass: Record<string, string> = {
-  app: "bg-success/15 border-success/40 text-success",
-  manual: "bg-info/15 border-info/40 text-info",
+  app: "bg-success/20 border-success/50 text-emerald-950",
+  manual: "bg-info/20 border-info/50 text-blue-950",
   maintenance: "bg-muted border-border text-muted-foreground",
 };
 
@@ -63,7 +67,7 @@ const MORNING_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
 const EVENING_HOURS = [19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 7];
 
 // =========================================
-// +++ نافذة تفاصيل الحجز (مع زر التسديد) +++
+// +++ نافذة تفاصيل الحجز +++
 // =========================================
 function BookingDetailsDialog({
   booking,
@@ -79,6 +83,7 @@ function BookingDetailsDialog({
   if (!booking) return null;
 
   const bDate = new Date(booking.startTime);
+  const eDate = new Date(booking.endTime);
   const name = booking.guestData?.name || booking.user?.name || "بدون اسم";
   const phone = booking.guestData?.phone || booking.user?.phone || "بدون رقم";
 
@@ -89,8 +94,13 @@ function BookingDetailsDialog({
   const typeLabel = KIND_LABEL[booking.bookingType || "app"];
   const typeClass = kindClass[booking.bookingType || "app"];
 
-  // +++ تحديد ما إذا كان الحجز قابل للإلغاء من قبل المالك +++
   const canCancel = booking.bookingType === "manual";
+
+  const durationMinutes = Math.round((eDate.getTime() - bDate.getTime()) / (1000 * 60));
+  let durationText = `${durationMinutes} دقيقة`;
+  if (durationMinutes === 60) durationText = "ساعة";
+  else if (durationMinutes === 90) durationText = "ساعة ونصف";
+  else if (durationMinutes === 120) durationText = "ساعتين";
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6" dir="rtl">
@@ -159,6 +169,16 @@ function BookingDetailsDialog({
                 </p>
               </div>
             </div>
+
+            <div className="flex items-center gap-3">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                <Hourglass size={18} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-muted-foreground">مدة الحجز</p>
+                <p className="truncate font-bold text-foreground text-sm">{durationText}</p>
+              </div>
+            </div>
           </div>
 
           <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
@@ -167,18 +187,26 @@ function BookingDetailsDialog({
               <span className="font-bold text-foreground">{price} ج.م</span>
             </div>
             <div className="mb-3 flex items-center justify-between text-sm">
-              <span className="font-semibold text-muted-foreground">المدفوع (العربون):</span>
+              <span className="font-semibold text-muted-foreground">
+                المدفوع {remaining > 0 ? "(عربون)" : "(كامل)"}:
+              </span>
               <span className="font-bold text-success">{deposit} ج.م</span>
             </div>
             <div className="border-t border-dashed border-border pt-3 flex items-center justify-between">
               <span className="font-extrabold text-foreground">المتبقي للتحصيل:</span>
               <span
                 className={cn(
-                  "text-lg font-black",
+                  "text-lg font-black flex items-center gap-1",
                   remaining > 0 ? "text-destructive" : "text-success",
                 )}
               >
-                {remaining > 0 ? `${remaining} ج.م` : "خالص"}
+                {remaining > 0 ? (
+                  `${remaining} ج.م`
+                ) : (
+                  <>
+                    <CheckCircle2 className="size-5" /> خالص
+                  </>
+                )}
               </span>
             </div>
           </div>
@@ -190,7 +218,7 @@ function BookingDetailsDialog({
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-success px-4 py-2.5 text-sm font-bold text-white hover:bg-success/90 transition"
               >
                 <CheckCircle size={16} />
-                تأكيد استلام باقي المبلغ ({remaining} ج.م)
+                تأكيد استلام باقي المبلغ ({remaining} ج.م) في الملعب
               </button>
             )}
 
@@ -201,7 +229,6 @@ function BookingDetailsDialog({
               >
                 إغلاق النافذة
               </button>
-              {/* +++ إخفاء أو تعطيل زر الإلغاء إذا كان الحجز من التطبيق +++ */}
               {canCancel ? (
                 <button
                   onClick={() => onCancelBooking(booking._id)}
@@ -239,8 +266,7 @@ export function ScheduleView({ venueId }: { venueId: string }) {
   const [timeTab, setTimeTab] = useState<"morning" | "evening">("morning");
   const [viewBooking, setViewBooking] = useState<BookingData | null>(null);
 
-  // جلب بيانات النادي لتحديد متى يبدأ المساء
-  const [eveningStartHour, setEveningStartHour] = useState(18); // افتراضي 6 مساءً
+  const [eveningStartHour, setEveningStartHour] = useState(18);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [slot, setSlot] = useState<{
@@ -322,19 +348,21 @@ export function ScheduleView({ venueId }: { venueId: string }) {
 
   const getBookingForCell = (courtId: string, hour: number) => {
     return bookings.find((b) => {
-      if (!b || !b.startTime) return false;
+      if (!b || !b.startTime || !b.endTime) return false;
       const bDate = new Date(b.startTime);
-      const startHour = bDate.getHours();
+      const eDate = new Date(b.endTime);
       const bCourtId = typeof b.court === "object" ? b.court?._id : b.court;
 
-      const cellDate = new Date(selectedDate);
+      const cellDateTime = new Date(selectedDate);
+      cellDateTime.setHours(hour, 0, 0, 0);
 
-      const isSameDay =
-        bDate.getDate() === cellDate.getDate() &&
-        bDate.getMonth() === cellDate.getMonth() &&
-        bDate.getFullYear() === cellDate.getFullYear();
+      if (hour < 8) {
+        cellDateTime.setDate(cellDateTime.getDate() + 1);
+      }
 
-      return bCourtId === courtId && startHour === hour && b.status === "confirmed" && isSameDay;
+      const isTimeInRange = cellDateTime >= bDate && cellDateTime < eDate;
+
+      return bCourtId === courtId && isTimeInRange && b.status === "confirmed";
     });
   };
 
@@ -347,10 +375,9 @@ export function ScheduleView({ venueId }: { venueId: string }) {
     courtPriceEvening: number | undefined,
     sportType?: string | undefined,
   ) => {
-    // يعتبر الحجز مسائياً إذا كان في ساعة المساء المحددة أو في الفجر قبل الـ 8 صباحاً
     const isEvening = hour >= eveningStartHour || hour < 8;
 
-    let price = courtPricePerHour || 0; // القيمة القديمة الموحدة كاحتياطي
+    let price = courtPricePerHour || 0;
 
     if (isEvening && courtPriceEvening) {
       price = courtPriceEvening;
@@ -368,8 +395,10 @@ export function ScheduleView({ venueId }: { venueId: string }) {
     const startDateTime = new Date(selectedDate);
     startDateTime.setHours(slot.hour, 0, 0, 0);
 
+    const bookingDuration = (data as BookingFormData & { duration?: number }).duration || 60;
+
     const endDateTime = new Date(startDateTime);
-    endDateTime.setHours(startDateTime.getHours() + 1);
+    endDateTime.setMinutes(startDateTime.getMinutes() + bookingDuration);
 
     try {
       await createBooking({
@@ -377,7 +406,7 @@ export function ScheduleView({ venueId }: { venueId: string }) {
         court: slot.courtId,
         startTime: startDateTime.toISOString(),
         endTime: endDateTime.toISOString(),
-        totalPrice: slot.price,
+        totalPrice: slot.price * (bookingDuration / 60),
         deposit: data.deposit,
         bookingType: "manual",
         guestData: { name: data.name, phone: data.phone },
@@ -408,7 +437,7 @@ export function ScheduleView({ venueId }: { venueId: string }) {
   const handleMarkAsPaid = async (id: string, fullPrice: number) => {
     try {
       await apiClient.patch(`/bookings/${id}/payment`, {
-        deposit: fullPrice,
+        deposit: fullPrice, // +++ نحدث العربون ليكون مساوياً للسعر الإجمالي ليكون خالصاً +++
         paymentStatus: "paid",
       });
 
@@ -420,19 +449,11 @@ export function ScheduleView({ venueId }: { venueId: string }) {
     }
   };
 
-  if (loading && bookings.length === 0) {
-    return (
-      <div className="p-10 text-center">
-        <Clock className="inline h-6 w-6 animate-spin text-primary" />
-      </div>
-    );
-  }
-
   const activeHours = timeTab === "morning" ? MORNING_HOURS : EVENING_HOURS;
 
   return (
     <div className="flex flex-col gap-5">
-      <section className="card-surface p-5">
+      <section className="card-surface p-5 relative">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 sm:flex sm:justify-between">
           <div className="min-w-0">
             <h2 className="font-display text-lg font-extrabold">الجدول</h2>
@@ -497,177 +518,202 @@ export function ScheduleView({ venueId }: { venueId: string }) {
           </button>
         </div>
 
-        {/* --- نسخة الكمبيوتر --- */}
-        <div className="mt-5 hidden overflow-x-auto md:block">
-          <div className="min-w-[900px]">
-            <div
-              className="grid text-xs text-muted-foreground"
-              style={{
-                gridTemplateColumns: `130px repeat(${activeHours.length}, minmax(60px, 1fr))`,
-              }}
-            >
-              <div />
-              {activeHours.map((h) => (
-                <div key={h} className="pb-2 text-center font-semibold">
-                  {String(h).padStart(2, "0")}:00
+        <div className="relative min-h-[300px]">
+          {loading && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-background/60 backdrop-blur-sm transition-all duration-300">
+              <div className="flex flex-col items-center gap-3 rounded-2xl bg-card border border-border/50 p-6 shadow-2xl animate-in zoom-in-95 fade-in">
+                <div className="bg-primary/10 p-3 rounded-full">
+                  <Loader2 className="size-8 animate-spin text-primary" />
                 </div>
-              ))}
+                <p className="text-sm font-bold text-foreground">جاري تحضير الجدول...</p>
+                <p className="text-xs text-muted-foreground">لحظات ونعرض أحدث المواعيد</p>
+              </div>
             </div>
+          )}
 
-            {courts.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                لا توجد ملاعب نشطة في هذا المكان
-              </p>
-            ) : (
-              courts.map((court) => (
-                <div
-                  key={court._id}
-                  className="grid border-t border-border"
-                  style={{
-                    gridTemplateColumns: `130px repeat(${activeHours.length}, minmax(60px, 1fr))`,
-                  }}
-                >
-                  <div className="flex items-center py-2 pl-1 text-sm font-bold">{court.name}</div>
+          {/* --- نسخة الكمبيوتر --- */}
+          <div className="mt-5 hidden overflow-x-auto md:block">
+            <div className="min-w-[900px]">
+              <div
+                className="grid text-xs text-muted-foreground"
+                style={{
+                  gridTemplateColumns: `130px repeat(${activeHours.length}, minmax(60px, 1fr))`,
+                }}
+              >
+                <div />
+                {activeHours.map((h) => (
+                  <div key={h} className="pb-2 text-center font-semibold">
+                    {String(h).padStart(2, "0")}:00
+                  </div>
+                ))}
+              </div>
 
-                  {activeHours.map((hour) => {
-                    const b = getBookingForCell(court._id, hour);
-                    if (b) {
-                      const kind = b.bookingType || "app";
+              {courts.length === 0 && !loading ? (
+                <p className="py-20 text-center text-sm font-bold text-muted-foreground border border-dashed rounded-xl">
+                  لا توجد ملاعب نشطة في هذا المكان
+                </p>
+              ) : (
+                courts.map((court) => (
+                  <div
+                    key={court._id}
+                    className="grid border-t border-border"
+                    style={{
+                      gridTemplateColumns: `130px repeat(${activeHours.length}, minmax(60px, 1fr))`,
+                    }}
+                  >
+                    <div className="flex items-center py-2 pl-1 text-sm font-bold">
+                      {court.name}
+                    </div>
 
-                      const price = b.totalPrice || 0;
-                      const deposit = b.deposit || 0;
-                      const remaining = Math.max(price - deposit, 0);
+                    {activeHours.map((hour) => {
+                      const b = getBookingForCell(court._id, hour);
+                      if (b) {
+                        const kind = b.bookingType || "app";
+
+                        const price = b.totalPrice || 0;
+                        const deposit = b.deposit || 0;
+                        const remaining = Math.max(price - deposit, 0);
+
+                        return (
+                          <div
+                            key={hour}
+                            onClick={() => setViewBooking(b)}
+                            className={cn(
+                              "m-1 overflow-hidden rounded-xl border p-2 text-right transition-transform hover:scale-[1.02] cursor-pointer relative flex flex-col justify-center",
+                              kindClass[kind],
+                            )}
+                          >
+                            <p className="truncate text-[11px] font-bold pr-1">
+                              {b.guestData?.name || b.user?.name || "بدون اسم"}
+                            </p>
+                            {/* +++ التعديل هنا: إظهار "باقي" أو "خالص" +++ */}
+                            {remaining > 0 ? (
+                              <p className="truncate text-[10px] font-bold text-destructive mt-0.5 bg-destructive/10 px-1 rounded-sm self-start">
+                                باقي: {remaining} ج
+                              </p>
+                            ) : (
+                              <p className="truncate text-[10px] font-bold text-emerald-700 mt-0.5 flex items-center gap-0.5">
+                                <CheckCircle2 className="size-3" /> خالص
+                              </p>
+                            )}
+                          </div>
+                        );
+                      }
 
                       return (
                         <div
                           key={hour}
-                          onClick={() => setViewBooking(b)}
-                          className={cn(
-                            "m-1 overflow-hidden rounded-xl border p-2 text-right transition-transform hover:scale-[1.02] cursor-pointer relative",
-                            kindClass[kind],
-                          )}
+                          className="group relative m-1 rounded-xl border border-dashed border-border bg-surface/60"
                         >
-                          <p className="truncate text-[11px] font-bold pr-1">
-                            {b.guestData?.name || b.user?.name || "بدون اسم"}
-                          </p>
-                          {remaining > 0 ? (
-                            <p className="truncate text-[10px] font-bold text-destructive mt-0.5">
-                              باقي: {remaining} ج
-                            </p>
-                          ) : (
-                            <p className="truncate text-[10px] opacity-80 mt-0.5">
-                              {String(hour).padStart(2, "0")}:00
-                            </p>
-                          )}
+                          <button
+                            onClick={() =>
+                              handleQuickBookClick(
+                                court._id,
+                                court.name,
+                                hour,
+                                court.pricePerHour,
+                                court.priceMorning,
+                                court.priceEvening,
+                                court.sportType,
+                              )
+                            }
+                            className="absolute inset-0 grid place-items-center rounded-xl text-[11px] font-bold text-primary opacity-0 transition-opacity duration-200 group-hover:bg-primary/10 group-hover:opacity-100"
+                          >
+                            حجز
+                          </button>
                         </div>
                       );
-                    }
-
-                    return (
-                      <div
-                        key={hour}
-                        className="group relative m-1 rounded-xl border border-dashed border-border bg-surface/60"
-                      >
-                        <button
-                          onClick={() =>
-                            handleQuickBookClick(
-                              court._id,
-                              court.name,
-                              hour,
-                              court.pricePerHour,
-                              court.priceMorning,
-                              court.priceEvening,
-                              court.sportType,
-                            )
-                          }
-                          className="absolute inset-0 grid place-items-center rounded-xl text-[11px] font-bold text-primary opacity-0 transition-opacity duration-200 group-hover:bg-primary/10 group-hover:opacity-100"
-                        >
-                          حجز
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* --- نسخة الموبايل --- */}
-        <div className="mt-5 md:hidden">
-          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-2 scrollbar-hide">
-            {courts.map((c) => (
-              <button
-                key={c._id}
-                onClick={() => setSelectedCourtId(c._id)}
-                className={cn(
-                  "shrink-0 rounded-xl px-3 py-2 text-xs font-bold transition-colors",
-                  c._id === selectedCourtId
-                    ? "gradient-primary text-primary-foreground"
-                    : "border border-border bg-surface text-muted-foreground",
-                )}
-              >
-                {c.name}
-              </button>
-            ))}
+                    })}
+                  </div>
+                ))
+              )}
+            </div>
           </div>
 
-          <div className="mt-3 flex flex-col gap-2">
-            {activeHours.map((hour) => {
-              const currentCourt = courts.find((c) => c._id === selectedCourtId);
-              if (!currentCourt) return null;
-
-              const b = getBookingForCell(selectedCourtId, hour);
-
-              return (
-                <div key={hour} className="grid grid-cols-[64px_minmax(0,1fr)] items-center gap-3">
-                  <span className="text-xs font-bold text-muted-foreground">
-                    {String(hour).padStart(2, "0")}:00
-                  </span>
-                  {b ? (
-                    <div
-                      onClick={() => setViewBooking(b)}
-                      className={cn(
-                        "min-w-0 rounded-xl border p-3 cursor-pointer transition hover:opacity-90 flex justify-between items-center",
-                        kindClass[b.bookingType || "app"],
-                      )}
-                    >
-                      <div>
-                        <p className="truncate text-sm font-bold">
-                          {b.guestData?.name || b.user?.name || "بدون اسم"}
-                        </p>
-                        <p className="truncate text-[11px] opacity-80 mt-0.5">
-                          {KIND_LABEL[b.bookingType || "app"]}
-                        </p>
-                      </div>
-
-                      {(b.totalPrice || 0) - (b.deposit || 0) > 0 && (
-                        <div className="bg-destructive/10 text-destructive px-2 py-1 rounded-md text-[10px] font-bold shrink-0">
-                          باقي: {(b.totalPrice || 0) - (b.deposit || 0)} ج
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() =>
-                        handleQuickBookClick(
-                          selectedCourtId,
-                          currentCourt.name,
-                          hour,
-                          currentCourt.pricePerHour,
-                          currentCourt.priceMorning,
-                          currentCourt.priceEvening,
-                          currentCourt.sportType,
-                        )
-                      }
-                      className="flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-dashed border-border bg-surface/60 p-3 text-xs font-bold text-primary"
-                    >
-                      <Plus className="h-4 w-4" /> حجز سريع
-                    </button>
+          {/* --- نسخة الموبايل --- */}
+          <div className="mt-5 md:hidden">
+            <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-2 scrollbar-hide">
+              {courts.map((c) => (
+                <button
+                  key={c._id}
+                  onClick={() => setSelectedCourtId(c._id)}
+                  className={cn(
+                    "shrink-0 rounded-xl px-3 py-2 text-xs font-bold transition-colors",
+                    c._id === selectedCourtId
+                      ? "gradient-primary text-primary-foreground"
+                      : "border border-border bg-surface text-muted-foreground",
                   )}
-                </div>
-              );
-            })}
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-3 flex flex-col gap-2">
+              {activeHours.map((hour) => {
+                const currentCourt = courts.find((c) => c._id === selectedCourtId);
+                if (!currentCourt) return null;
+
+                const b = getBookingForCell(selectedCourtId, hour);
+
+                return (
+                  <div
+                    key={hour}
+                    className="grid grid-cols-[64px_minmax(0,1fr)] items-center gap-3"
+                  >
+                    <span className="text-xs font-bold text-muted-foreground">
+                      {String(hour).padStart(2, "0")}:00
+                    </span>
+                    {b ? (
+                      <div
+                        onClick={() => setViewBooking(b)}
+                        className={cn(
+                          "min-w-0 rounded-xl border p-3 cursor-pointer transition hover:opacity-90 flex justify-between items-center",
+                          kindClass[b.bookingType || "app"],
+                        )}
+                      >
+                        <div>
+                          <p className="truncate text-sm font-bold">
+                            {b.guestData?.name || b.user?.name || "بدون اسم"}
+                          </p>
+                          <p className="truncate text-[11px] opacity-80 mt-0.5">
+                            {KIND_LABEL[b.bookingType || "app"]}
+                          </p>
+                        </div>
+
+                        {/* +++ التعديل هنا للموبايل +++ */}
+                        {(b.totalPrice || 0) - (b.deposit || 0) > 0 ? (
+                          <div className="bg-destructive/10 text-destructive px-2 py-1 rounded-md text-[10px] font-bold shrink-0 border border-destructive/20">
+                            باقي: {(b.totalPrice || 0) - (b.deposit || 0)} ج
+                          </div>
+                        ) : (
+                          <div className="bg-emerald-500/10 text-emerald-600 px-2 py-1 rounded-md text-[10px] font-bold shrink-0 border border-emerald-500/20 flex items-center gap-1">
+                            <CheckCircle2 className="size-3" /> خالص
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() =>
+                          handleQuickBookClick(
+                            selectedCourtId,
+                            currentCourt.name,
+                            hour,
+                            currentCourt.pricePerHour,
+                            currentCourt.priceMorning,
+                            currentCourt.priceEvening,
+                            currentCourt.sportType,
+                          )
+                        }
+                        className="flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-dashed border-border bg-surface/60 p-3 text-xs font-bold text-primary"
+                      >
+                        <Plus className="h-4 w-4" /> حجز سريع
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </section>

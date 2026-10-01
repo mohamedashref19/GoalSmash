@@ -11,6 +11,7 @@ import {
   X,
   FileText,
   ClipboardList,
+  CalendarDays,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -64,6 +65,13 @@ function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void
             className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary text-muted-foreground"
           >
             <ClipboardList className="h-5 w-5" /> تقفيل اليومية
+          </Link>
+          <Link
+            to="/admin-schedule"
+            onClick={onClose}
+            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors hover:bg-primary/10 hover:text-primary [&.active]:bg-primary/10 [&.active]:text-primary text-muted-foreground"
+          >
+            <CalendarDays className="h-5 w-5" /> جدول الأندية
           </Link>
           <Link
             to="/admin-reports"
@@ -120,6 +128,12 @@ function AdminSetupPage() {
           className="text-sm font-bold flex items-center gap-2 hover:text-primary transition-colors text-muted-foreground [&.active]:text-primary"
         >
           <ClipboardList className="size-4" /> تقفيل اليومية
+        </Link>
+        <Link
+          to="/admin-schedule"
+          className="text-sm font-bold flex items-center gap-2 hover:text-primary transition-colors text-muted-foreground [&.active]:text-primary"
+        >
+          <CalendarDays className="size-4" /> جدول الأندية
         </Link>
         <Link
           to="/admin-reports"

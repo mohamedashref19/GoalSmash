@@ -32,9 +32,9 @@ interface CourtBreakdown {
   courtName: string;
   venueName: string;
   totalRevenue: number;
-  totalOnline: number; // +++
-  totalCash: number; // +++
-  netAmount: number; // +++
+  totalOnline: number;
+  totalCash: number;
+  netAmount: number;
   totalCommission: number;
   bookingsCount: number;
 }
@@ -109,13 +109,11 @@ export function AdminReportsView() {
   };
 
   const handlePrint = async () => {
-    // تشغيل الطباعة العادية في المتصفح (اللاب توب)
     if (!Capacitor.isNativePlatform()) {
       window.print();
       return;
     }
 
-    // توليد PDF ومشاركته في تطبيق الموبايل
     if (!reportRef.current) return;
     const toastId = toast.loading("جاري تجهيز ملف PDF...");
     setIsCapturing(true);
@@ -201,7 +199,6 @@ export function AdminReportsView() {
           url: savedFile.uri,
         });
       } catch (error: unknown) {
-        // التعديل هنا: إظهار الخطأ الفعلي
         const message = error instanceof Error ? error.message : String(error);
         toast.error(message || "حدث خطأ أثناء حفظ الملف");
       }
@@ -250,11 +247,10 @@ export function AdminReportsView() {
       }
     } catch (error: unknown) {
       console.error("Error generating image:", error);
-      // التعديل هنا: إظهار الخطأ الفعلي
       const message = error instanceof Error ? error.message : String(error);
       toast.error(message || "حدث خطأ أثناء حفظ الملف");
     } finally {
-      setIsCapturing(false); // +++ إرجاع الشاشة لوضعها الطبيعي
+      setIsCapturing(false);
     }
   };
 
@@ -409,7 +405,10 @@ export function AdminReportsView() {
                   <p className="font-display text-2xl lg:text-3xl font-black text-warning print:text-black mt-2">
                     {report.totalCommission} <span className="text-sm font-bold">ج.م</span>
                   </p>
-                  <p className="text-xs text-muted-foreground mt-2">صافي الربح للمنصة</p>
+                  {/* +++ توضيح أن النسبة تتراوح بين 5% و 10% +++ */}
+                  <p className="text-xs text-muted-foreground mt-2">
+                    صافي الربح للمنصة (بمتوسط 5-10%)
+                  </p>
                 </div>
 
                 <div className="card-surface p-5 border-b-4 border-b-info relative overflow-hidden print:border print:border-gray-200 print:shadow-none print:break-inside-avoid">
@@ -430,11 +429,9 @@ export function AdminReportsView() {
                 <h4 className="font-bold text-md mb-3 text-foreground print:text-black flex items-center gap-2">
                   <TrendingUp className="size-4 text-primary" /> تفصيل الإيرادات والعمولات للملاعب
                 </h4>
-                {/* التعديل هنا: تحويل overflow-hidden إلى overflow-x-auto لدعم التمرير */}
                 <div
                   className={`rounded-xl border border-border print:border-gray-300 ${!isCapturing ? "overflow-x-auto" : ""}`}
                 >
-                  {/* إضافة min-w-[700px] لإجبار الجدول على الاحتفاظ بحجمه وعدم عصر الخلايا */}
                   <table className="w-full text-sm text-right min-w-[700px]">
                     <thead className="bg-muted/50 text-muted-foreground print:bg-gray-100 print:text-black">
                       <tr>
@@ -460,6 +457,13 @@ export function AdminReportsView() {
                     <tbody>
                       {report.courtsBreakdown.map((court, index) => {
                         const isOwedToVenue = court.netAmount >= 0;
+
+                        // +++ حساب النسبة التقريبية المقتطعة للملعب +++
+                        const commissionPercentage =
+                          court.totalRevenue > 0
+                            ? ((court.totalCommission / court.totalRevenue) * 100).toFixed(1)
+                            : 0;
+
                         return (
                           <tr
                             key={court._id || index}
@@ -481,7 +485,13 @@ export function AdminReportsView() {
                               {Number(court.totalOnline || 0).toFixed(2)} ج.م
                             </td>
                             <td className="px-4 py-3 font-black text-warning print:text-black whitespace-nowrap">
-                              {Number(court.totalCommission).toFixed(2)} ج.م
+                              <div className="flex flex-col">
+                                <span>{Number(court.totalCommission).toFixed(2)} ج.م</span>
+                                {/* +++ توضيح النسبة +++ */}
+                                <span className="text-[10px] opacity-70">
+                                  متوسط ({commissionPercentage}%)
+                                </span>
+                              </div>
                             </td>
                             <td
                               className={cn(
@@ -502,7 +512,7 @@ export function AdminReportsView() {
                       {report.courtsBreakdown.length === 0 && (
                         <tr>
                           <td
-                            colSpan={5}
+                            colSpan={7}
                             className="px-4 py-8 text-center text-muted-foreground font-bold"
                           >
                             لا توجد إيرادات مسجلة لهذه الفترة.

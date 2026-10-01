@@ -18,6 +18,8 @@ import {
   FileText,
   Settings,
   XCircle,
+  Hourglass,
+  CheckCircle2, // +++ أيقونة الخالص +++
 } from "lucide-react";
 import { Header } from "@/components/venue/Header";
 import { cn } from "@/lib/utils";
@@ -45,6 +47,7 @@ interface BookingType {
   status: string;
   paymentStatus?: string;
   totalPrice: number;
+  deposit?: number; // +++ إضافة حقل العربون للواجهة +++
   venue?: { name: string };
   court?: { name: string };
   paymentId?: string;
@@ -233,7 +236,6 @@ function UploadProofModal({
   const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
 
-    // +++ إصلاح خطأ الـ void (التأكد من عدم إرجاع قيمة الـ toast) +++
     if (!file) {
       toast.error("يرجى إرفاق صورة إيصال التحويل");
       return;
@@ -528,19 +530,17 @@ function MyBookingsPage() {
 
   return (
     <div dir="rtl" className="flex min-h-screen flex-col bg-background text-foreground">
-      {/* التوجيه الذكي للقائمة الجانبية بناءً على نوع المستخدم */}
       {isAdmin && (
         <AdminMobileMenu open={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
       )}
 
-      {/* +++ إصلاح خطأ ESLint بإزالة as any وتمرير النص بشكل صحيح +++ */}
       {isOwner && (
         <MobileSidebar
           open={isMobileMenuOpen}
           activeView="overview"
           onNavigate={(view) => {
-            localStorage.setItem("ownerActiveTab", view); // حفظ التاب المطلوب
-            window.location.href = "/"; // التوجيه للداشبورد
+            localStorage.setItem("ownerActiveTab", view);
+            window.location.href = "/";
           }}
           onClose={() => setIsMobileMenuOpen(false)}
         />
@@ -617,6 +617,19 @@ function MyBookingsPage() {
                 minute: "2-digit",
               });
 
+              const durationMinutes = Math.round(
+                (endDate.getTime() - startDate.getTime()) / (1000 * 60),
+              );
+              let durationText = `${durationMinutes} دقيقة`;
+              if (durationMinutes === 60) durationText = "ساعة";
+              else if (durationMinutes === 90) durationText = "ساعة ونصف";
+              else if (durationMinutes === 120) durationText = "ساعتين";
+
+              // +++ حساب وعرض العربون والمتبقي بشكل واضح للعميل +++
+              const price = b.totalPrice || 0;
+              const deposit = b.deposit || price; // إذا لم يوجد حقل عربون للقدامى، اعتبر الإجمالي
+              const remaining = Math.max(price - deposit, 0);
+
               return (
                 <article
                   key={b._id}
@@ -639,21 +652,46 @@ function MyBookingsPage() {
                           b.actualPaymentStatus,
                         )}
                       </div>
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
+                      <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground mt-1">
+                        <span className="flex items-center gap-1.5">
                           <CalendarDays className="size-3.5" /> {dateStr}
                         </span>
-                        <span className="flex items-center gap-1">
+                        <span className="flex items-center gap-1.5">
                           <Clock className="size-3.5" /> {timeStr}
+                        </span>
+                        <span className="flex items-center gap-1.5 text-foreground/80 font-bold">
+                          <Hourglass className="size-3.5 text-primary" /> مدة الحجز: {durationText}
                         </span>
                       </div>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3 sm:border-0 sm:pt-0">
-                    <span className="flex items-center gap-1.5 text-sm font-bold text-primary">
-                      <Wallet className="size-4" />
-                      {b.totalPrice} ج.م
-                    </span>
+                    {/* +++ التعديل هنا: تفصيل العربون والمتبقي +++ */}
+                    <div className="flex flex-col gap-1 items-start sm:items-end">
+                      <span className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground line-through opacity-70">
+                        إجمالي الحجز: {price} ج.م
+                      </span>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-bold text-muted-foreground bg-muted border border-border px-2 py-0.5 rounded-md">
+                          المدفوع {remaining > 0 ? "(عربون)" : "(كامل)"}
+                        </span>
+                        <span className="text-sm font-black text-primary">{deposit} ج.م</span>
+                      </div>
+
+                      {!isCancelledOrExpired && remaining > 0 && (
+                        <span className="text-[10px] font-bold text-destructive flex items-center gap-1 bg-destructive/10 px-2 py-0.5 rounded-sm border border-destructive/20 mt-1">
+                          يُدفع في الملعب: {remaining} ج.م
+                        </span>
+                      )}
+                      {!isCancelledOrExpired && remaining === 0 && (
+                        <span className="text-[10px] font-bold text-success flex items-center gap-1 bg-success/10 px-2 py-0.5 rounded-sm border border-success/20 mt-1">
+                          <CheckCircle2 className="size-3" /> مدفوع بالكامل
+                        </span>
+                      )}
+                    </div>
+                    {/* +++++++++++++++++++++++++++++++++++++++++++ */}
+
                     <div className="flex items-center gap-2">
                       {b.paymentId &&
                         b.status === "pending_payment" &&

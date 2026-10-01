@@ -12,12 +12,16 @@ import {
   Printer,
   Loader2,
   PieChart,
+  CheckCircle2,
+  Circle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Capacitor } from "@capacitor/core";
 import { cn } from "@/lib/utils";
 // @ts-expect-error: API lacks TypeScript definitions
 import { fetchAllVenues, fetchDailyClosing } from "@/api/adminApi";
+// @ts-expect-error: API lacks TypeScript definitions
+import { toggleVenueSettlement } from "@/api/adminApi"; // +++ إضافة الدالة الجديدة
 
 interface CourtDetails {
   courtId: string;
@@ -27,7 +31,7 @@ interface CourtDetails {
   totalRevenue: number;
   totalCommission: number;
   bookingsCount: number;
-  netAmount: number; // +++ الحقل الجديد من الباك إند +++
+  netAmount: number;
 }
 
 interface VenueClosing {
@@ -38,7 +42,8 @@ interface VenueClosing {
   venueTotalRevenue: number;
   venueTotalCommission: number;
   venueBookingsCount: number;
-  venueNetAmount: number; // +++ الحقل الجديد من الباك إند +++
+  venueNetAmount: number;
+  isSettled: boolean; // +++ حالة التصفية من الباك إند
   courts: CourtDetails[];
 }
 
@@ -64,6 +69,7 @@ export function AdminDailyClosingView() {
   const [closingData, setClosingData] = useState<ClosingData | null>(null);
   const [loading, setLoading] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [settlingVenueId, setSettlingVenueId] = useState<string | null>(null); // حالة التحميل للزر
   const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -87,6 +93,37 @@ export function AdminDailyClosingView() {
       toast.error(err as string);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // +++ دالة تغيير حالة التصفية +++
+  const handleToggleSettlement = async (venueId: string, currentStatus: boolean) => {
+    const newStatus = !currentStatus;
+    const confirmMsg = newStatus
+      ? "هل أنت متأكد من تصفية حساب هذا النادي لليوم المحدد؟"
+      : "هل تريد إلغاء التصفية وفتح الحساب مرة أخرى؟";
+
+    if (!window.confirm(confirmMsg)) return;
+
+    setSettlingVenueId(venueId);
+    try {
+      await toggleVenueSettlement(venueId, date, newStatus);
+      toast.success(newStatus ? "تم تأكيد التصفية بنجاح" : "تم إلغاء التصفية");
+
+      // تحديث الحالة في الواجهة بدون إعادة التحميل من السيرفر
+      setClosingData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          venuesClosing: prev.venuesClosing.map((v) =>
+            v._id === venueId ? { ...v, isSettled: newStatus } : v,
+          ),
+        };
+      });
+    } catch (err: unknown) {
+      toast.error(err as string);
+    } finally {
+      setSettlingVenueId(null);
     }
   };
 
@@ -258,16 +295,55 @@ export function AdminDailyClosingView() {
               {/* تفاصيل وتصفية حساب كل نادي */}
               <div className="space-y-8 mt-8">
                 {closingData.venuesClosing.map((venue) => {
-                  // الاعتماد بالكامل على الباك إند
                   const isVenueOwed = venue.venueNetAmount >= 0;
 
                   return (
                     <div
                       key={venue._id}
-                      className="border border-border print:border-gray-300 rounded-xl overflow-hidden"
+                      className={cn(
+                        "border rounded-xl overflow-hidden print:border-gray-300",
+                        venue.isSettled ? "border-success/40" : "border-border",
+                      )}
                     >
-                      <div className="bg-muted/50 print:bg-gray-100 p-4 border-b border-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                        <h4 className="font-bold text-lg">{venue.venueName}</h4>
+                      <div
+                        className={cn(
+                          "p-4 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 print:bg-gray-100",
+                          venue.isSettled
+                            ? "bg-success/5 border-success/20"
+                            : "bg-muted/50 border-border",
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <h4 className="font-bold text-lg">{venue.venueName}</h4>
+
+                          {/* +++ زر التصفية التفاعلي +++ */}
+                          <button
+                            onClick={() => handleToggleSettlement(venue._id, venue.isSettled)}
+                            disabled={settlingVenueId === venue._id}
+                            className={cn(
+                              "flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg border transition-all duration-300 print:hidden",
+                              venue.isSettled
+                                ? "bg-success/20 text-success-foreground border-success/30 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"
+                                : "bg-background text-muted-foreground border-border hover:border-success/40 hover:text-success",
+                              settlingVenueId === venue._id && "opacity-50 cursor-not-allowed",
+                            )}
+                          >
+                            {settlingVenueId === venue._id ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : venue.isSettled ? (
+                              <CheckCircle2 className="size-4" />
+                            ) : (
+                              <Circle className="size-4" />
+                            )}
+                            {venue.isSettled ? "تمت تصفية الحساب" : "تأكيد التصفية"}
+                          </button>
+
+                          {/* عرض نصي في حالة الطباعة */}
+                          <span className="hidden print:inline-block text-xs font-bold">
+                            [{venue.isSettled ? "حساب مُصفى" : "حساب غير مُصفى"}]
+                          </span>
+                        </div>
+
                         <div className="flex flex-col items-start sm:items-end gap-1">
                           <p className="text-sm font-bold text-muted-foreground print:text-gray-600">
                             إجمالي إيرادات النادي: {venue.venueTotalRevenue} ج.م
@@ -310,13 +386,19 @@ export function AdminDailyClosingView() {
                           </thead>
                           <tbody>
                             {venue.courts.map((court) => {
-                              // الاعتماد بالكامل على الباك إند
                               const isOwedToVenue = court.netAmount >= 0;
+                              const commissionPercentage =
+                                court.totalRevenue > 0
+                                  ? ((court.totalCommission / court.totalRevenue) * 100).toFixed(1)
+                                  : 0;
 
                               return (
                                 <tr
                                   key={court.courtId}
-                                  className="border-b border-border/50 last:border-0 print:border-gray-200"
+                                  className={cn(
+                                    "border-b border-border/50 last:border-0 print:border-gray-200",
+                                    venue.isSettled ? "bg-success/5/30" : "",
+                                  )}
                                 >
                                   <td className="px-4 py-3 font-bold whitespace-nowrap">
                                     {court.courtName}
@@ -331,7 +413,12 @@ export function AdminDailyClosingView() {
                                     {court.totalOnline} ج.م
                                   </td>
                                   <td className="px-4 py-3 font-black text-warning whitespace-nowrap">
-                                    {court.totalCommission} ج.م
+                                    <div className="flex flex-col">
+                                      <span>{court.totalCommission} ج.م</span>
+                                      <span className="text-[10px] opacity-70">
+                                        متوسط ({commissionPercentage}%)
+                                      </span>
+                                    </div>
                                   </td>
                                   <td
                                     className={cn(

@@ -52,7 +52,7 @@ export function AdminCancellationsView() {
 
     if (booking.cancelledBy.role === "owner" || booking.cancelledBy.role === "admin") {
       return {
-        text: "صاحب الملعب / الإدارة",
+        text: "صاحب الملعب ",
         icon: ShieldAlert,
         color: "text-destructive",
         bg: "bg-destructive/10",

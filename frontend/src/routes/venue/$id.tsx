@@ -19,10 +19,44 @@ import {
   Wallet,
   Info,
   X,
+  Hourglass,
+  Phone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
+
+type MosqueIconProps = {
+  className?: string;
+};
+
+const MosqueIcon = ({ className }: MosqueIconProps) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M3 21h18" />
+    <path d="M5 21v-7h14v7" />
+    <path d="M4 14c0-1.1.9-2 2-2h12c1.1 0 2 .9 2 2" />
+    <path d="M7 12c.5-3 2.4-5 5-5s4.5 2 5 5" />
+    <path d="M12 7V4" />
+    <path d="M10.8 4h2.4" />
+    <path d="M8 14v7" />
+    <path d="M12 14v7" />
+    <path d="M16 14v7" />
+    <path d="M5 12V7h2v5" />
+    <path d="M5 7h2" />
+    <path d="M19 12V7h-2v5" />
+    <path d="M17 7h2" />
+  </svg>
+);
 
 // @ts-expect-error APIs without TS definitions
 import { fetchVenueById } from "@/api/venueApi";
@@ -36,9 +70,9 @@ interface CourtType {
   _id: string;
   name: string;
   sportType: string;
-  priceMorning?: number; // +++ السعر الصباحي +++
-  priceEvening?: number; // +++ السعر المسائي +++
-  pricePerHour?: number; // للتوافق مع الملاعب القديمة
+  priceMorning?: number;
+  priceEvening?: number;
+  pricePerHour?: number;
   status?: string;
   image?: string;
 }
@@ -47,8 +81,9 @@ interface VenueType {
   _id: string;
   name: string;
   description?: string;
-  openTime?: string; // +++ بداية الصباح +++
-  eveningStartTime?: string; // +++ بداية المساء +++
+  openTime?: string;
+  eveningStartTime?: string;
+  phone?: string;
   address?: {
     city: string;
     area: string;
@@ -61,6 +96,7 @@ interface VenueType {
 
 interface BookingResponse {
   startTime: string;
+  endTime: string;
   status: string;
 }
 
@@ -88,7 +124,9 @@ export const Route = createFileRoute("/venue/$id")({
   component: VenueDetailsPage,
 });
 
-const AMENITY_ICONS: Record<string, typeof Car> = {
+type AmenityIcon = typeof Car | typeof MosqueIcon;
+
+const AMENITY_ICONS: Record<string, AmenityIcon> = {
   "موقف سيارات": Car,
   دش: ShowerHead,
   "واي فاي": Wifi,
@@ -96,6 +134,7 @@ const AMENITY_ICONS: Record<string, typeof Car> = {
   "غرف تغيير": Shirt,
   "كرات وليات": Dumbbell,
   مدربين: Dumbbell,
+  مسجد: MosqueIcon,
 };
 
 const MORNING_SLOTS = [
@@ -177,6 +216,8 @@ function VenueDetailsPage() {
 
   const [timeTab, setTimeTab] = useState<"morning" | "evening">("morning");
 
+  const [selectedDuration, setSelectedDuration] = useState<60 | 90 | 120>(60);
+
   const getBookingSummary = () => {
     if (!days || !days[selectedDay]) return { dayText: "", mobileText: "", timeText: "" };
     if (!selectedSlot) {
@@ -195,10 +236,13 @@ function VenueDetailsPage() {
     const weekday = actualDateObj.toLocaleDateString("ar-EG", { weekday: "long" });
     const label = actualDateObj.toLocaleDateString("ar-EG", { day: "numeric", month: "long" });
 
+    const durationText =
+      selectedDuration === 60 ? "ساعة" : selectedDuration === 90 ? "ساعة ونصف" : "ساعتين";
+
     return {
       dayText: `${weekday}، ${label}`,
-      mobileText: `${weekday} · ${selectedSlot}`,
-      timeText: selectedSlot,
+      mobileText: `${weekday} · ${selectedSlot} (${durationText})`,
+      timeText: `${selectedSlot} (${durationText})`,
     };
   };
 
@@ -240,28 +284,25 @@ function VenueDetailsPage() {
 
         if (!isMounted) return;
 
-        const bookedHours = bookingsArray
-          .filter(
-            (b: BookingResponse) =>
-              b &&
-              b.startTime &&
-              typeof b.startTime === "string" &&
-              // الحجوزات الملغاة أو المنتهية (لم يتم الدفع) لا تقفل الخانة
-              b.status !== "cancelled" &&
-              b.status !== "expired",
-          )
-          .map((b: BookingResponse) => {
-            try {
-              const dateObj = new Date(b.startTime);
-              if (isNaN(dateObj.getTime())) return null;
-              return `${String(dateObj.getHours()).padStart(2, "0")}:00`;
-            } catch (e) {
-              return null;
-            }
-          })
-          .filter(Boolean);
+        const newBookedSlots: string[] = [];
 
-        setBookedSlots(bookedHours);
+        bookingsArray.forEach((b: BookingResponse) => {
+          if (!b || !b.startTime || !b.endTime) return;
+          if (b.status === "cancelled" || b.status === "expired") return;
+
+          const start = new Date(b.startTime);
+          const end = new Date(b.endTime);
+
+          if (isNaN(start.getTime()) || isNaN(end.getTime())) return;
+
+          const current = new Date(start);
+          while (current < end) {
+            newBookedSlots.push(`${String(current.getHours()).padStart(2, "0")}:00`);
+            current.setHours(current.getHours() + 1);
+          }
+        });
+
+        setBookedSlots(Array.from(new Set(newBookedSlots)));
       } catch (err) {
         setBookedSlots([]);
       } finally {
@@ -291,16 +332,26 @@ function VenueDetailsPage() {
       const diffInMinutes = (slotTime.getTime() - realNow.getTime()) / (1000 * 60);
       const isPastOrTooClose = diffInMinutes < 30;
 
-      return { time, booked: bookedSlots.includes(time) || isPastOrTooClose };
-    });
-  }, [bookedSlots, timeTab, selectedDay, days]);
+      let hasConflict = false;
+      const hoursNeeded = Math.ceil(selectedDuration / 60);
 
-  // +++ حساب السعر ديناميكياً بناءً على وقت الشريحة المحددة +++
+      for (let i = 0; i < hoursNeeded; i++) {
+        const checkHour = (hourNum + i) % 24;
+        const checkTimeStr = `${String(checkHour).padStart(2, "0")}:00`;
+        if (bookedSlots.includes(checkTimeStr)) {
+          hasConflict = true;
+          break;
+        }
+      }
+
+      return { time, booked: hasConflict || isPastOrTooClose || bookedSlots.includes(time) };
+    });
+  }, [bookedSlots, timeTab, selectedDay, days, selectedDuration]);
+
+  // +++ حساب الإجمالي والعربون +++
+  // +++ حساب الإجمالي والعربون (بنظام الشرائح المتقاطعة) +++
   const total = useMemo(() => {
     if (!selectedCourt || !selectedSlot) return 0;
-
-    const [hours] = selectedSlot.split(":");
-    const bookingHour = parseInt(hours || "0", 10);
 
     const eveningStartHour = parseInt(
       (venue?.eveningStartTime || "18:00").split(":")[0] ?? "18",
@@ -308,16 +359,53 @@ function VenueDetailsPage() {
     );
     const morningStartHour = parseInt((venue?.openTime || "08:00").split(":")[0] ?? "08", 10);
 
-    const isEvening = bookingHour >= eveningStartHour || bookingHour < morningStartHour;
+    const eveningPrice =
+      selectedCourt.priceEvening !== undefined
+        ? selectedCourt.priceEvening
+        : selectedCourt.pricePerHour || 0;
+    const morningPrice =
+      selectedCourt.priceMorning !== undefined
+        ? selectedCourt.priceMorning
+        : selectedCourt.pricePerHour || 0;
 
-    if (isEvening && selectedCourt.priceEvening) {
-      return selectedCourt.priceEvening;
-    } else if (!isEvening && selectedCourt.priceMorning) {
-      return selectedCourt.priceMorning;
+    let totalPrice = 0;
+    const durationBlocks = selectedDuration / 30; // تقسيم المدة لشرائح 30 دقيقة
+
+    let currentHour = parseInt(selectedSlot.split(":")[0] || "0", 10);
+    let currentMinute = parseInt(selectedSlot.split(":")[1] || "0", 10);
+
+    for (let i = 0; i < durationBlocks; i++) {
+      const isCurrentBlockEvening =
+        currentHour >= eveningStartHour || currentHour < morningStartHour;
+
+      const blockPrice = isCurrentBlockEvening ? eveningPrice / 2 : morningPrice / 2;
+      totalPrice += blockPrice;
+
+      // التقدم 30 دقيقة لمعرفة وقت الشريحة القادمة
+      currentMinute += 30;
+      if (currentMinute >= 60) {
+        currentMinute -= 60;
+        currentHour = (currentHour + 1) % 24;
+      }
     }
 
-    return selectedCourt.pricePerHour || 0; // لضمان التوافق مع القديم
-  }, [selectedCourt, selectedSlot, venue]);
+    return totalPrice;
+  }, [selectedCourt, selectedSlot, venue, selectedDuration]);
+
+  // الكود الجديد (50% من الإجمالي)
+  const deposit = useMemo(() => {
+    if (total <= 0) return 0;
+    return total / 2;
+  }, [total]);
+
+  useEffect(() => {
+    if (selectedSlot) {
+      const slotObj = slots.find((s) => s.time === selectedSlot);
+      if (slotObj && slotObj.booked) {
+        setSelectedSlot(null);
+      }
+    }
+  }, [selectedDuration, slots, selectedSlot]);
 
   const confirm = async () => {
     if (!selectedSlot || !selectedCourt || !venue || !days || !days[selectedDay]) return;
@@ -330,7 +418,7 @@ function VenueDetailsPage() {
       if (hourNum < 8) startDateTime.setDate(startDateTime.getDate() + 1);
 
       const endDateTime = new Date(startDateTime);
-      endDateTime.setHours(startDateTime.getHours() + 1);
+      endDateTime.setMinutes(startDateTime.getMinutes() + selectedDuration);
 
       const response = await createBooking({
         venue: venue._id,
@@ -385,7 +473,7 @@ function VenueDetailsPage() {
       </div>
     );
 
-  const dummyAmenities = ["موقف سيارات", "واي فاي", "غرف تغيير"];
+  const dummyAmenities = ["مسجد", "موقف سيارات", "غرف تغيير"];
 
   const locationText = [venue.address?.city, venue.address?.area, venue.address?.details]
     .filter(Boolean)
@@ -440,6 +528,14 @@ function VenueDetailsPage() {
             <p className="flex items-start gap-1.5 text-sm text-muted-foreground">
               <MapPin className="size-4 mt-0.5 shrink-0" /> <span>{locationText}</span>
             </p>
+            {venue.phone && (
+              <p className="flex items-center gap-1.5 text-sm font-bold text-primary">
+                <Phone className="size-4 shrink-0" />
+                <a href={`tel:${venue.phone}`} dir="ltr" className="hover:underline">
+                  {venue.phone}
+                </a>
+              </p>
+            )}
 
             {venue.description && (
               <p className="text-sm leading-7 text-muted-foreground">{venue.description}</p>
@@ -510,6 +606,35 @@ function VenueDetailsPage() {
                 </button>
               ))}
             </div>
+          </section>
+
+          <section className="card-surface space-y-3 p-5">
+            <h2 className="flex items-center gap-2 text-sm font-bold sm:text-base">
+              <Hourglass className="size-4 text-primary" /> حدد المدة
+            </h2>
+            <div className="flex gap-2">
+              {[
+                { value: 60, label: "ساعة" },
+                { value: 90, label: "ساعة ونصف" },
+                { value: 120, label: "ساعتين" },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setSelectedDuration(opt.value as 60 | 90 | 120)}
+                  className={cn(
+                    "flex-1 py-2 rounded-xl border text-sm font-bold transition",
+                    selectedDuration === opt.value
+                      ? "gradient-primary border-transparent text-primary-foreground"
+                      : "border-border bg-background text-muted-foreground hover:border-primary/40",
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              سيتم استبعاد الأوقات التي لا تسمح بهذه المدة المحددة.
+            </p>
           </section>
 
           <section className="card-surface space-y-3 p-5">
@@ -597,11 +722,27 @@ function VenueDetailsPage() {
                   {summary.timeText}
                 </span>
               </p>
-              <p className="flex justify-between border-t border-border pt-2">
-                <span>الإجمالي</span>
-                {/* +++ عرض السعر الديناميكي +++ */}
-                <span className="font-bold text-primary">{total > 0 ? `${total} ج.م` : "--"}</span>
-              </p>
+
+              {/* +++ التعديل هنا: إظهار الإجمالي والعربون للكمبيوتر +++ */}
+              <div className="border-t border-dashed border-border pt-3 mt-2">
+                <p className="flex justify-between">
+                  <span>الإجمالي</span>
+                  <span className="font-bold text-foreground">
+                    {total > 0 ? `${total} ج.م` : "--"}
+                  </span>
+                </p>
+                {total > 0 && (
+                  <p className="flex justify-between mt-2">
+                    <span className="font-bold text-primary">العربون المطلوب الآن</span>
+                    <span className="font-black text-primary text-lg">{deposit} ج.م</span>
+                  </p>
+                )}
+                {total > 0 && deposit < total && (
+                  <p className="text-[10px] text-muted-foreground mt-1 text-left">
+                    يتم سداد باقي المبلغ ({total - deposit} ج.م) في الملعب
+                  </p>
+                )}
+              </div>
             </div>
             <div className="border-t border-border pt-3">
               <div className="flex items-center justify-between mb-3">
@@ -646,7 +787,7 @@ function VenueDetailsPage() {
               disabled={!selectedSlot || bookingLoading}
               className="gradient-primary w-full rounded-xl py-3 text-sm font-bold text-primary-foreground transition disabled:opacity-40"
             >
-              {bookingLoading ? "جارٍ المتابعة..." : "المتابعة للدفع"}
+              {bookingLoading ? "جارٍ المتابعة..." : "المتابعة لدفع العربون"}
             </button>
           </div>
         </aside>
@@ -690,17 +831,26 @@ function VenueDetailsPage() {
             </div>
           </div>
           <div className="flex items-center justify-between gap-3">
+            {/* +++ التعديل هنا: إظهار الإجمالي والعربون للموبايل +++ */}
             <div className="text-xs text-muted-foreground">
               <p>{summary.mobileText}</p>
-              {/* +++ عرض السعر الديناميكي +++ */}
-              <p className="text-sm font-bold text-primary">{total > 0 ? `${total} ج.م` : "--"}</p>
+              {total > 0 ? (
+                <div className="flex flex-col mt-1">
+                  <span className="text-[10px] text-muted-foreground line-through opacity-70">
+                    إجمالي: {total} ج.م
+                  </span>
+                  <span className="text-sm font-black text-primary">عربون: {deposit} ج.م</span>
+                </div>
+              ) : (
+                <p className="text-sm font-bold text-primary">--</p>
+              )}
             </div>
             <button
               onClick={confirm}
               disabled={!selectedSlot || bookingLoading}
-              className="gradient-primary rounded-xl px-6 py-3 text-sm font-bold text-primary-foreground disabled:opacity-40"
+              className="gradient-primary rounded-xl px-5 py-3 text-sm font-bold text-primary-foreground disabled:opacity-40 whitespace-nowrap"
             >
-              {bookingLoading ? "متابعة..." : "المتابعة للدفع"}
+              {bookingLoading ? "متابعة..." : "دفع العربون"}
             </button>
           </div>
         </div>
@@ -729,31 +879,30 @@ function VenueDetailsPage() {
             </div>
             <ul className="text-sm text-muted-foreground space-y-4 font-semibold leading-relaxed">
               <li className="flex gap-2 items-start">
+                <Wallet className="size-4 text-primary shrink-0 mt-0.5" />
+                <span>
+                  النظام يتطلب دفع <strong className="text-foreground">عربون</strong> فقط لتأكيد
+                  الحجز، وباقي المبلغ يتم سداده في الملعب.
+                </span>
+              </li>
+              <li className="flex gap-2 items-start">
                 <AlertCircle className="size-4 text-warning shrink-0 mt-0.5" />
                 <span>
-                  يجب تحويل المبلغ <strong className="text-foreground">بالكسور</strong> لضمان
+                  يجب تحويل مبلغ العربون <strong className="text-foreground">بالكسور</strong> لضمان
                   التأكيد الآلي والسريع للحجز.
                 </span>
               </li>
               <li className="flex gap-2 items-start">
                 <Clock className="size-4 text-destructive shrink-0 mt-0.5" />
                 <span>
-                  يتم <strong className="text-foreground">إلغاء الحجز تلقائياً</strong> إذا لم يتم
-                  إتمام التحويل خلال 10 دقائق من طلب الحجز.
+                  يتم <strong className="text-foreground">إلغاء طلب الحجز تلقائياً</strong> إذا لم
+                  يتم إتمام التحويل خلال 10 دقائق.
                 </span>
               </li>
               <li className="flex gap-2 items-start">
                 <AlertCircle className="size-4 text-primary shrink-0 mt-0.5" />
                 <span>
-                  عند الإلغاء قبل موعد الحجز بـ{" "}
-                  <strong className="text-foreground">24 ساعة فأكثر</strong>، يتم خصم 50% من المبلغ
-                  المدفوع.
-                </span>
-              </li>
-              <li className="flex gap-2 items-start">
-                <AlertCircle className="size-4 text-primary shrink-0 mt-0.5" />
-                <span>
-                  <strong className="text-foreground">لا يمكن استرداد أي مبلغ</strong> في حالة
+                  <strong className="text-foreground">لا يمكن استرداد العربون</strong> في حالة
                   الإلغاء قبل موعد الحجز بمدة أقل من 24 ساعة.
                 </span>
               </li>

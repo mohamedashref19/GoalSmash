@@ -20,6 +20,11 @@ router.delete(
   authController.restrictTo("admin"),
   bookingController.deleteBlock,
 );
+router.delete(
+  "/block-slots/series/:recurrenceId",
+  authController.restrictTo("admin"),
+  bookingController.deleteBlockSeries,
+);
 
 router.route("/:id").get(bookingController.getBooking);
 

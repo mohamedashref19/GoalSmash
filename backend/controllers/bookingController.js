@@ -8,7 +8,6 @@ const Notification = require("../models/notificationModel");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
 const PaymentAccount = require("../models/paymentAccountModel");
-// +++ استدعاء موديل الإغلاقات +++
 const CourtBlock = require("../models/courtBlockModel");
 
 const courtMutexes = new Map();
@@ -116,7 +115,6 @@ exports.createBooking = catchAsync(async (req, res, next) => {
   const isEvening =
     bookingHour >= eveningStartHour || bookingHour < morningStartHour;
 
-  // +++ التعديل الأول: حل مشكلة الخطأ 400 للملاعب القديمة التي تفتقر للسعر الصباحي والمسائي +++
   const eveningPrice =
     courtExists.priceEvening !== undefined
       ? courtExists.priceEvening
@@ -125,11 +123,30 @@ exports.createBooking = catchAsync(async (req, res, next) => {
     courtExists.priceMorning !== undefined
       ? courtExists.priceMorning
       : courtExists.pricePerHour;
-  const hourlyPrice = isEvening ? eveningPrice : morningPrice;
 
-  const calculatedTotalPrice = Number(
-    (durationInHours * hourlyPrice).toFixed(2),
-  );
+  // +++ التعديل الجوهري: حساب السعر بنظام "الشرائح" (كل نصف ساعة) +++
+  const durationInMinutes =
+    (newEnd.getTime() - newStart.getTime()) / (1000 * 60);
+  const durationBlocks = Math.round(durationInMinutes / 30); // تقسيم المدة لأنصاف ساعات
+
+  let calculatedTotalPrice = 0;
+  let currentTempTime = new Date(newStart);
+
+  for (let i = 0; i < durationBlocks; i++) {
+    const currentHour = currentTempTime.getHours();
+    const isCurrentBlockEvening =
+      currentHour >= eveningStartHour || currentHour < morningStartHour;
+
+    const blockPrice = isCurrentBlockEvening
+      ? eveningPrice / 2
+      : morningPrice / 2;
+    calculatedTotalPrice += blockPrice;
+
+    // التقدم نصف ساعة للأمام لمعرفة تسعيرة الجزء التالي
+    currentTempTime.setMinutes(currentTempTime.getMinutes() + 30);
+  }
+
+  calculatedTotalPrice = Number(calculatedTotalPrice.toFixed(2));
 
   if (!Number.isFinite(calculatedTotalPrice) || calculatedTotalPrice <= 0) {
     return next(new AppError("تعذر حساب السعر الإجمالي بشكل صحيح", 400));
@@ -139,19 +156,19 @@ exports.createBooking = catchAsync(async (req, res, next) => {
   const calculatedCommission = Number(
     (calculatedTotalPrice * commissionRate).toFixed(2),
   );
+  // الكود الجديد (النصف بالضبط)
+  let calculatedDeposit = Number((calculatedTotalPrice / 2).toFixed(2));
 
   const courtIdString = court.toString();
   const mutex = getCourtMutex(courtIdString);
 
   await mutex.runExclusive(async () => {
-    // التحقق من الحجوزات العادية
     const conflictingBooking = await Booking.findOne({
       court: court,
       status: { $in: ["confirmed", "pending_payment"] },
       $and: [{ startTime: { $lt: newEnd } }, { endTime: { $gt: newStart } }],
     });
 
-    // +++ التعديل الثاني: التحقق من الإغلاقات لمنع العميل من حجز وقت مغلق للصيانة/الأكاديمية +++
     const conflictingBlock = await CourtBlock.findOne({
       court: court,
       $and: [{ startTime: { $lt: newEnd } }, { endTime: { $gt: newStart } }],
@@ -195,10 +212,13 @@ exports.createBooking = catchAsync(async (req, res, next) => {
         bookingType,
         totalPrice: calculatedTotalPrice,
         commission: calculatedCommission,
+        // +++ التعديل الجوهري 2: لو عميل أونلاين نطلب منه العربون، لو حجز يدوي نأخذ المدخل أو الإجمالي +++
         deposit:
-          req.body.deposit !== undefined
-            ? req.body.deposit
-            : calculatedTotalPrice,
+          req.user && req.user.role === "customer"
+            ? calculatedDeposit
+            : req.body.deposit !== undefined
+              ? req.body.deposit
+              : calculatedTotalPrice,
         paymentMethod:
           req.user && req.user.role === "customer" ? paymentMethod : "cash",
         status:
@@ -224,7 +244,8 @@ exports.createBooking = catchAsync(async (req, res, next) => {
       let paymentData = null;
 
       if (req.user && req.user.role === "customer") {
-        const expectedAmount = await generateUniqueAmount(calculatedTotalPrice);
+        // +++ التعديل الجوهري 3: إنشاء رابط الدفع وكسور الدفع بناءً على العربون وليس الإجمالي +++
+        const expectedAmount = await generateUniqueAmount(calculatedDeposit);
         const reference = `PAY-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
 
         const [createdPayment] = await Payment.create(
@@ -233,8 +254,8 @@ exports.createBooking = catchAsync(async (req, res, next) => {
               booking: newBooking._id,
               paymentReference: reference,
               method: paymentMethod,
-              baseAmount: calculatedTotalPrice,
-              expectedAmount: expectedAmount,
+              baseAmount: calculatedDeposit, // المبلغ الأساسي للدفع هو العربون
+              expectedAmount: expectedAmount, // المبلغ بالكسور لزوم التأكيد
               expiresAt: expirationTime,
               paymentAccount: activePaymentAccount
                 ? activePaymentAccount._id
@@ -311,7 +332,7 @@ exports.createBooking = catchAsync(async (req, res, next) => {
         responseData.payment = {
           id: paymentData._id,
           method: paymentData.method,
-          amount: paymentData.expectedAmount,
+          amount: paymentData.expectedAmount, // سيرسل مبلغ العربون بالكسور
           expiresAt: paymentData.expiresAt,
           instructions: activePaymentAccount
             ? {
@@ -336,7 +357,7 @@ exports.createBooking = catchAsync(async (req, res, next) => {
 
 exports.getAllBookings = catchAsync(async (req, res, next) => {
   let filter = {};
-
+  filter.status = { $ne: "blocked" };
   if (req.user && req.user.role === "customer") {
     if (!req.query.venue && !req.query.court) {
       filter.user = req.user.id;
@@ -415,7 +436,6 @@ exports.getAllBookings = catchAsync(async (req, res, next) => {
     );
   }
 
-  // +++ الحل 2: دمج قواعد الإغلاق الوهمية ودعم صفحة الأدمن (عن طريق venue أو court) +++
   if (req.query.date && startOfLogicalDay && endOfLogicalDay) {
     let blockFilter = {
       startTime: { $lt: endOfLogicalDay },
@@ -431,7 +451,6 @@ exports.getAllBookings = catchAsync(async (req, res, next) => {
     const blocks = await CourtBlock.find(blockFilter);
 
     blocks.forEach((block) => {
-      // حصر اللوب في الوقت المتقاطع مع اليوم المطلوب فقط
       const blockStart = new Date(block.startTime);
       const blockEnd = new Date(block.endTime);
 
@@ -441,10 +460,6 @@ exports.getAllBookings = catchAsync(async (req, res, next) => {
         blockEnd < endOfLogicalDay ? blockEnd : endOfLogicalDay;
 
       let current = new Date(overlapStart);
-
-      // +++ Fix: Use <= instead of < to include the last hour if needed, or ensure proper rounding +++
-      // The issue is likely timezone related where current.getTime() + 1 hour exceeds overlapEnd slightly.
-      // A more robust approach is to compare the hours directly if they are on the same day.
 
       while (current < overlapEnd) {
         processedBookings.push({
@@ -525,7 +540,6 @@ exports.cancelBooking = catchAsync(async (req, res, next) => {
   }
 
   booking.status = "cancelled";
-  // +++ التعديل هنا: تسجيل من قام بالإلغاء +++
   booking.cancelledBy = req.user.id;
   await booking.save();
 
@@ -556,6 +570,9 @@ exports.updatePayment = catchAsync(async (req, res, next) => {
     return next(new AppError("ليس لديك صلاحية لتعديل دفع هذا الحجز", 403));
   }
 
+  // حفظ العربون القديم قبل التحديث لمعرفة الفارق
+  const oldDeposit = booking.deposit || 0;
+
   if (paymentStatus) booking.paymentStatus = paymentStatus;
   if (paymentMethod)
     booking.paymentMethod = paymentMethod || booking.paymentMethod;
@@ -563,26 +580,32 @@ exports.updatePayment = catchAsync(async (req, res, next) => {
 
   await booking.save();
 
-  if (deposit !== undefined) {
-    await Payment.findOneAndUpdate(
-      { booking: req.params.id },
-      {
-        amountReceived: deposit,
-        baseAmount: deposit,
-        expectedAmount: deposit,
-      },
-      { new: true },
-    );
+  // +++ التعديل المالي الحاسم: إنشاء فاتورة كاش جديدة بالمبلغ المتبقي بدلاً من تغيير القديمة +++
+  if (deposit !== undefined && deposit > oldDeposit) {
+    const difference = deposit - oldDeposit; // قيمة المبلغ الذي دُفع في الملعب (الكاش)
+
+    await Payment.create({
+      booking: booking._id,
+      paymentReference: `CASH-REST-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+      method: "cash",
+      baseAmount: difference,
+      expectedAmount: difference,
+      amountReceived: difference,
+      status: "verified",
+      verifiedAt: new Date(),
+      verificationMethod: "admin",
+      verificationNotes: "تحصيل باقي المبلغ كاش في الملعب",
+      expiresAt: new Date(), // عملية منتهية ومؤكدة فوراً
+    });
   }
 
   res.status(200).json({
     status: "success",
-    message: "تم تحديث بيانات الدفع بنجاح",
+    message: "تم تحديث بيانات الدفع وتوثيق تحصيل الكاش بنجاح",
     data: { booking },
   });
 });
 
-// +++ دالة إغلاق الملاعب المحدثة (تدعم الاستبدال الذكي للإغلاقات القديمة Smart Overwrite) +++
 exports.blockCourtSlots = catchAsync(async (req, res, next) => {
   const { venue, court, dates, startTimeHour, endTimeHour, blockType, notes } =
     req.body;
@@ -603,7 +626,6 @@ exports.blockCourtSlots = catchAsync(async (req, res, next) => {
     );
   }
 
-  // التحقق من صلاحيات المالك
   const venueObj = await Venue.findById(venue);
   if (!venueObj) return next(new AppError("النادي غير موجود", 404));
 
@@ -653,7 +675,6 @@ exports.blockCourtSlots = catchAsync(async (req, res, next) => {
       });
     }
 
-    // 1. البحث عن التعارضات في الحجوزات الفعلية فقط (Bookings) وليس الإغلاقات
     const allBookingsInRange = await Booking.find({
       court: court,
       status: { $in: ["confirmed", "pending_payment"] },
@@ -668,7 +689,6 @@ exports.blockCourtSlots = catchAsync(async (req, res, next) => {
         (cb) => cb.startTime < block.endTime && cb.endTime > block.startTime,
       );
 
-      // لو فيه حجز حقيقي لعميل، ارفض القفل
       if (hasBookingConflict) {
         failedCount++;
       } else {
@@ -676,23 +696,19 @@ exports.blockCourtSlots = catchAsync(async (req, res, next) => {
       }
     }
 
-    // 2. إدخال الإغلاقات الجديدة واستبدال القديمة المتقاطعة معها
     if (finalBlocksToInsert.length > 0) {
-      // تجهيز شروط للبحث عن الإغلاقات الإدارية القديمة اللي بتتعارض مع الجديد
       const orConditions = finalBlocksToInsert.map((b) => ({
         startTime: { $lt: b.endTime },
         endTime: { $gt: b.startTime },
       }));
 
       if (orConditions.length > 0) {
-        // مسح الإغلاقات القديمة (عشان نعمل Overwrite بسلاسة)
         await CourtBlock.deleteMany({
           court: court,
           $or: orConditions,
         });
       }
 
-      // إدخال المواعيد الجديدة
       await CourtBlock.insertMany(finalBlocksToInsert);
       createdCount = finalBlocksToInsert.length;
     }
@@ -707,11 +723,10 @@ exports.blockCourtSlots = catchAsync(async (req, res, next) => {
     },
   });
 });
-// +++ دالة جلب قائمة الإغلاقات (لعرضها في لوحة الإدارة) +++
+
 exports.getAllBlocks = catchAsync(async (req, res, next) => {
   let filter = {};
 
-  // قصر عرض الإغلاقات للمالك على أنديته فقط
   if (req.user && req.user.role === "owner") {
     const myVenues = await Venue.find({ owner: req.user.id }).select("_id");
     const myVenueIds = myVenues.map((v) => v._id.toString());
@@ -730,7 +745,6 @@ exports.getAllBlocks = catchAsync(async (req, res, next) => {
 
   if (req.query.court) filter.court = req.query.court;
 
-  // إخفاء الإغلاقات القديمة جداً لتنظيف الجدول (اختياري)
   filter.endTime = { $gte: new Date() };
 
   const blocks = await CourtBlock.find(filter)
@@ -745,7 +759,6 @@ exports.getAllBlocks = catchAsync(async (req, res, next) => {
   });
 });
 
-// +++ دالة حذف الإغلاق (لإعادة فتح الموعد للعملاء) +++
 exports.deleteBlock = catchAsync(async (req, res, next) => {
   const block = await CourtBlock.findById(req.params.id).populate("venue");
 
@@ -753,7 +766,6 @@ exports.deleteBlock = catchAsync(async (req, res, next) => {
     return next(new AppError("هذا الإغلاق غير موجود أو تم حذفه بالفعل", 404));
   }
 
-  // حماية: التأكد أن المالك يحذف إغلاقات ملعبه فقط
   if (
     req.user &&
     req.user.role === "owner" &&
@@ -767,6 +779,38 @@ exports.deleteBlock = catchAsync(async (req, res, next) => {
   res.status(200).json({
     status: "success",
     message: "تم إلغاء الإغلاق وفتح الموعد بنجاح",
+    data: null,
+  });
+});
+
+exports.deleteBlockSeries = catchAsync(async (req, res, next) => {
+  const { recurrenceId } = req.params;
+
+  if (!recurrenceId) {
+    return next(new AppError("معرف المجموعة غير موجود", 400));
+  }
+
+  const sampleBlock = await CourtBlock.findOne({ recurrenceId }).populate(
+    "venue",
+  );
+
+  if (!sampleBlock) {
+    return next(new AppError("هذه المجموعة غير موجودة أو تم حذفها", 404));
+  }
+
+  if (
+    req.user &&
+    req.user.role === "owner" &&
+    sampleBlock.venue.owner.toString() !== req.user.id
+  ) {
+    return next(new AppError("غير مصرح لك بفتح مواعيد هذا النادي", 403));
+  }
+
+  const result = await CourtBlock.deleteMany({ recurrenceId });
+
+  res.status(200).json({
+    status: "success",
+    message: `تم إلغاء ${result.deletedCount} يوم بنجاح وفتح المواعيد للعملاء`,
     data: null,
   });
 });

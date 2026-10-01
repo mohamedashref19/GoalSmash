@@ -6,12 +6,19 @@ import { Sidebar, MobileSidebar, type ViewKey } from "@/components/venue/Sidebar
 import { Header } from "@/components/venue/Header";
 import { OverviewView } from "@/components/venue/OverviewView";
 import { ScheduleView } from "@/components/venue/ScheduleView";
-import { SettingsView } from "@/components/venue/SettingsView";
-import { QuickBookingModal, type BookingFormData } from "@/components/venue/QuickBookingModal";
-import { MapPin, LayoutDashboard, CalendarDays, Settings, Wallet } from "lucide-react";
 import { PaymentsView } from "@/components/venue/PaymentsView";
 import { FinancialReportsView } from "@/components/venue/FinancialReportsView";
-import { FileText } from "lucide-react"; // ضيف الأيقونة دي
+import { SettingsView } from "@/components/venue/SettingsView";
+import { QuickBookingModal, type BookingFormData } from "@/components/venue/QuickBookingModal";
+import {
+  MapPin,
+  LayoutDashboard,
+  CalendarDays,
+  Settings,
+  Wallet,
+  FileText,
+  Loader2,
+} from "lucide-react"; // +++ إضافة Loader2
 
 // @ts-expect-error: API lacks TypeScript definitions
 import { fetchAllVenues } from "@/api/venueApi";
@@ -46,6 +53,8 @@ const localNavItems = [
 
 function Dashboard() {
   const [activeView, setActiveView] = useState<ViewKey>("overview");
+  // +++ إضافة حالة التحقق من تسجيل الدخول لمنع الجلتش +++
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
 
   // +++ قراءة التاب المحفوظ بعد تحميل الصفحة لتجنب خطأ الخادم (Hydration Error) +++
   useEffect(() => {
@@ -56,6 +65,7 @@ function Dashboard() {
       }
     }
   }, []);
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [slot, setSlot] = useState<{ court: string; hour: number; price: number } | null>(null);
@@ -65,28 +75,39 @@ function Dashboard() {
 
   useEffect(() => {
     const userData = localStorage.getItem("userData") || sessionStorage.getItem("userData");
+
+    // +++ التوجيه الفوري لمنع الجلتش في حالة عدم وجود بيانات +++
     if (!userData) {
-      window.location.href = "/login";
-    } else {
-      try {
-        const user = JSON.parse(userData);
-        if (user.role === "admin") {
-          window.location.href = "/admin-dashboard";
-        } else if (user.role === "customer") {
-          window.location.href = "/explore";
-        } else {
-          fetchAllVenues().then((data: VenueData[]) => {
+      window.location.replace("/login");
+      return;
+    }
+
+    try {
+      const user = JSON.parse(userData);
+      if (user.role === "admin") {
+        window.location.replace("/admin-dashboard");
+        return;
+      } else if (user.role === "customer") {
+        window.location.replace("/explore");
+        return;
+      } else {
+        // +++ جلب بيانات المالك فقط لو هو فعلاً المالك +++
+        fetchAllVenues()
+          .then((data: VenueData[]) => {
             if (data) {
               setVenues(data);
               if (data.length > 0 && data[0]?._id) {
                 setSelectedVenueId(data[0]._id);
               }
             }
+            setIsAuthChecking(false); // +++ إنهاء شاشة التحميل بعد جلب البيانات +++
+          })
+          .catch(() => {
+            setIsAuthChecking(false); // +++ إنهاء التحميل حتى في حالة الخطأ +++
           });
-        }
-      } catch (e) {
-        window.location.href = "/login";
       }
+    } catch (e) {
+      window.location.replace("/login");
     }
   }, []);
 
@@ -99,6 +120,18 @@ function Dashboard() {
   const confirmBooking = (data: BookingFormData) => {
     setIsBookingModalOpen(false);
   };
+
+  // +++ عرض شاشة تحميل أثناء التحقق من الصلاحيات (دي اللي بتمنع الجلتش) +++
+  if (isAuthChecking) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4 text-primary">
+          <Loader2 className="h-10 w-10 animate-spin" />
+          <p className="text-sm font-bold animate-pulse">جاري التحمبل...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     // +++ التعديل الأول: h-screen بدلاً من min-h-screen لضبط حجم الشاشة ومنع التمرير الخارجي +++
