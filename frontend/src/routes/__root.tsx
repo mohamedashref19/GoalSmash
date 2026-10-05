@@ -87,21 +87,40 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "لوحة إدارة الملاعب الرياضية" },
+      { title: "Tigi-Hagz | حجز وإدارة الملاعب الرياضية" },
       {
         name: "description",
         content:
-          "نظام إدارة ملاعب البادل والخماسي: الحجوزات، الجدول اليومي، الإيرادات والتسعير الذكي.",
+          "Tigi-Hagz: احجز ملعبك المفضل في ثواني، وأدِر ملاعب الكورة والبادل والخماسي بسهولة. حجوزات فورية، جدول يومي، متابعة الإيرادات، تسعير ذكي وتأكيد دفع تلقائي.",
       },
-      { property: "og:title", content: "لوحة إدارة الملاعب الرياضية" },
+      {
+        name: "keywords",
+        content:
+          "حجز ملاعب, حجز ملعب كورة, ملاعب خماسي, ملاعب بادل, إدارة ملاعب, نظام حجوزات, ملاعب الإسكندرية, Tigi-Hagz",
+      },
+      { name: "theme-color", content: "#16a34a" },
+
+      // Open Graph (واتساب وفيسبوك ولينكدإن)
+      { property: "og:site_name", content: "Tigi-Hagz" },
+      { property: "og:title", content: "Tigi-Hagz | حجز وإدارة الملاعب الرياضية" },
       {
         property: "og:description",
         content:
-          "نظام إدارة ملاعب البادل والخماسي: الحجوزات، الجدول اليومي، الإيرادات والتسعير الذكي.",
+          "احجز ملعب كورة أو بادل في ثواني، ولأصحاب الملاعب: لوحة تحكم كاملة للحجوزات والإيرادات والتسعير الذكي.",
       },
       { property: "og:type", content: "website" },
+      { property: "og:locale", content: "ar_EG" },
+      { property: "og:url", content: "https://tigi-hagz.vercel.app/" },
+      { property: "og:image", content: "https://tigi-hagz.vercel.app/og-image.png" },
+
+      // Twitter / X
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Tigi-Hagz | حجز وإدارة الملاعب الرياضية" },
+      {
+        name: "twitter:description",
+        content: "احجز ملعبك في ثواني، وأدِر ملاعبك وحجوزاتك وإيراداتك من مكان واحد.",
+      },
+      { name: "twitter:image", content: "https://tigi-hagz.vercel.app/og-image.png" },
     ],
     links: [
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -114,7 +133,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: appCss,
       },
-      { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "icon", href: "/favicon.jpg", type: "image/jpeg" },
     ],
   }),
   shellComponent: RootShell,
