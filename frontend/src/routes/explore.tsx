@@ -52,7 +52,7 @@ const getImageUrl = (imagePath?: string) => {
 
 export const Route = createFileRoute("/explore")({
   head: () => ({
-    meta: [{ title: "تصفح الملاعب | GoalSmash" }],
+    meta: [{ title: "تصفح الملاعب | Tigi-Hagz" }],
   }),
   component: ExplorePage,
 });
@@ -74,7 +74,7 @@ function CustomerMobileMenu({ open, onClose }: { open: boolean; onClose: () => v
         )}
       >
         <div className="mb-6 flex items-center justify-between">
-          <span className="font-display text-lg font-extrabold text-primary">GoalSmash</span>
+          <span className="font-display text-lg font-extrabold text-primary">Tigi-Hagz</span>
           <button onClick={onClose} className="rounded-xl p-2 text-muted-foreground hover:bg-muted">
             <X className="h-5 w-5" />
           </button>
@@ -110,7 +110,7 @@ function PromoSlider() {
     {
       id: 1,
       title: "دوريات وبطولات",
-      subtitle: "GoalSmash",
+      subtitle: "Tigi-Hagz",
       badge: "قريباً 🚀",
       bg: "bg-slate-900",
       accent: "text-warning",
@@ -137,7 +137,7 @@ function PromoSlider() {
     {
       id: 4,
       title: "متجر رياضي",
-      subtitle: "GoalSmash بأسعار مخفضة",
+      subtitle: "Tigi-Hagz بأسعار مخفضة",
       badge: "قريباً 🚀",
       bg: "bg-rose-950",
       accent: "text-rose-400",

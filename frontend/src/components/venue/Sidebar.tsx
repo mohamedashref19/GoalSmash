@@ -47,7 +47,7 @@ export function SidebarContent({ activeView, venueId, onNavigate, onClose }: Pro
             <Trophy className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <p className="truncate font-display text-base font-extrabold">GoalSmash</p>
+            <p className="truncate font-display text-base font-extrabold">Tigi-Hagz</p>
             <p className="truncate text-xs text-muted-foreground">إدارة الملاعب</p>
           </div>
         </div>

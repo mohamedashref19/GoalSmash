@@ -38,7 +38,7 @@ function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void
       >
         <div className="mb-6 flex items-center justify-between">
           <span className="font-display text-lg font-extrabold text-primary">
-            GoalSmash (الإدارة)
+            Tigi-Hagz (الإدارة)
           </span>
           <button onClick={onClose} className="rounded-xl p-2 text-muted-foreground hover:bg-muted">
             <X className="h-5 w-5" />

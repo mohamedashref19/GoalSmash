@@ -9,10 +9,10 @@ import { loginUser, resendUserOTP } from "@/api/authApi";
 export const Route = createFileRoute("/login")({
   head: () => ({
     meta: [
-      { title: "تسجيل الدخول | GoalSmash" },
+      { title: "تسجيل الدخول | Tigi-Hagz" },
       {
         name: "description",
-        content: "سجّل دخولك إلى لوحة إدارة ملاعب GoalSmash.",
+        content: "سجّل دخولك إلى لوحة إدارة ملاعب Tigi-Hagz.",
       },
     ],
   }),
@@ -120,7 +120,7 @@ function LoginPage() {
             <Trophy className="h-7 w-7" />
           </div>
           <h1 className="mt-4 font-display text-2xl font-extrabold">تسجيل الدخول</h1>
-          <p className="mt-1 text-sm text-muted-foreground">أهلاً بعودتك إلى GoalSmash</p>
+          <p className="mt-1 text-sm text-muted-foreground">أهلاً بعودتك إلى Tigi-Hagz</p>
         </div>
 
         <div className="card-surface p-6 sm:p-7">

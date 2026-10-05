@@ -9,15 +9,15 @@ import { signupUser } from "@/api/authApi";
 export const Route = createFileRoute("/signup")({
   head: () => ({
     meta: [
-      { title: "إنشاء حساب | GoalSmash" },
+      { title: "إنشاء حساب | Tigi-Hagz" },
       {
         name: "description",
-        content: "أنشئ حسابًا جديدًا في لوحة إدارة ملاعب GoalSmash.",
+        content: "أنشئ حسابًا جديدًا في لوحة إدارة ملاعب Tigi-Hagz.",
       },
-      { property: "og:title", content: "إنشاء حساب | GoalSmash" },
+      { property: "og:title", content: "إنشاء حساب | Tigi-Hagz" },
       {
         property: "og:description",
-        content: "أنشئ حسابًا جديدًا في لوحة إدارة ملاعب GoalSmash.",
+        content: "أنشئ حسابًا جديدًا في لوحة إدارة ملاعب Tigi-Hagz.",
       },
     ],
   }),
@@ -102,7 +102,7 @@ function SignUpPage() {
             <Trophy className="h-7 w-7" />
           </div>
           <h1 className="mt-4 font-display text-2xl font-extrabold">إنشاء حساب جديد</h1>
-          <p className="mt-1 text-sm text-muted-foreground">انضم إلى GoalSmash لإدارة ملاعبك</p>
+          <p className="mt-1 text-sm text-muted-foreground">انضم إلى Tigi-Hagz لإدارة ملاعبك</p>
         </div>
 
         <div className="card-surface p-6 sm:p-7">

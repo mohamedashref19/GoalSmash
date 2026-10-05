@@ -7,7 +7,7 @@ import { AdminDailyClosingView } from "@/components/admin/AdminDailyClosingView"
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin-daily-closing")({
-  head: () => ({ meta: [{ title: "تقفيل اليومية | GoalSmash" }] }),
+  head: () => ({ meta: [{ title: "تقفيل اليومية | Tigi-Hagz" }] }),
   component: AdminDailyClosingPage,
 });
 
@@ -29,7 +29,7 @@ function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void
       >
         <div className="mb-6 flex items-center justify-between">
           <span className="font-display text-lg font-extrabold text-primary">
-            GoalSmash (الإدارة)
+            Tigi-Hagz (الإدارة)
           </span>
           <button onClick={onClose} className="rounded-xl p-2 text-muted-foreground hover:bg-muted">
             <X className="h-5 w-5" />

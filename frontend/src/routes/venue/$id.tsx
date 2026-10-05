@@ -121,7 +121,7 @@ const getImageUrl = (imagePath?: string) => {
 
 export const Route = createFileRoute("/venue/$id")({
   head: () => ({
-    meta: [{ title: "تفاصيل الملعب | GoalSmash" }],
+    meta: [{ title: "تفاصيل الملعب | Tigi-Hagz" }],
   }),
   component: VenueDetailsPage,
 });

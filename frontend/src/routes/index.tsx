@@ -25,7 +25,7 @@ import { fetchAllVenues } from "@/api/venueApi";
 
 export const Route = createFileRoute("/")({
   head: () => ({
-    meta: [{ title: "لوحة إدارة الملاعب | GoalSmash" }],
+    meta: [{ title: "لوحة إدارة الملاعب | Tigi-Hagz" }],
   }),
   component: Dashboard,
 });

@@ -8,7 +8,7 @@ import { resetUserPassword } from "@/api/authApi";
 
 export const Route = createFileRoute("/reset-password")({
   head: () => ({
-    meta: [{ title: "إعادة تعيين كلمة المرور | GoalSmash" }],
+    meta: [{ title: "إعادة تعيين كلمة المرور | Tigi-Hagz" }],
   }),
   component: ResetPasswordPage,
 });

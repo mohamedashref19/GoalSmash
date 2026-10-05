@@ -33,7 +33,7 @@ import { MobileSidebar } from "@/components/venue/Sidebar";
 
 export const Route = createFileRoute("/my-bookings")({
   head: () => ({
-    meta: [{ title: "حجوزاتي | GoalSmash" }],
+    meta: [{ title: "حجوزاتي | Tigi-Hagz" }],
   }),
   component: MyBookingsPage,
 });
@@ -76,7 +76,7 @@ function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void
       >
         <div className="mb-6 flex items-center justify-between">
           <span className="font-display text-lg font-extrabold text-primary">
-            GoalSmash (الإدارة)
+            Tigi-Hagz (الإدارة)
           </span>
           <button onClick={onClose} className="rounded-xl p-2 text-muted-foreground hover:bg-muted">
             <X className="h-5 w-5" />
@@ -170,7 +170,7 @@ function CustomerMobileMenu({ open, onClose }: { open: boolean; onClose: () => v
         )}
       >
         <div className="mb-6 flex items-center justify-between">
-          <span className="font-display text-lg font-extrabold text-primary">GoalSmash</span>
+          <span className="font-display text-lg font-extrabold text-primary">Tigi-Hagz</span>
           <button onClick={onClose} className="rounded-xl p-2 text-muted-foreground hover:bg-muted">
             <X className="h-5 w-5" />
           </button>

@@ -15,7 +15,7 @@ import { verifyUserOTP, resendUserOTP, forgetPassword } from "@/api/authApi";
 
 export const Route = createFileRoute("/verify-otp")({
   head: () => ({
-    meta: [{ title: "التحقق من الرمز | GoalSmash" }],
+    meta: [{ title: "التحقق من الرمز | Tigi-Hagz" }],
   }),
   component: VerifyOtpPage,
 });

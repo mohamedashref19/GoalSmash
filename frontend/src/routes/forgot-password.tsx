@@ -9,7 +9,7 @@ import { forgetPassword } from "@/api/authApi";
 export const Route = createFileRoute("/forgot-password")({
   head: () => ({
     meta: [
-      { title: "نسيت كلمة المرور | GoalSmash" },
+      { title: "نسيت كلمة المرور | Tigi-Hagz" },
       { name: "description", content: "أدخل بريدك الإلكتروني لإرسال رمز إعادة تعيين كلمة المرور." },
     ],
   }),
