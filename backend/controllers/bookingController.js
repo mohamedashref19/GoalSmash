@@ -71,6 +71,66 @@ exports.createBooking = catchAsync(async (req, res, next) => {
   if (newStart < new Date())
     return next(new AppError("لا يمكنك إنشاء حجز في وقت مضى", 400));
 
+  // +++ حماية 1: منع الأوقات العشوائية التي تخرب الجدول +++
+  if (newStart.getMinutes() !== 0 || newEnd.getMinutes() !== 0) {
+    return next(
+      new AppError(
+        "يجب أن يبدأ وينتهي الحجز على رأس الساعة تماماً (مثال: 10:00 وليس 10:15)",
+        400,
+      ),
+    );
+  }
+
+  // +++ حماية 2: منع احتكار الملاعب وحماية النظام +++
+  const durationInHours =
+    (newEnd.getTime() - newStart.getTime()) / (1000 * 60 * 60);
+  if (req.user && req.user.role === "customer" && durationInHours > 4) {
+    return next(
+      new AppError("الحد الأقصى للحجز عبر التطبيق هو 4 ساعات متواصلة.", 400),
+    );
+  }
+  if (durationInHours > 12) {
+    return next(new AppError("لا يمكن إنشاء حجز تتجاوز مدته 12 ساعة.", 400));
+  }
+  // +++ حماية جديدة: التأكد من أيام وساعات عمل النادي +++
+  const bookingDay = newStart.getDay(); // يرجع رقم من 0 (الأحد) إلى 6 (السبت)
+  if (venueObj.workingDays && venueObj.workingDays.length > 0) {
+    if (!venueObj.workingDays.includes(bookingDay)) {
+      return next(
+        new AppError("عذراً، النادي مغلق في هذا اليوم من الأسبوع.", 400),
+      );
+    }
+  }
+
+  // التأكد من أن وقت الحجز يقع ضمن ساعات العمل
+  const openHour = parseInt((venueObj.openTime || "08:00").split(":")[0], 10);
+  const closeHour = parseInt((venueObj.closeTime || "04:00").split(":")[0], 10);
+  const startHour = newStart.getHours();
+  const endHour =
+    newEnd.getHours() === 0 && newEnd.getMinutes() === 0
+      ? 24
+      : newEnd.getHours(); // معالجة منتصف الليل
+
+  let isWithinWorkingHours = false;
+
+  if (closeHour > openHour) {
+    // النادي يفتح ويغلق في نفس اليوم (مثال: من 8 صباحاً إلى 10 مساءً)
+    isWithinWorkingHours = startHour >= openHour && endHour <= closeHour;
+  } else {
+    // النادي يعمل متجاوزاً منتصف الليل (مثال: من 8 صباحاً إلى 4 فجراً من اليوم التالي)
+    // الحجز مسموح إذا كان بعد وقت الفتح في نفس اليوم، أو قبل وقت الإغلاق في اليوم التالي
+    isWithinWorkingHours = startHour >= openHour || endHour <= closeHour;
+  }
+
+  if (!isWithinWorkingHours && venueObj.operatingHours !== 24) {
+    return next(
+      new AppError(
+        `عذراً، مواعيد الحجز يجب أن تكون ضمن ساعات عمل النادي (من ${venueObj.openTime} إلى ${venueObj.closeTime}).`,
+        400,
+      ),
+    );
+  }
+
   if (req.user && (req.user.role === "owner" || req.user.role === "employee")) {
     if (!guestData || !guestData.name || !guestData.phone) {
       return next(new AppError("يجب إدخال اسم ورقم هاتف العميل", 400));
@@ -99,9 +159,6 @@ exports.createBooking = catchAsync(async (req, res, next) => {
   const courtExists = await Court.findById(court);
   if (!courtExists) return next(new AppError("هذا الملعب غير موجود", 404));
 
-  const durationInHours =
-    (newEnd.getTime() - newStart.getTime()) / (1000 * 60 * 60);
-
   const bookingHour = newStart.getHours();
   const eveningStartHour = parseInt(
     (venueObj.eveningStartTime || "18:00").split(":")[0],
@@ -112,9 +169,6 @@ exports.createBooking = catchAsync(async (req, res, next) => {
     10,
   );
 
-  const isEvening =
-    bookingHour >= eveningStartHour || bookingHour < morningStartHour;
-
   const eveningPrice =
     courtExists.priceEvening !== undefined
       ? courtExists.priceEvening
@@ -124,10 +178,9 @@ exports.createBooking = catchAsync(async (req, res, next) => {
       ? courtExists.priceMorning
       : courtExists.pricePerHour;
 
-  // +++ التعديل الجوهري: حساب السعر بنظام "الشرائح" (كل نصف ساعة) +++
   const durationInMinutes =
     (newEnd.getTime() - newStart.getTime()) / (1000 * 60);
-  const durationBlocks = Math.round(durationInMinutes / 30); // تقسيم المدة لأنصاف ساعات
+  const durationBlocks = Math.round(durationInMinutes / 30);
 
   let calculatedTotalPrice = 0;
   let currentTempTime = new Date(newStart);
@@ -141,8 +194,6 @@ exports.createBooking = catchAsync(async (req, res, next) => {
       ? eveningPrice / 2
       : morningPrice / 2;
     calculatedTotalPrice += blockPrice;
-
-    // التقدم نصف ساعة للأمام لمعرفة تسعيرة الجزء التالي
     currentTempTime.setMinutes(currentTempTime.getMinutes() + 30);
   }
 
@@ -156,8 +207,16 @@ exports.createBooking = catchAsync(async (req, res, next) => {
   const calculatedCommission = Number(
     (calculatedTotalPrice * commissionRate).toFixed(2),
   );
-  // الكود الجديد (النصف بالضبط)
   let calculatedDeposit = Number((calculatedTotalPrice / 2).toFixed(2));
+
+  // +++ حماية 3: تأمين العربون اليدوي من القيم السالبة أو التخطي للسعر الأصلي +++
+  let finalManualDeposit = calculatedTotalPrice;
+  if (req.body.deposit !== undefined) {
+    finalManualDeposit = Number(req.body.deposit);
+    if (finalManualDeposit < 0) finalManualDeposit = 0;
+    if (finalManualDeposit > calculatedTotalPrice)
+      finalManualDeposit = calculatedTotalPrice;
+  }
 
   const courtIdString = court.toString();
   const mutex = getCourtMutex(courtIdString);
@@ -212,13 +271,10 @@ exports.createBooking = catchAsync(async (req, res, next) => {
         bookingType,
         totalPrice: calculatedTotalPrice,
         commission: calculatedCommission,
-        // +++ التعديل الجوهري 2: لو عميل أونلاين نطلب منه العربون، لو حجز يدوي نأخذ المدخل أو الإجمالي +++
         deposit:
           req.user && req.user.role === "customer"
             ? calculatedDeposit
-            : req.body.deposit !== undefined
-              ? req.body.deposit
-              : calculatedTotalPrice,
+            : finalManualDeposit,
         paymentMethod:
           req.user && req.user.role === "customer" ? paymentMethod : "cash",
         status:
@@ -244,7 +300,6 @@ exports.createBooking = catchAsync(async (req, res, next) => {
       let paymentData = null;
 
       if (req.user && req.user.role === "customer") {
-        // +++ التعديل الجوهري 3: إنشاء رابط الدفع وكسور الدفع بناءً على العربون وليس الإجمالي +++
         const expectedAmount = await generateUniqueAmount(calculatedDeposit);
         const reference = `PAY-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
 
@@ -254,8 +309,8 @@ exports.createBooking = catchAsync(async (req, res, next) => {
               booking: newBooking._id,
               paymentReference: reference,
               method: paymentMethod,
-              baseAmount: calculatedDeposit, // المبلغ الأساسي للدفع هو العربون
-              expectedAmount: expectedAmount, // المبلغ بالكسور لزوم التأكيد
+              baseAmount: calculatedDeposit,
+              expectedAmount: expectedAmount,
               expiresAt: expirationTime,
               paymentAccount: activePaymentAccount
                 ? activePaymentAccount._id
@@ -280,10 +335,7 @@ exports.createBooking = catchAsync(async (req, res, next) => {
               method: "cash",
               baseAmount: calculatedTotalPrice,
               expectedAmount: calculatedTotalPrice,
-              amountReceived:
-                req.body.deposit !== undefined
-                  ? req.body.deposit
-                  : calculatedTotalPrice,
+              amountReceived: finalManualDeposit,
               status: "verified",
               verifiedAt: new Date(),
               verificationMethod: "admin",
@@ -312,7 +364,7 @@ exports.createBooking = catchAsync(async (req, res, next) => {
           if (venueObj && venueObj.owner) {
             const customerName = guestData?.name || "عميل";
             const ownerMessage = `قام ${customerName} (حجز يدوي) بحجز ملعب ${courtExists.name} في ${venueObj.name} يوم ${bookingDate} الساعة ${bookingTime}.`;
-            const ownerNotification = await Notification.create({
+            await Notification.create({
               recipient: venueObj.owner,
               title: "حجز يدوي جديد 📅",
               message: ownerMessage,
@@ -320,7 +372,10 @@ exports.createBooking = catchAsync(async (req, res, next) => {
               relatedId: newBooking._id,
             });
             if (io)
-              io.emit(`notification-${venueObj.owner}`, ownerNotification);
+              io.emit(`notification-${venueObj.owner}`, {
+                title: "حجز جديد",
+                message: ownerMessage,
+              });
           }
         } catch (notifyErr) {
           console.error("خطأ الإشعارات:", notifyErr);
@@ -332,7 +387,7 @@ exports.createBooking = catchAsync(async (req, res, next) => {
         responseData.payment = {
           id: paymentData._id,
           method: paymentData.method,
-          amount: paymentData.expectedAmount, // سيرسل مبلغ العربون بالكسور
+          amount: paymentData.expectedAmount,
           expiresAt: paymentData.expiresAt,
           instructions: activePaymentAccount
             ? {
@@ -358,6 +413,7 @@ exports.createBooking = catchAsync(async (req, res, next) => {
 exports.getAllBookings = catchAsync(async (req, res, next) => {
   let filter = {};
   filter.status = { $ne: "blocked" };
+
   if (req.user && req.user.role === "customer") {
     if (!req.query.venue && !req.query.court) {
       filter.user = req.user.id;
@@ -385,6 +441,13 @@ exports.getAllBookings = catchAsync(async (req, res, next) => {
 
   let startOfLogicalDay, endOfLogicalDay;
 
+  // إعدادات الـ Pagination
+  const page = parseInt(req.query.page, 10) || 1;
+  // السماح بـ limit أعلى في حالة عرض تقويم يوم كامل لتجنب اختفاء حجوزات من التقويم
+  const defaultLimit = req.query.date ? 500 : 50;
+  const limit = parseInt(req.query.limit, 10) || defaultLimit;
+  const skip = (page - 1) * limit;
+
   if (req.query.date) {
     startOfLogicalDay = new Date(req.query.date);
     startOfLogicalDay.setHours(8, 0, 0, 0);
@@ -396,6 +459,10 @@ exports.getAllBookings = catchAsync(async (req, res, next) => {
     filter.startTime = { $gte: startOfLogicalDay, $lte: endOfLogicalDay };
   }
 
+  // حساب إجمالي المستندات
+  const totalDocuments = await Booking.countDocuments(filter);
+  const totalPages = Math.ceil(totalDocuments / limit);
+
   const bookings = await Booking.find(filter)
     .populate({ path: "venue", select: "name address" })
     .populate({
@@ -404,7 +471,9 @@ exports.getAllBookings = catchAsync(async (req, res, next) => {
     })
     .populate({ path: "user", select: "name phone" })
     .populate({ path: "cancelledBy", select: "name role" })
-    .sort("startTime");
+    .sort(req.query.date ? "startTime" : "-createdAt")
+    .skip(skip)
+    .limit(limit);
 
   let processedBookings = bookings.map((b) => b.toObject());
 
@@ -479,6 +548,14 @@ exports.getAllBookings = catchAsync(async (req, res, next) => {
   res.status(200).json({
     status: "success",
     results: processedBookings.length,
+    pagination: {
+      currentPage: page,
+      totalPages: totalPages,
+      totalItems: totalDocuments,
+      itemsPerPage: limit,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1,
+    },
     data: { bookings: processedBookings },
   });
 });
@@ -561,6 +638,16 @@ exports.updatePayment = catchAsync(async (req, res, next) => {
   const booking = await Booking.findById(req.params.id).populate("venue");
   if (!booking) return next(new AppError("لا يوجد حجز بهذا المعرف", 404));
 
+  // +++ التعديل الأمني الحاسم: منع تكرار الدفع (Double Click) +++
+  if (booking.paymentStatus === "paid") {
+    return next(
+      new AppError(
+        "تم تأكيد دفع هذا الحجز واستلام المبلغ بالكامل مسبقاً.",
+        400,
+      ),
+    );
+  }
+
   if (
     req.user.role === "owner" &&
     booking.venue &&
@@ -580,7 +667,7 @@ exports.updatePayment = catchAsync(async (req, res, next) => {
 
   await booking.save();
 
-  // +++ التعديل المالي الحاسم: إنشاء فاتورة كاش جديدة بالمبلغ المتبقي بدلاً من تغيير القديمة +++
+  // إنشاء فاتورة كاش جديدة بالمبلغ المتبقي بدلاً من تغيير القديمة
   if (deposit !== undefined && deposit > oldDeposit) {
     const difference = deposit - oldDeposit; // قيمة المبلغ الذي دُفع في الملعب (الكاش)
 

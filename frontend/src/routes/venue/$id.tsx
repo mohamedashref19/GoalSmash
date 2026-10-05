@@ -82,7 +82,9 @@ interface VenueType {
   name: string;
   description?: string;
   openTime?: string;
+  closeTime?: string; // +++ تمت الإضافة +++
   eveningStartTime?: string;
+  workingDays?: number[]; // +++ تمت الإضافة +++
   phone?: string;
   address?: {
     city: string;
@@ -137,34 +139,6 @@ const AMENITY_ICONS: Record<string, AmenityIcon> = {
   مسجد: MosqueIcon,
 };
 
-const MORNING_SLOTS = [
-  "08:00",
-  "09:00",
-  "10:00",
-  "11:00",
-  "12:00",
-  "13:00",
-  "14:00",
-  "15:00",
-  "16:00",
-  "17:00",
-  "18:00",
-];
-const EVENING_SLOTS = [
-  "19:00",
-  "20:00",
-  "21:00",
-  "22:00",
-  "23:00",
-  "00:00",
-  "01:00",
-  "02:00",
-  "03:00",
-  "04:00",
-  "05:00",
-  "06:00",
-  "07:00",
-];
 const DAYS_COUNT = 7;
 
 function getDays() {
@@ -216,7 +190,7 @@ function VenueDetailsPage() {
 
   const [timeTab, setTimeTab] = useState<"morning" | "evening">("morning");
 
-  const [selectedDuration, setSelectedDuration] = useState<60 | 90 | 120>(60);
+  const [selectedDuration, setSelectedDuration] = useState<60 | 120>(60);
 
   const getBookingSummary = () => {
     if (!days || !days[selectedDay]) return { dayText: "", mobileText: "", timeText: "" };
@@ -236,8 +210,7 @@ function VenueDetailsPage() {
     const weekday = actualDateObj.toLocaleDateString("ar-EG", { weekday: "long" });
     const label = actualDateObj.toLocaleDateString("ar-EG", { day: "numeric", month: "long" });
 
-    const durationText =
-      selectedDuration === 60 ? "ساعة" : selectedDuration === 90 ? "ساعة ونصف" : "ساعتين";
+    const durationText = selectedDuration === 60 ? "ساعة" : "ساعتين";
 
     return {
       dayText: `${weekday}، ${label}`,
@@ -316,15 +289,31 @@ function VenueDetailsPage() {
     };
   }, [selectedCourt, selectedDay, days]);
 
+  // +++ توليد الساعات ديناميكياً استناداً إلى بيانات النادي +++
   const slots = useMemo(() => {
-    const activeSlots = timeTab === "morning" ? MORNING_SLOTS : EVENING_SLOTS;
+    if (!days || !days[selectedDay] || !days[selectedDay].dateObj || !venue) return [];
+
+    const openHr = parseInt((venue.openTime || "08:00").split(":")[0] ?? "08", 10);
+    const closeHr = parseInt((venue.closeTime || "02:00").split(":")[0] ?? "02", 10);
+    const eveningHr = parseInt((venue.eveningStartTime || "18:00").split(":")[0] ?? "18", 10);
+
+    const generatedSlots = [];
+    let currentHr = timeTab === "morning" ? openHr : eveningHr;
+    const endLimit = timeTab === "morning" ? eveningHr : closeHr;
+
+    let iters = 0;
+    while (currentHr !== endLimit && iters < 24) {
+      const timeStr = `${String(currentHr).padStart(2, "0")}:00`;
+      generatedSlots.push(timeStr);
+      currentHr = (currentHr + 1) % 24;
+      iters++;
+    }
+
     const realNow = new Date();
-    if (!days || !days[selectedDay] || !days[selectedDay].dateObj) return [];
     const selectedDate = new Date(days[selectedDay].dateObj);
 
-    return activeSlots.map((time) => {
-      const [hours] = time.split(":");
-      const hourNum = parseInt(hours || "0", 10);
+    return generatedSlots.map((time) => {
+      const hourNum = parseInt(time.split(":")[0] || "0", 10);
       const slotTime = new Date(selectedDate);
       slotTime.setHours(hourNum, 0, 0, 0);
       if (hourNum < 8) slotTime.setDate(slotTime.getDate() + 1);
@@ -346,10 +335,8 @@ function VenueDetailsPage() {
 
       return { time, booked: hasConflict || isPastOrTooClose || bookedSlots.includes(time) };
     });
-  }, [bookedSlots, timeTab, selectedDay, days, selectedDuration]);
+  }, [bookedSlots, timeTab, selectedDay, days, selectedDuration, venue]);
 
-  // +++ حساب الإجمالي والعربون +++
-  // +++ حساب الإجمالي والعربون (بنظام الشرائح المتقاطعة) +++
   const total = useMemo(() => {
     if (!selectedCourt || !selectedSlot) return 0;
 
@@ -369,7 +356,7 @@ function VenueDetailsPage() {
         : selectedCourt.pricePerHour || 0;
 
     let totalPrice = 0;
-    const durationBlocks = selectedDuration / 30; // تقسيم المدة لشرائح 30 دقيقة
+    const durationBlocks = selectedDuration / 30;
 
     let currentHour = parseInt(selectedSlot.split(":")[0] || "0", 10);
     let currentMinute = parseInt(selectedSlot.split(":")[1] || "0", 10);
@@ -381,7 +368,6 @@ function VenueDetailsPage() {
       const blockPrice = isCurrentBlockEvening ? eveningPrice / 2 : morningPrice / 2;
       totalPrice += blockPrice;
 
-      // التقدم 30 دقيقة لمعرفة وقت الشريحة القادمة
       currentMinute += 30;
       if (currentMinute >= 60) {
         currentMinute -= 60;
@@ -392,7 +378,6 @@ function VenueDetailsPage() {
     return totalPrice;
   }, [selectedCourt, selectedSlot, venue, selectedDuration]);
 
-  // الكود الجديد (50% من الإجمالي)
   const deposit = useMemo(() => {
     if (total <= 0) return 0;
     return total / 2;
@@ -587,24 +572,33 @@ function VenueDetailsPage() {
               <CalendarDays className="size-4 text-primary" /> اختر اليوم
             </h2>
             <div className="flex gap-2 overflow-x-auto pb-1">
-              {days.map((d) => (
-                <button
-                  key={d.index}
-                  onClick={() => {
-                    setSelectedDay(d.index);
-                    setSelectedSlot(null);
-                  }}
-                  className={cn(
-                    "flex w-20 shrink-0 flex-col items-center gap-0.5 rounded-xl border px-3 py-2.5 text-xs transition",
-                    selectedDay === d.index
-                      ? "gradient-primary border-transparent text-primary-foreground"
-                      : "border-border bg-background text-muted-foreground hover:border-primary/40",
-                  )}
-                >
-                  <span className="font-bold">{d.weekday}</span>
-                  <span className="text-[11px] opacity-80">{d.label}</span>
-                </button>
-              ))}
+              {/* +++ تعطيل الأيام المغلقة بناءً على أيام العمل +++ */}
+              {days.map((d) => {
+                const isWorkingDay = venue.workingDays
+                  ? venue.workingDays.includes(d.dateObj.getDay())
+                  : true;
+                return (
+                  <button
+                    key={d.index}
+                    disabled={!isWorkingDay}
+                    onClick={() => {
+                      setSelectedDay(d.index);
+                      setSelectedSlot(null);
+                    }}
+                    className={cn(
+                      "flex w-20 shrink-0 flex-col items-center gap-0.5 rounded-xl border px-3 py-2.5 text-xs transition",
+                      !isWorkingDay
+                        ? "opacity-40 cursor-not-allowed bg-muted"
+                        : selectedDay === d.index
+                          ? "gradient-primary border-transparent text-primary-foreground"
+                          : "border-border bg-background text-muted-foreground hover:border-primary/40",
+                    )}
+                  >
+                    <span className="font-bold">{d.weekday}</span>
+                    <span className="text-[11px] opacity-80">{d.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </section>
 
@@ -615,12 +609,11 @@ function VenueDetailsPage() {
             <div className="flex gap-2">
               {[
                 { value: 60, label: "ساعة" },
-                { value: 90, label: "ساعة ونصف" },
                 { value: 120, label: "ساعتين" },
               ].map((opt) => (
                 <button
                   key={opt.value}
-                  onClick={() => setSelectedDuration(opt.value as 60 | 90 | 120)}
+                  onClick={() => setSelectedDuration(opt.value as 60 | 120)}
                   className={cn(
                     "flex-1 py-2 rounded-xl border text-sm font-bold transition",
                     selectedDuration === opt.value
@@ -655,7 +648,7 @@ function VenueDetailsPage() {
                 )}
               >
                 <Sun className="h-4 w-4" />
-                الصباح (8 ص - 6 م)
+                الصباح
               </button>
               <button
                 onClick={() => {
@@ -670,29 +663,35 @@ function VenueDetailsPage() {
                 )}
               >
                 <Moon className="h-4 w-4" />
-                المساء (7 م - 7 ص)
+                المساء
               </button>
             </div>
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-              {slots.map((s) => (
-                <button
-                  key={s.time}
-                  disabled={s.booked}
-                  onClick={() => setSelectedSlot(s.time)}
-                  className={cn(
-                    "rounded-xl border px-3 py-2.5 text-sm font-bold transition",
-                    s.booked
-                      ? "cursor-not-allowed border-border bg-muted text-muted-foreground/60 line-through"
-                      : selectedSlot === s.time
-                        ? "gradient-primary border-transparent text-primary-foreground"
-                        : "border-border bg-background hover:border-primary/40",
-                  )}
-                >
-                  {s.time}
-                </button>
-              ))}
-            </div>
-            <p className="text-[11px] text-muted-foreground">
+            {slots.length > 0 ? (
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {slots.map((s) => (
+                  <button
+                    key={s.time}
+                    disabled={s.booked}
+                    onClick={() => setSelectedSlot(s.time)}
+                    className={cn(
+                      "rounded-xl border px-3 py-2.5 text-sm font-bold transition",
+                      s.booked
+                        ? "cursor-not-allowed border-border bg-muted text-muted-foreground/60 line-through"
+                        : selectedSlot === s.time
+                          ? "gradient-primary border-transparent text-primary-foreground"
+                          : "border-border bg-background hover:border-primary/40",
+                    )}
+                  >
+                    {s.time}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-center text-sm font-bold text-muted-foreground border border-dashed rounded-xl py-6">
+                لا توجد ساعات متاحة في هذا التوقيت
+              </p>
+            )}
+            <p className="text-[11px] text-muted-foreground mt-2">
               الساعات المشطوبة محجوزة مسبقاً أو الوقت لم يعد كافياً للحجز.
             </p>
           </section>
@@ -723,7 +722,6 @@ function VenueDetailsPage() {
                 </span>
               </p>
 
-              {/* +++ التعديل هنا: إظهار الإجمالي والعربون للكمبيوتر +++ */}
               <div className="border-t border-dashed border-border pt-3 mt-2">
                 <p className="flex justify-between">
                   <span>الإجمالي</span>
@@ -831,15 +829,14 @@ function VenueDetailsPage() {
             </div>
           </div>
           <div className="flex items-center justify-between gap-3">
-            {/* +++ التعديل هنا: إظهار الإجمالي والعربون للموبايل +++ */}
             <div className="text-xs text-muted-foreground">
               <p>{summary.mobileText}</p>
               {total > 0 ? (
                 <div className="flex flex-col mt-1">
-                  <span className="text-[10px] text-muted-foreground line-through opacity-70">
-                    إجمالي: {total} ج.م
+                  <span className="text-[10px] text-muted-foreground opacity-90">
+                    الإجمالي: {total} ج.م
                   </span>
-                  <span className="text-sm font-black text-primary">عربون: {deposit} ج.م</span>
+                  <span className="text-sm font-black text-primary">عربون : {deposit} ج.م</span>
                 </div>
               ) : (
                 <p className="text-sm font-bold text-primary">--</p>

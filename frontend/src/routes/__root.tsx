@@ -6,8 +6,15 @@ import {
   useRouter,
   HeadContent,
   Scripts,
+  ErrorComponentProps,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import DOMPurify from "dompurify";
+import axios from "axios";
+import { App } from "@capacitor/app";
+import { Capacitor } from "@capacitor/core";
+// @ts-expect-error axiosConfig is a JavaScript module without TypeScript declarations.
+import { BACKEND_URL } from "../api/axiosConfig";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -34,11 +41,14 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+// تعديل نوع الـ error هنا ليتوافق مع TanStack Router
+function ErrorComponent({ error, reset }: ErrorComponentProps) {
   console.error(error);
   const router = useRouter();
   useEffect(() => {
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
+    // التأكد من أن الخطأ من نوع Error قبل إرساله للتبليغ
+    const errorObj = error instanceof Error ? error : new Error(String(error));
+    reportLovableError(errorObj, { boundary: "tanstack_root_error_component" });
   }, [error]);
 
   return (
@@ -130,8 +140,103 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
+  // حالة للتحكم في ظهور المودال وبيانات التحديث
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [updateData, setUpdateData] = useState<any>(null);
+
+  useEffect(() => {
+    const checkForUpdates = async () => {
+      try {
+        let currentVersionCode = 1;
+
+        // +++ تم إزالة التكرار الخاطئ من هنا +++
+        if (Capacitor.isNativePlatform()) {
+          const appInfo = await App.getInfo();
+          currentVersionCode = parseInt(appInfo.build || "1", 10);
+        }
+
+        const response = await axios.get(`${BACKEND_URL}/version.json`);
+        const data = response.data;
+
+        const skippedVersion = parseInt(localStorage.getItem("skippedUpdateVersion") || "0", 10);
+
+        if (data.versionCode > currentVersionCode) {
+          if (data.forceUpdate || data.versionCode > skippedVersion) {
+            setUpdateData(data);
+          }
+        }
+      } catch (error) {
+        console.error("فشل التحقق من التحديثات:", error);
+      }
+    };
+
+    checkForUpdates();
+  }, []);
+
+  // دالة زر "تحديث الآن"
+  const handleUpdateNow = () => {
+    if (updateData) {
+      window.location.href = updateData.downloadUrl;
+      // إخفاء المودال إذا لم يكن التحديث إجبارياً تحسباً لرجوع المستخدم للتطبيق
+      if (!updateData.forceUpdate) setUpdateData(null);
+    }
+  };
+
+  // دالة زر "تحديث لاحقاً" (إلغاء)
+  const handleSkipUpdate = () => {
+    if (updateData && !updateData.forceUpdate) {
+      // حفظ رقم الإصدار في الهاتف حتى لا يزعج المستخدم مرة أخرى بنفس الإصدار
+      localStorage.setItem("skippedUpdateVersion", updateData.versionCode.toString());
+      setUpdateData(null);
+    }
+  };
+
   return (
     <QueryClientProvider client={queryClient}>
+      {/* نافذة التحديث الاحترافية (Modal) تظهر فقط عند وجود بيانات تحديث */}
+      {updateData && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div
+            className="w-full max-w-md overflow-hidden rounded-3xl bg-background p-6 shadow-2xl"
+            dir="rtl"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                <span className="text-2xl">🚀</span>
+              </div>
+              <h2 className="text-xl font-bold text-foreground">
+                {updateData.forceUpdate ? "تحديث ضروري مطلوب!" : "يوجد تحديث جديد!"}
+              </h2>
+            </div>
+
+            {/* عرض محتوى رسالة التحديث مع دعم أكواد الـ HTML (مثل الخط العريض والنزول لسطر) */}
+            <div
+              className="mt-5 text-sm leading-relaxed text-muted-foreground"
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(updateData.releaseNotes) }}
+            />
+
+            <div className="mt-8 flex gap-3">
+              <button
+                onClick={handleUpdateNow}
+                className="flex-1 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-md transition-all hover:bg-primary/90 active:scale-95"
+              >
+                تحديث الآن
+              </button>
+
+              {/* إخفاء زر التخطي تماماً إذا كان التحديث إجبارياً */}
+              {!updateData.forceUpdate && (
+                <button
+                  onClick={handleSkipUpdate}
+                  className="flex-1 rounded-xl bg-secondary px-4 py-3 text-sm font-semibold text-secondary-foreground transition-all hover:bg-secondary/80 active:scale-95"
+                >
+                  تحديث لاحقاً
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
     </QueryClientProvider>

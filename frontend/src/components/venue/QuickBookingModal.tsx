@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
-import { X, Loader2 } from "lucide-react";
+import { X, Loader2, CalendarDays, Clock, Hourglass } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export type BookingFormData = {
   name: string;
   phone: string;
   sport: "خماسي" | "بادل";
-  deposit: string | number; // +++ التعديل هنا: السماح بأن يكون سترينج لاستيعاب الحقل الفارغ +++
+  deposit: string | number;
+  duration: 60 | 120; // +++ إضافة المدة +++
 };
 
 type Props = {
@@ -13,6 +15,7 @@ type Props = {
   slotLabel?: string | undefined;
   slotPrice: number;
   defaultSport?: string | undefined;
+  selectedDateObj?: Date; // +++ إضافة التاريخ كـ Prop +++
   onClose: () => void;
   onConfirm: (data: BookingFormData) => Promise<void> | void;
 };
@@ -22,6 +25,7 @@ export function QuickBookingModal({
   slotLabel,
   slotPrice,
   defaultSport,
+  selectedDateObj,
   onClose,
   onConfirm,
 }: Props) {
@@ -30,13 +34,14 @@ export function QuickBookingModal({
     phone: "",
     sport: "خماسي",
     deposit: 0,
+    duration: 60,
   });
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (open) {
       const sportAr = defaultSport === "padel" ? "بادل" : "خماسي";
-      setForm({ name: "", phone: "", sport: sportAr, deposit: "" }); // +++ جعلها فارغة عند الفتح +++
+      setForm({ name: "", phone: "", sport: sportAr, deposit: "", duration: 60 });
       setIsLoading(false);
     }
   }, [open, defaultSport]);
@@ -48,7 +53,10 @@ export function QuickBookingModal({
   }, [onClose, isLoading]);
 
   if (!open) return null;
-  const remaining = Math.max(slotPrice - (Number(form.deposit) || 0), 0);
+
+  // +++ حساب السعر النهائي بناءً على المدة +++
+  const finalPrice = form.duration === 120 ? slotPrice * 2 : slotPrice;
+  const remaining = Math.max(finalPrice - (Number(form.deposit) || 0), 0);
 
   const field =
     "mt-1.5 w-full rounded-xl border border-input bg-background px-3 py-2.5 text-sm outline-none transition-shadow focus:border-primary focus:ring-2 focus:ring-ring/40";
@@ -57,13 +65,22 @@ export function QuickBookingModal({
     e.preventDefault();
     setIsLoading(true);
     try {
-      // +++ تحويل السترينج الفارغ إلى 0 قبل الإرسال +++
       const finalData = { ...form, deposit: Number(form.deposit) || 0 };
       await onConfirm(finalData);
     } catch (error) {
       setIsLoading(false);
     }
   };
+
+  const dayName = selectedDateObj
+    ? selectedDateObj.toLocaleDateString("ar-EG", { weekday: "long" })
+    : "";
+  const dateStr = selectedDateObj
+    ? selectedDateObj.toLocaleDateString("ar-EG", { day: "numeric", month: "short" })
+    : "";
+  const hourMatch = slotLabel?.match(/\d{2}:\d{2}/);
+  const slotHour = hourMatch ? hourMatch[0] : "";
+  const courtNameMatch = slotLabel?.split("·")[0]?.trim();
 
   return (
     <div
@@ -75,11 +92,11 @@ export function QuickBookingModal({
         onClick={() => !isLoading && onClose()}
       />
       <div className="relative z-10 max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-card p-5 shadow-2xl duration-200 animate-in slide-in-from-bottom-4 sm:max-w-md sm:rounded-3xl">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start justify-between gap-3 border-b border-border pb-3 mb-4">
           <div className="min-w-0">
-            <h2 className="font-display text-lg font-extrabold">حجز يدوي سريع</h2>
-            {slotLabel && (
-              <p className="mt-1 truncate text-xs text-muted-foreground">{slotLabel}</p>
+            <h2 className="font-display text-lg font-extrabold text-primary">حجز يدوي سريع</h2>
+            {courtNameMatch && (
+              <p className="mt-0.5 font-bold text-muted-foreground">{courtNameMatch}</p>
             )}
           </div>
           <button
@@ -92,7 +109,57 @@ export function QuickBookingModal({
           </button>
         </div>
 
-        <form className="mt-5 flex flex-col gap-4" onSubmit={handleSubmit}>
+        {/* +++ ملخص الموعد كزيادة تأكيد +++ */}
+        <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 flex items-center justify-around mb-4">
+          <div className="flex flex-col items-center gap-1">
+            <CalendarDays className="size-4 text-primary" />
+            <span className="text-xs font-bold">{dayName}</span>
+            <span className="text-[10px] text-muted-foreground">{dateStr}</span>
+          </div>
+          <div className="w-px h-8 bg-primary/20"></div>
+          <div className="flex flex-col items-center gap-1">
+            <Clock className="size-4 text-primary" />
+            <span className="text-xs font-bold">الساعة</span>
+            <span className="text-xs font-bold" dir="ltr">
+              {slotHour}
+            </span>
+          </div>
+        </div>
+
+        <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+          {/* +++ أزرار اختيار المدة +++ */}
+          <div>
+            <label className="block text-sm font-semibold mb-2 flex items-center gap-1">
+              <Hourglass className="size-4 text-primary" /> مدة الحجز
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, duration: 60 })}
+                className={cn(
+                  "flex-1 py-2 rounded-xl border text-sm font-bold transition",
+                  form.duration === 60
+                    ? "gradient-primary border-transparent text-primary-foreground"
+                    : "border-border bg-background text-muted-foreground hover:border-primary/40",
+                )}
+              >
+                ساعة
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, duration: 120 })}
+                className={cn(
+                  "flex-1 py-2 rounded-xl border text-sm font-bold transition",
+                  form.duration === 120
+                    ? "gradient-primary border-transparent text-primary-foreground"
+                    : "border-border bg-background text-muted-foreground hover:border-primary/40",
+                )}
+              >
+                ساعتين
+              </button>
+            </div>
+          </div>
+
           <label className="block text-sm font-semibold">
             اسم العميل
             <input
@@ -117,24 +184,17 @@ export function QuickBookingModal({
               dir="ltr"
             />
           </label>
-          <label className="block text-sm font-semibold">
-            نوع الرياضة
-            <input
-              readOnly
-              className={`${field} bg-muted text-muted-foreground cursor-not-allowed`}
-              value={form.sport}
-            />
-          </label>
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="block text-sm font-semibold">
-              العربون المدفوع (EGP)
+              العربون (EGP)
               <input
                 type="number"
                 min={0}
-                max={slotPrice}
+                max={finalPrice}
                 disabled={isLoading}
                 className={field}
-                value={form.deposit} // +++ الآن يقبل السترينج والأرقام +++
+                value={form.deposit}
                 onChange={(e) => setForm({ ...form, deposit: e.target.value })}
                 dir="ltr"
               />
@@ -150,7 +210,7 @@ export function QuickBookingModal({
             </label>
           </div>
           <p className="rounded-xl bg-surface px-3 py-2 text-xs text-muted-foreground">
-            سعر الحجز: <span className="font-bold text-foreground">{slotPrice} جنيه</span>
+            إجمالي سعر الحجز: <span className="font-bold text-foreground">{finalPrice} جنيه</span>
           </p>
 
           <div className="mt-1 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

@@ -28,7 +28,7 @@ import {
 } from "@/api/paymentApi";
 // @ts-expect-error: until axiosConfig.js is migrated to TypeScript or has typings.
 import { BACKEND_URL } from "@/api/axiosConfig";
-
+import { useConfirm } from "../../components/venue/useConfirm";
 interface Payment {
   _id: string;
   expectedAmount: number;
@@ -87,6 +87,7 @@ export function AdminPaymentsView() {
   const [search, setSearch] = useState("");
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [unmatchedNotes, setUnmatchedNotes] = useState<Record<string, string>>({});
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const formatDateForInput = (d: Date) => {
     const y = d.getFullYear();
@@ -148,7 +149,9 @@ export function AdminPaymentsView() {
     const msg = isExpired
       ? "إحياء الحجز وتأكيد التحويل البنكي؟"
       : "تأكيد استلام التحويل البنكي يدوياً؟";
-    if (!window.confirm(msg)) return;
+    //if (!window.confirm(msg)) return;
+    const isConfirmed = await confirm(msg);
+    if (!isConfirmed) return;
     try {
       await manuallyVerifyPayment(
         id,
@@ -234,7 +237,7 @@ export function AdminPaymentsView() {
           />
         </div>
       </div>
-
+      <ConfirmDialog />
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card-surface p-4 border-b-4 border-b-success">
           <p className="text-xs font-bold text-muted-foreground mb-1 flex items-center gap-1">

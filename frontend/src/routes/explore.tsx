@@ -275,6 +275,30 @@ function ExplorePage() {
   const uniqueAreas = Array.from(
     new Set(venues.map((venue) => venue.address?.area).filter(Boolean)),
   ) as string[];
+  // قاموس لترجمة أنواع الرياضات للعربي
+  const sportTypeLabels: Record<string, string> = {
+    padel: "بادل",
+    football: "خماسي",
+    football_7: "سباعي",
+  };
+
+  // استخراج أنواع الرياضات الموجودة في الأندية ديناميكياً بدون تكرار
+  const uniqueSports = Array.from(
+    new Set(
+      venues.flatMap((venue) =>
+        (venue.courts || []).map((court) => court.sportType).filter(Boolean),
+      ),
+    ),
+  ) as string[];
+
+  // تجهيز الفلاتر بناءً على الأنواع المتوفرة
+  const dynamicFilters = [
+    { id: "all", label: "الكل" },
+    ...uniqueSports.map((sport) => ({
+      id: sport,
+      label: sportTypeLabels[sport] || sport, // استخدم الترجمة، أو الاسم الإنجليزي لو مش مترجم
+    })),
+  ];
 
   const filteredVenues = venues.filter((venue) => {
     const matchesSearch = searchQuery === "" || venue.address?.area === searchQuery;
@@ -326,11 +350,7 @@ function ExplorePage() {
           </div>
 
           <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-            {[
-              { id: "all", label: "الكل" },
-              { id: "padel", label: "بادل" },
-              { id: "football", label: "خماسي" },
-            ].map((filter) => (
+            {dynamicFilters.map((filter) => (
               <button
                 key={filter.id}
                 onClick={() => setActiveFilter(filter.id)}

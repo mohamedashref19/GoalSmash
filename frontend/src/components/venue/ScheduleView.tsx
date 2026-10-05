@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Plus,
   Clock,
@@ -13,7 +13,7 @@ import {
   Trash2,
   Hourglass,
   Loader2,
-  CheckCircle2, // +++ أيقونة للدفع المكتمل +++
+  CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -26,6 +26,7 @@ import { createBooking } from "@/api/bookingApi";
 import apiClient from "@/api/axiosConfig";
 // @ts-expect-error: API lacks TypeScript definitions
 import { fetchVenueById } from "@/api/venueApi";
+import { useConfirm } from "../../components/venue/useConfirm";
 
 interface CourtData {
   _id: string;
@@ -63,9 +64,6 @@ const kindClass: Record<string, string> = {
   maintenance: "bg-muted border-border text-muted-foreground",
 };
 
-const MORNING_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
-const EVENING_HOURS = [19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 7];
-
 // =========================================
 // +++ نافذة تفاصيل الحجز +++
 // =========================================
@@ -74,11 +72,13 @@ function BookingDetailsDialog({
   onClose,
   onCancelBooking,
   onMarkAsPaid,
+  isProcessingPayment,
 }: {
   booking: BookingData | null;
   onClose: () => void;
   onCancelBooking: (id: string) => void;
   onMarkAsPaid: (id: string, fullPrice: number) => void;
+  isProcessingPayment: boolean;
 }) {
   if (!booking) return null;
 
@@ -99,12 +99,14 @@ function BookingDetailsDialog({
   const durationMinutes = Math.round((eDate.getTime() - bDate.getTime()) / (1000 * 60));
   let durationText = `${durationMinutes} دقيقة`;
   if (durationMinutes === 60) durationText = "ساعة";
-  else if (durationMinutes === 90) durationText = "ساعة ونصف";
   else if (durationMinutes === 120) durationText = "ساعتين";
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6" dir="rtl">
-      <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+        onClick={isProcessingPayment ? undefined : onClose}
+      />
 
       <div className="relative z-10 w-full max-w-[400px] overflow-hidden rounded-3xl bg-card shadow-2xl animate-in fade-in zoom-in-95 border border-border">
         <div className="flex items-center justify-between border-b border-border bg-muted/50 px-5 py-4">
@@ -113,7 +115,8 @@ function BookingDetailsDialog({
           </div>
           <button
             onClick={onClose}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-background border border-border text-muted-foreground hover:bg-destructive hover:text-white transition-colors"
+            disabled={isProcessingPayment}
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-background border border-border text-muted-foreground hover:bg-destructive hover:text-white transition-colors disabled:opacity-50"
           >
             <X size={16} />
           </button>
@@ -215,24 +218,33 @@ function BookingDetailsDialog({
             {remaining > 0 && (
               <button
                 onClick={() => onMarkAsPaid(booking._id, price)}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-success px-4 py-2.5 text-sm font-bold text-white hover:bg-success/90 transition"
+                disabled={isProcessingPayment}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-success px-4 py-2.5 text-sm font-bold text-white hover:bg-success/90 transition disabled:opacity-50"
               >
-                <CheckCircle size={16} />
-                تأكيد استلام باقي المبلغ ({remaining} ج.م) في الملعب
+                {isProcessingPayment ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <CheckCircle size={16} />
+                )}
+                {isProcessingPayment
+                  ? "جاري التأكيد..."
+                  : `تأكيد استلام باقي المبلغ (${remaining} ج.م) في الملعب`}
               </button>
             )}
 
             <div className="flex gap-2 w-full mt-2">
               <button
                 onClick={onClose}
-                className="flex-1 rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-bold text-foreground hover:bg-muted transition"
+                disabled={isProcessingPayment}
+                className="flex-1 rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-bold text-foreground hover:bg-muted transition disabled:opacity-50"
               >
                 إغلاق النافذة
               </button>
               {canCancel ? (
                 <button
                   onClick={() => onCancelBooking(booking._id)}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-destructive px-4 py-2.5 text-sm font-bold text-white hover:bg-destructive/90 transition"
+                  disabled={isProcessingPayment}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-destructive px-4 py-2.5 text-sm font-bold text-white hover:bg-destructive/90 transition disabled:opacity-50"
                 >
                   <Trash2 size={16} />
                   إلغاء الحجز
@@ -254,7 +266,19 @@ function BookingDetailsDialog({
     </div>
   );
 }
-// =========================================
+const formatHour12Short = (h: number) => {
+  const ampm = h >= 12 && h < 24 ? "م" : "ص";
+  let hr12 = h % 12;
+  if (hr12 === 0) hr12 = 12;
+  return `${hr12} ${ampm}`;
+};
+
+const formatHour12Full = (h: number) => {
+  const ampm = h >= 12 && h < 24 ? "م" : "ص";
+  let hr12 = h % 12;
+  if (hr12 === 0) hr12 = 12;
+  return `${String(hr12).padStart(2, "0")}:00 ${ampm}`;
+};
 
 export function ScheduleView({ venueId }: { venueId: string }) {
   const [courts, setCourts] = useState<CourtData[]>([]);
@@ -266,9 +290,16 @@ export function ScheduleView({ venueId }: { venueId: string }) {
   const [timeTab, setTimeTab] = useState<"morning" | "evening">("morning");
   const [viewBooking, setViewBooking] = useState<BookingData | null>(null);
 
+  // +++ حالات جديدة لحفظ مواعيد الفتح والإغلاق +++
+  const [venueOpenHour, setVenueOpenHour] = useState(8);
+  const [venueCloseHour, setVenueCloseHour] = useState(2);
   const [eveningStartHour, setEveningStartHour] = useState(18);
 
+  const { confirm, ConfirmDialog } = useConfirm();
+
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
   const [slot, setSlot] = useState<{
     courtId: string;
     courtName: string;
@@ -296,8 +327,16 @@ export function ScheduleView({ venueId }: { venueId: string }) {
         setLoading(true);
 
         const venueData = await fetchVenueById(vId);
-        if (venueData && venueData.eveningStartTime) {
-          setEveningStartHour(parseInt(venueData.eveningStartTime.split(":")[0], 10));
+        if (venueData) {
+          if (venueData.eveningStartTime) {
+            setEveningStartHour(parseInt(venueData.eveningStartTime.split(":")[0], 10));
+          }
+          if (venueData.openTime) {
+            setVenueOpenHour(parseInt(venueData.openTime.split(":")[0], 10));
+          }
+          if (venueData.closeTime) {
+            setVenueCloseHour(parseInt(venueData.closeTime.split(":")[0], 10));
+          }
         }
 
         const courtsData = await fetchCourts(vId);
@@ -346,6 +385,21 @@ export function ScheduleView({ venueId }: { venueId: string }) {
     }
   }, [venueId, selectedDate, loadData]);
 
+  // +++ توليد الساعات المتاحة ديناميكياً بدلاً من المصفوفات الثابتة +++
+  const activeHours = useMemo(() => {
+    const hours = [];
+    let current = timeTab === "morning" ? venueOpenHour : eveningStartHour;
+    const endLimit = timeTab === "morning" ? eveningStartHour : venueCloseHour;
+
+    let iters = 0;
+    while (current !== endLimit && iters < 24) {
+      hours.push(current);
+      current = (current + 1) % 24;
+      iters++;
+    }
+    return hours;
+  }, [venueOpenHour, venueCloseHour, eveningStartHour, timeTab]);
+
   const getBookingForCell = (courtId: string, hour: number) => {
     return bookings.find((b) => {
       if (!b || !b.startTime || !b.endTime) return false;
@@ -375,7 +429,7 @@ export function ScheduleView({ venueId }: { venueId: string }) {
     courtPriceEvening: number | undefined,
     sportType?: string | undefined,
   ) => {
-    const isEvening = hour >= eveningStartHour || hour < 8;
+    const isEvening = hour >= eveningStartHour || hour < venueOpenHour;
 
     let price = courtPricePerHour || 0;
 
@@ -422,8 +476,8 @@ export function ScheduleView({ venueId }: { venueId: string }) {
   };
 
   const handleCancelBooking = async (id: string) => {
-    if (!window.confirm("هل أنت متأكد من إلغاء هذا الحجز؟")) return;
-
+    const isConfirmed = await confirm("هل أنت متأكد من إلغاء هذا الحجز؟");
+    if (!isConfirmed) return;
     try {
       await apiClient.patch(`/bookings/${id}/cancel`);
       toast.success("تم إلغاء الحجز بنجاح");
@@ -435,9 +489,13 @@ export function ScheduleView({ venueId }: { venueId: string }) {
   };
 
   const handleMarkAsPaid = async (id: string, fullPrice: number) => {
+    const isConfirmed = await confirm("هل تأكدت من استلام باقي المبلغ كاش؟");
+    if (!isConfirmed) return;
+
+    setIsProcessingPayment(true);
     try {
       await apiClient.patch(`/bookings/${id}/payment`, {
-        deposit: fullPrice, // +++ نحدث العربون ليكون مساوياً للسعر الإجمالي ليكون خالصاً +++
+        deposit: fullPrice,
         paymentStatus: "paid",
       });
 
@@ -446,10 +504,10 @@ export function ScheduleView({ venueId }: { venueId: string }) {
       loadData(venueId, selectedDate);
     } catch (err) {
       toast.error("حدث خطأ أثناء تحديث بيانات الدفع");
+    } finally {
+      setIsProcessingPayment(false);
     }
   };
-
-  const activeHours = timeTab === "morning" ? MORNING_HOURS : EVENING_HOURS;
 
   return (
     <div className="flex flex-col gap-5">
@@ -490,7 +548,7 @@ export function ScheduleView({ venueId }: { venueId: string }) {
             ))}
           </div>
         </div>
-
+        <ConfirmDialog />
         <div className="mt-5 flex gap-2 rounded-xl border border-border bg-muted/50 p-1 md:max-w-sm">
           <button
             onClick={() => setTimeTab("morning")}
@@ -502,7 +560,7 @@ export function ScheduleView({ venueId }: { venueId: string }) {
             )}
           >
             <Sun className="h-4 w-4" />
-            الصباح (8 ص - 6 م)
+            الصباح ({formatHour12Short(venueOpenHour)} - {formatHour12Short(eveningStartHour)})
           </button>
           <button
             onClick={() => setTimeTab("evening")}
@@ -514,7 +572,7 @@ export function ScheduleView({ venueId }: { venueId: string }) {
             )}
           >
             <Moon className="h-4 w-4" />
-            المساء (7 م - 7 ص)
+            المساء ({formatHour12Short(eveningStartHour)} - {formatHour12Short(venueCloseHour)})
           </button>
         </div>
 
@@ -543,7 +601,7 @@ export function ScheduleView({ venueId }: { venueId: string }) {
                 <div />
                 {activeHours.map((h) => (
                   <div key={h} className="pb-2 text-center font-semibold">
-                    {String(h).padStart(2, "0")}:00
+                    {formatHour12Full(h)}
                   </div>
                 ))}
               </div>
@@ -586,7 +644,6 @@ export function ScheduleView({ venueId }: { venueId: string }) {
                             <p className="truncate text-[11px] font-bold pr-1">
                               {b.guestData?.name || b.user?.name || "بدون اسم"}
                             </p>
-                            {/* +++ التعديل هنا: إظهار "باقي" أو "خالص" +++ */}
                             {remaining > 0 ? (
                               <p className="truncate text-[10px] font-bold text-destructive mt-0.5 bg-destructive/10 px-1 rounded-sm self-start">
                                 باقي: {remaining} ج
@@ -661,8 +718,8 @@ export function ScheduleView({ venueId }: { venueId: string }) {
                     key={hour}
                     className="grid grid-cols-[64px_minmax(0,1fr)] items-center gap-3"
                   >
-                    <span className="text-xs font-bold text-muted-foreground">
-                      {String(hour).padStart(2, "0")}:00
+                    <span className="text-xs font-bold text-muted-foreground whitespace-nowrap">
+                      {formatHour12Full(hour)}
                     </span>
                     {b ? (
                       <div
@@ -681,7 +738,6 @@ export function ScheduleView({ venueId }: { venueId: string }) {
                           </p>
                         </div>
 
-                        {/* +++ التعديل هنا للموبايل +++ */}
                         {(b.totalPrice || 0) - (b.deposit || 0) > 0 ? (
                           <div className="bg-destructive/10 text-destructive px-2 py-1 rounded-md text-[10px] font-bold shrink-0 border border-destructive/20">
                             باقي: {(b.totalPrice || 0) - (b.deposit || 0)} ج
@@ -723,15 +779,15 @@ export function ScheduleView({ venueId }: { venueId: string }) {
         onClose={() => setViewBooking(null)}
         onCancelBooking={handleCancelBooking}
         onMarkAsPaid={handleMarkAsPaid}
+        isProcessingPayment={isProcessingPayment}
       />
 
       <QuickBookingModal
         open={isModalOpen}
-        slotLabel={
-          slot ? `${slot.courtName} · الساعة ${String(slot.hour).padStart(2, "0")}:00` : undefined
-        }
+        slotLabel={slot ? `${slot.courtName} · الساعة ${formatHour12Full(slot.hour)}` : undefined}
         slotPrice={slot?.price ?? 0}
         defaultSport={slot?.sportType}
+        selectedDateObj={selectedDate}
         onClose={() => setIsModalOpen(false)}
         onConfirm={confirmManualBooking}
       />

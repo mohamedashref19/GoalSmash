@@ -278,7 +278,46 @@ exports.getAllPayments = catchAsync(async (req, res, next) => {
     filter.createdAt = { $gte: startOfDay, $lte: endOfDay };
   }
 
-  let payments = await Payment.find(filter)
+  // +++ التعديل الهندسي: فلترة الملاعب برمجياً في الداتابيز بدلاً من الجافاسكربت +++
+  let venueIdsToFilter = [];
+
+  if (req.user && req.user.role === "owner") {
+    const myVenues = await Venue.find({ owner: req.user.id }).select("_id");
+    venueIdsToFilter = myVenues.map((v) => v._id.toString());
+
+    // إذا كان المالك يبحث عن ملعب معين، نتأكد أولاً أنه يملكه
+    if (req.query.venue) {
+      if (!venueIdsToFilter.includes(req.query.venue)) {
+        return next(new AppError("غير مصرح لك بعرض مدفوعات هذا الملعب", 403));
+      }
+      venueIdsToFilter = [req.query.venue];
+    }
+  } else if (req.query.venue) {
+    // إذا كان أدمن ويبحث عن ملعب
+    venueIdsToFilter = [req.query.venue];
+  }
+
+  // إذا كان هناك ملاعب مطلوبة الفلترة بها، نبحث عن حجوزاتها أولاً
+  if (venueIdsToFilter.length > 0) {
+    const Booking = require("../models/bookingModel"); // جلب الموديل هنا إذا لم يكن بالأعلى
+    const validBookings = await Booking.find({
+      venue: { $in: venueIdsToFilter },
+    }).select("_id");
+    const validBookingIds = validBookings.map((b) => b._id);
+
+    // إجبار استعلام المدفوعات على إرجاع المدفوعات المرتبطة بهذه الحجوزات فقط
+    filter.booking = { $in: validBookingIds };
+  }
+
+  // +++ تطبيق الـ Pagination +++
+  const page = parseInt(req.query.page, 10) || 1;
+  const limit = parseInt(req.query.limit, 10) || 50;
+  const skip = (page - 1) * limit;
+
+  const totalDocuments = await Payment.countDocuments(filter);
+  const totalPages = Math.ceil(totalDocuments / limit);
+
+  const payments = await Payment.find(filter)
     .populate({
       path: "booking",
       select:
@@ -289,38 +328,23 @@ exports.getAllPayments = catchAsync(async (req, res, next) => {
         { path: "venue", select: "name owner" },
       ],
     })
-    .sort("-createdAt");
+    .sort("-createdAt")
+    .skip(skip)
+    .limit(limit);
 
-  // +++ تم إزالة كود إخفاء الحجوزات الملغية (cancelled) لتظهر في التبويب الجديد للفرونت إند +++
-
-  // قفل الأمان 1: المالك يرى مدفوعات ملاعبه فقط
-  if (req.user && req.user.role === "owner") {
-    const myVenues = await Venue.find({ owner: req.user.id }).select("_id");
-    const myVenueIds = myVenues.map((v) => v._id.toString());
-
-    payments = payments.filter((p) => {
-      if (!p.booking || !p.booking.venue) return false;
-      const vId = p.booking.venue._id
-        ? p.booking.venue._id.toString()
-        : p.booking.venue.toString();
-      return myVenueIds.includes(vId);
-    });
-  }
-
-  // فلترة إضافية برقم الملعب لو اتبعت في الـ Query
-  if (req.query.venue) {
-    payments = payments.filter((p) => {
-      if (!p.booking || !p.booking.venue) return false;
-      const vId = p.booking.venue._id
-        ? p.booking.venue._id.toString()
-        : p.booking.venue.toString();
-      return vId === req.query.venue;
-    });
-  }
-
-  res
-    .status(200)
-    .json({ status: "success", results: payments.length, data: { payments } });
+  res.status(200).json({
+    status: "success",
+    results: payments.length,
+    pagination: {
+      currentPage: page,
+      totalPages: totalPages,
+      totalItems: totalDocuments,
+      itemsPerPage: limit,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1,
+    },
+    data: { payments },
+  });
 });
 
 // +++ قفل الأمان 2: الأموال المعلقة للـ Admin حصراً +++

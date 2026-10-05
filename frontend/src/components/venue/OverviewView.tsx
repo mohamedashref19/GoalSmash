@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   CalendarCheck,
   Wallet,
@@ -18,6 +18,7 @@ import { fetchTodayStats, fetchTopCustomers } from "@/api/dashboardApi";
 import { fetchMyBookings } from "@/api/bookingApi";
 // @ts-expect-error: API lacks TypeScript definitions
 import apiClient from "@/api/axiosConfig"; // +++ إضافة apiClient للتواصل المباشر في تحديث الدفع
+import { useConfirm } from "../../components/venue/useConfirm";
 
 interface StatsData {
   todayBookings: number;
@@ -75,8 +76,10 @@ export function OverviewView({
   const [customers, setCustomers] = useState<CustomerData[]>([]);
   const [upcomingBookings, setUpcomingBookings] = useState<BookingData[]>([]);
   const [updatingPaymentId, setUpdatingPaymentId] = useState<string | null>(null); // +++ حالة زر التحديث
+  const { confirm, ConfirmDialog } = useConfirm();
 
-  const loadDashboardData = async () => {
+  // +++ إضافة useCallback هنا +++
+  const loadDashboardData = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -100,25 +103,26 @@ export function OverviewView({
             b.venue?._id === venueId &&
             b.status === "confirmed",
         )
-        .slice(0, 5); // يعرض أول 5 حجوزات قادمة
+        .slice(0, 5);
       setUpcomingBookings(upcoming);
     } catch (err) {
       setError(err as string);
     } finally {
       setLoading(false);
     }
-  };
+  }, [venueId]); // +++ مصفوفة الاعتمادات للدالة +++
 
   useEffect(() => {
     if (venueId) {
       loadDashboardData();
     }
-  }, [venueId]);
+  }, [venueId, loadDashboardData]); // +++ إضافة loadDashboardData هنا كاعتماد +++
 
   // +++ دالة تأكيد استلام الكاش من صفحة النظرة العامة +++
   const handleMarkAsPaid = async (id: string, fullPrice: number) => {
-    if (!window.confirm("هل تأكدت من استلام باقي المبلغ نقداً؟")) return;
-
+    const isConfirmed = await confirm("هل تأكدت من استلام باقي المبلغ نقداً؟");
+    // if (!window.confirm("هل تأكدت من استلام باقي المبلغ نقداً؟")) return;
+    if (!isConfirmed) return;
     setUpdatingPaymentId(id);
     try {
       await apiClient.patch(`/bookings/${id}/payment`, {
@@ -178,7 +182,7 @@ export function OverviewView({
           </div>
         ))}
       </div>
-
+      <ConfirmDialog />
       <section className="card-surface overflow-hidden">
         <div className="flex items-center justify-between gap-3 border-b border-border p-5">
           <h2 className="font-display text-lg font-extrabold">أقرب الحجوزات القادمة</h2>

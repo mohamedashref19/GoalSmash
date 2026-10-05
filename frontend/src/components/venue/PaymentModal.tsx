@@ -176,43 +176,115 @@ export function PaymentModal({
           {!isExpired && !showProofForm && (
             <div className="animate-in fade-in slide-in-from-bottom-2 space-y-5">
               {/* +++ صندوق تفاصيل الحجز +++ */}
+              {/* +++ صندوق تفاصيل الحجز +++ */}
               {bookingDetails && (
-                <div className="flex items-center justify-between bg-muted/40 border border-border rounded-xl p-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="bg-primary/10 p-2 rounded-lg text-primary">
-                      <CalendarDays className="size-4" />
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between bg-muted/40 border border-border rounded-xl p-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="bg-primary/10 p-2 rounded-lg text-primary">
+                        <CalendarDays className="size-4" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold text-muted-foreground">تاريخ الحجز</p>
+                        <p className="text-xs font-bold text-foreground">
+                          {new Date(bookingDetails.startTime).toLocaleDateString("ar-EG", {
+                            weekday: "long",
+                            day: "numeric",
+                            month: "short",
+                          })}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[10px] font-bold text-muted-foreground">تاريخ الحجز</p>
-                      <p className="text-xs font-bold text-foreground">
-                        {new Date(bookingDetails.startTime).toLocaleDateString("ar-EG", {
-                          weekday: "long",
-                          day: "numeric",
-                          month: "short",
-                        })}
-                      </p>
+                    <div className="w-px h-8 bg-border"></div>
+                    <div className="flex items-center gap-2.5">
+                      <div className="bg-primary/10 p-2 rounded-lg text-primary">
+                        <Clock className="size-4" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold text-muted-foreground">التوقيت</p>
+                        <p className="text-xs font-bold text-foreground" dir="ltr">
+                          {new Date(bookingDetails.startTime).toLocaleTimeString("ar-EG", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}{" "}
+                          -{" "}
+                          {new Date(bookingDetails.endTime).toLocaleTimeString("ar-EG", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                  <div className="w-px h-8 bg-border"></div>
-                  <div className="flex items-center gap-2.5">
-                    <div className="bg-primary/10 p-2 rounded-lg text-primary">
-                      <Clock className="size-4" />
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-bold text-muted-foreground">التوقيت</p>
-                      <p className="text-xs font-bold text-foreground" dir="ltr">
-                        {new Date(bookingDetails.startTime).toLocaleTimeString("ar-EG", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}{" "}
-                        -{" "}
-                        {new Date(bookingDetails.endTime).toLocaleTimeString("ar-EG", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </p>
-                    </div>
-                  </div>
+
+                  {/* +++ رسالة تنبيه ما بعد منتصف الليل +++ */}
+                  {/* +++ رسالة تنبيه ما بعد منتصف الليل +++ */}
+                  {(() => {
+                    const startDate = new Date(bookingDetails.startTime);
+                    const endDate = new Date(bookingDetails.endTime);
+                    const startHour = startDate.getHours();
+                    const endHour = endDate.getHours();
+
+                    const isAfterMidnight = startHour >= 0 && startHour < 6;
+                    const crossesMidnight = startHour > endHour;
+
+                    if (isAfterMidnight || crossesMidnight) {
+                      // الحالة الأولى: الحجز بيبدأ الفجر (من 12 لـ 6 الصبح)
+                      if (isAfterMidnight) {
+                        const displayDate = new Date(startDate);
+                        displayDate.setDate(displayDate.getDate() - 1); // اليوم الذي تم اختياره من الواجهة
+
+                        return (
+                          <div className="bg-warning/10 border border-warning/30 rounded-xl p-3 flex gap-3 items-start animate-in fade-in">
+                            <AlertTriangle className="size-5 text-warning shrink-0 mt-0.5" />
+                            <div className="space-y-1">
+                              <p className="text-xs font-bold text-foreground">
+                                تنبيه: هذا الموعد يقع بعد منتصف الليل
+                              </p>
+                              <p className="text-[11px] font-semibold text-muted-foreground leading-relaxed">
+                                لقد قمت باختيار سهرة يوم{" "}
+                                <strong className="text-foreground">
+                                  {displayDate.toLocaleDateString("ar-EG", { weekday: "long" })}
+                                </strong>
+                                . وبما أن الموعد يقع بعد منتصف الليل، فإن التاريخ الفعلي للحجز يقع
+                                ضمن يوم{" "}
+                                <strong className="text-foreground">
+                                  {startDate.toLocaleDateString("ar-EG", { weekday: "long" })}
+                                </strong>{" "}
+                                فجراً. يرجى التأكد من الموعد بدقة.
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // الحالة الثانية: الحجز يعبر منتصف الليل (مثال: 11 م إلى 1 ص)
+                      if (crossesMidnight) {
+                        return (
+                          <div className="bg-warning/10 border border-warning/30 rounded-xl p-3 flex gap-3 items-start animate-in fade-in">
+                            <AlertTriangle className="size-5 text-warning shrink-0 mt-0.5" />
+                            <div className="space-y-1">
+                              <p className="text-xs font-bold text-foreground">
+                                تنبيه: هذا الموعد يمتد لما بعد منتصف الليل
+                              </p>
+                              <p className="text-[11px] font-semibold text-muted-foreground leading-relaxed">
+                                سيبدأ الحجز يوم{" "}
+                                <strong className="text-foreground">
+                                  {startDate.toLocaleDateString("ar-EG", { weekday: "long" })}
+                                </strong>{" "}
+                                ليلاً، وينتهي فجر يوم{" "}
+                                <strong className="text-foreground">
+                                  {endDate.toLocaleDateString("ar-EG", { weekday: "long" })}
+                                </strong>
+                                . يرجى التأكد من الموعد بدقة قبل إتمام الدفع.
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      }
+                    }
+                    return null;
+                  })()}
                 </div>
               )}
 

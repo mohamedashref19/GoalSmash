@@ -28,10 +28,15 @@ const venueSchema = new mongoose.Schema(
       type: Number,
       default: 24,
     },
-    // +++ الحقل الجديد لتحديد بداية الفترة المسائية +++
+    //  الحقل الجديد لتحديد بداية الفترة المسائية
     eveningStartTime: {
       type: String,
       default: "18:00", // الافتراضي 6 مساءً
+    },
+    //  ا (0 = الأحد، 1 = الإثنين ... 6 = السبت)
+    workingDays: {
+      type: [Number],
+      default: [0, 1, 2, 3, 4, 5, 6],
     },
     address: {
       city: {

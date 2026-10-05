@@ -1,8 +1,8 @@
 const nodemailer = require("nodemailer");
 const { convert } = require("html-to-text");
+const Sentry = require("@sentry/node");
 
-// بنستخدم رابط عادي (مش base64) لأن Gmail وأغلب برامج البريد بترفض تعرض data URIs
-const LOGO_URL = `${process.env.SERVER_URL || "https://goalsmash-api.onrender.com"}/assets/logo.png`;
+const LOGO_URL = `${process.env.SERVER_URL || "https://mla3balexandria-api.online"}/assets/logo.png`;
 
 module.exports = class Email {
   constructor(user, url) {
@@ -10,37 +10,28 @@ module.exports = class Email {
     this.firstName = user.name.split(" ")[0];
     this.url = url;
     this.fromEmail = process.env.EMAIL_FROM;
-    this.fromName = "GoalSmash";
+    // +++ تغيير اسم المرسل ليظهر في الإشعارات +++
+    this.fromName = "Tigi Hagz";
   }
 
-  // 🎨 الهيكل العام لكل إيميل - هيدر فيه الشعار + محتوى + فوتر
   wrapTemplate(bodyContent) {
     return `
     <div style="background-color:#f4f6f5; padding:40px 16px; font-family:'Segoe UI', Tahoma, Arial, sans-serif;">
       <div style="max-width:520px; margin:auto; background:#ffffff; border-radius:20px; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,0.08);">
-        
-        <!-- Header -->
         <div style="background:#1f3d2b; padding:28px 20px; text-align:center;">
-          <img src="${LOGO_URL}" alt="GoalSmash" style="width:64px; height:64px; border-radius:16px;" />
-          <h1 style="color:#ffffff; font-size:20px; margin:12px 0 0; font-weight:800;">GoalSmash</h1>
+          <img src="${LOGO_URL}" alt="Tigi Hagz" style="width:64px; height:64px; border-radius:16px; object-fit:cover;" />
+          <h1 style="color:#ffffff; font-size:20px; margin:12px 0 0; font-weight:800;">Tigi Hagz - تيجى حجز</h1>
         </div>
-
-        <!-- Body -->
         <div style="padding:32px 28px; text-align:right; direction:rtl;">
           ${bodyContent}
         </div>
-
-        <!-- Footer -->
         <div style="background:#f4f6f5; padding:18px 20px; text-align:center; border-top:1px solid #eee;">
-          <p style="color:#999; font-size:12px; margin:0;">GoalSmash — احجز ملعبك في ثواني ⚽🎾</p>
+          <p style="color:#999; font-size:12px; margin:0;">Tigi Hagz — احجز ملعبك في ثواني ⚽🎾</p>
         </div>
-
       </div>
     </div>`;
   }
 
-  // 🚀 Production: بنستخدم Brevo API عن طريق HTTPS (بورت 443)
-  // ده بديل SMTP لأن Render بتمنع اتصالات SMTP (بورت 587/465/25) على الخطة المجانية
   async sendViaBrevoAPI(subject, htmlContent, textContent) {
     const response = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
@@ -66,7 +57,30 @@ module.exports = class Email {
     }
   }
 
-  // 🛠️ Development: بنستخدم Mailtrap عن طريق SMTP العادي (شغال محليًا من غير مشاكل)
+  async sendViaResendAPI(subject, htmlContent, textContent) {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: `${this.fromName} <${this.fromEmail}>`,
+        to: [this.to],
+        subject: subject,
+        html: htmlContent,
+        text: textContent,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(
+        `Resend API error (status ${response.status}): ${errorBody}`,
+      );
+    }
+  }
+
   async sendViaMailtrap(subject, htmlContent, textContent) {
     const transport = nodemailer.createTransport({
       host: process.env.EMAIL_HOST,
@@ -95,7 +109,18 @@ module.exports = class Email {
     const textContent = convert(htmlContent);
 
     if (process.env.NODE_ENV === "production") {
-      await this.sendViaBrevoAPI(subject, htmlContent, textContent);
+      try {
+        await this.sendViaBrevoAPI(subject, htmlContent, textContent);
+      } catch (brevoError) {
+        console.error(
+          "Brevo failed, switching to backup (Resend)...",
+          brevoError,
+        );
+        Sentry.captureException(
+          new Error("Brevo Email Failed - Switched to Resend Backup"),
+        );
+        await this.sendViaResendAPI(subject, htmlContent, textContent);
+      }
     } else {
       await this.sendViaMailtrap(subject, htmlContent, textContent);
     }
@@ -105,7 +130,7 @@ module.exports = class Email {
     const body = `
       <h2 style="color:#1f3d2b; font-size:22px; margin:0 0 12px;">أهلاً بيك يا ${this.firstName} 👋</h2>
       <p style="color:#555; font-size:15px; line-height:1.8; margin:0 0 16px;">
-        اتسجلت معانا في <strong>GoalSmash</strong>، وده يبقى أول خطوة على طريق إنك تحجز ملعبك المفضل بكل سهولة وبدون أي تعقيد.
+        اتسجلت معانا في <strong>Tigi Hagz</strong>، وده يبقى أول خطوة على طريق إنك تحجز ملعبك المفضل بكل سهولة وبدون أي تعقيد.
       </p>
       <p style="color:#555; font-size:15px; line-height:1.8; margin:0 0 24px;">
         هتلاقي عندنا أحسن ملاعب البادل والخماسي في المنطقة، وحجز في دقيقة واحدة بس.
@@ -117,7 +142,7 @@ module.exports = class Email {
       </div>
       <p style="color:#999; font-size:13px; margin:0;">لو محتاج أي مساعدة، إحنا موجودين ليك في أي وقت.</p>
     `;
-    await this.send("أهلاً بيك في GoalSmash ", body);
+    await this.send("أهلاً بيك في Tigi Hagz", body);
   }
 
   async sendPasswordResetOTP(otpCode) {
@@ -139,14 +164,13 @@ module.exports = class Email {
     const body = `
       <h2 style="color:#1f3d2b; font-size:20px; margin:0 0 12px;">خطوة وحدة وخلصنا </h2>
       <p style="color:#555; font-size:15px; line-height:1.8; margin:0 0 20px;">
-        استخدم الكود ده عشان تفعّل حسابك في GoalSmash:
+        استخدم الكود ده عشان تفعّل حسابك في Tigi Hagz:
       </p>
       <div style="background:#f4f6f5; border-radius:14px; padding:22px; text-align:center; margin:0 0 20px;">
         <span style="font-size:36px; font-weight:800; letter-spacing:10px; color:#28a745;">${otpCode}</span>
       </div>
       <p style="color:#666; font-size:14px; margin:0 0 8px;">⏱ الكود صالح لمدة <strong>10 دقايق</strong> بس، فسرّع شوية 😄</p>
-    
     `;
-    await this.send("رمز تفعيل حسابك في GoalSmash", body);
+    await this.send("رمز تفعيل حسابك في Tigi Hagz", body);
   }
 };

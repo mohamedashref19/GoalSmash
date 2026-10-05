@@ -1,7 +1,10 @@
 const express = require("express");
 const venueController = require("../controllers/venueController");
 const authController = require("../controllers/authControllers");
-const { uploadVenueImage } = require("../utils/uploadMiddleware");
+const {
+  uploadVenueImage,
+  processAndUploadImage,
+} = require("../utils/uploadMiddleware");
 
 const router = express.Router();
 
@@ -12,7 +15,11 @@ router.route("/:id").get(venueController.getVenue);
 
 router.use(authController.restrictTo("owner", "admin"));
 
-router.route("/").post(uploadVenueImage, venueController.createVenue);
-router.route("/:id").patch(uploadVenueImage, venueController.updateVenue);
+router
+  .route("/")
+  .post(uploadVenueImage, processAndUploadImage, venueController.createVenue);
+router
+  .route("/:id")
+  .patch(uploadVenueImage, processAndUploadImage, venueController.updateVenue);
 
 module.exports = router;

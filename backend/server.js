@@ -1,3 +1,7 @@
+const Sentry = require("@sentry/node");
+Sentry.init({
+  dsn: "https://0e5b45bad320d1060deada2bdd1fd63d@o4512203777769472.ingest.de.sentry.io/4512203801428048",
+});
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
 const http = require("http");
@@ -14,11 +18,18 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL,
-    methods: ["GET", "POST"],
+    origin: [
+      process.env.FRONTEND_URL,
+      "http://localhost:8081",
+      "http://localhost",
+      "capacitor://localhost",
+    ],
+    methods: ["GET", "POST", "OPTIONS"],
+    credentials: true,
   },
 });
 app.set("io", io);
+
 // const socketManager = require("./sockets/socketManager");
 // socketManager(io);
 

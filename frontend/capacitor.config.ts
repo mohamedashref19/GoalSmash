@@ -1,8 +1,8 @@
 import { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
-  appId: "com.goalsmash.app",
-  appName: "GoalSmash",
+  appId: "com.tigihagz.app",
+  appName: "Tigi Hagz",
   webDir: ".output/public",
   server: {
     cleartext: true,

@@ -1,4 +1,4 @@
-package com.goalsmash.app;
+package com.tigihagz.app;
 
 import com.getcapacitor.BridgeActivity;
 

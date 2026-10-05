@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { fetchAllPayments, manuallyVerifyPayment, addPaymentNote } from "@/api/paymentApi";
 // @ts-expect-error: until axiosConfig.js is migrated to TypeScript or has typings.
 import { BACKEND_URL } from "@/api/axiosConfig";
+import { useConfirm } from "../../components/venue/useConfirm";
 
 interface Payment {
   _id: string;
@@ -67,6 +68,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
   const [search, setSearch] = useState("");
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [paymentNotesInput, setPaymentNotesInput] = useState<Record<string, string>>({});
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const formatDateForInput = (d: Date) => {
     const y = d.getFullYear();
@@ -128,7 +130,10 @@ export function PaymentsView({ venueId }: { venueId: string }) {
     const msg = isExpired
       ? "⚠️ هذا الحجز منتهي! هل تأكدت من عدم حجز الملعب لعميل آخر وتريد إحياءه؟"
       : "هل استلمت الكاش وتريد تأكيد الحجز يدوياً؟";
-    if (!window.confirm(msg)) return;
+
+    const isConfirmed = await confirm(msg);
+    // if (!window.confirm(msg)) return;
+    if (isConfirmed) return;
     try {
       await manuallyVerifyPayment(
         id,
@@ -216,7 +221,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
           />
         </div>
       </div>
-
+      <ConfirmDialog />
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="card-surface p-4 border-b-4 border-b-primary relative overflow-hidden group">
           <div className="absolute -left-6 -top-6 bg-primary/10 size-24 rounded-full blur-xl group-hover:bg-primary/20 transition" />

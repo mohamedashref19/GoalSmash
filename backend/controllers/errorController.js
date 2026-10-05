@@ -1,4 +1,5 @@
 const AppError = require("../utils/appError");
+const Sentry = require("@sentry/node");
 
 const handleErrorCastDB = (err) => {
   const value =
@@ -73,6 +74,7 @@ module.exports = (err, req, res, next) => {
   if (error.name === "ValidationError") error = handleValidatorErrorDB(error);
   if (error.name === "JsonWebTokenError") error = handleJWTError();
   if (error.name === "TokenExpiredError") error = handleExpiredError();
+  Sentry.captureException(err);
 
   const env = process.env.NODE_ENV
     ? process.env.NODE_ENV.trim()

@@ -243,6 +243,14 @@ exports.getAllOwners = catchAsync(async (req, res, next) => {
 });
 // +++ 5. دالة جديدة: جلب جميع العملاء مع عدد حجوزاتهم +++
 exports.getAllCustomers = catchAsync(async (req, res, next) => {
+  const page = parseInt(req.query.page, 10) || 1;
+  const limit = parseInt(req.query.limit, 10) || 50;
+  const skip = (page - 1) * limit;
+
+  // جلب إجمالي عدد العملاء لحساب الصفحات
+  const totalDocuments = await User.countDocuments({ role: "customer" });
+  const totalPages = Math.ceil(totalDocuments / limit);
+
   const customers = await User.aggregate([
     { $match: { role: "customer" } }, // نجيب العملاء فقط
     {
@@ -264,11 +272,23 @@ exports.getAllCustomers = catchAsync(async (req, res, next) => {
       },
     },
     { $sort: { bookingCount: -1, createdAt: -1 } }, // الترتيب بالأكثر حجزاً
+
+    // +++ إضافة الـ Pagination للـ Aggregation +++
+    { $skip: skip },
+    { $limit: limit },
   ]);
 
   res.status(200).json({
     status: "success",
     results: customers.length,
+    pagination: {
+      currentPage: page,
+      totalPages: totalPages,
+      totalItems: totalDocuments,
+      itemsPerPage: limit,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1,
+    },
     data: { customers },
   });
 });

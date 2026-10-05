@@ -21,6 +21,7 @@ import {
   Moon,
   Sun,
   Lock,
+  CalendarDays,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -46,6 +47,7 @@ import {
 } from "@/api/adminApi";
 // @ts-expect-error: API lacks TypeScript definitions
 import { fetchCourts } from "@/api/courtApi";
+import { useConfirm } from "../../components/venue/useConfirm";
 
 interface Owner {
   _id: string;
@@ -70,6 +72,7 @@ interface Venue {
   openTime?: string;
   closeTime?: string;
   eveningStartTime?: string;
+  workingDays?: number[]; // +++ إضافة أيام العمل للواجهة +++
   address?: { area: string; city: string; details?: string };
   owner?: { _id: string; name: string; phone: string };
   courts?: Court[];
@@ -129,6 +132,9 @@ const calculateHours = (open: string, close: string) => {
   return hours;
 };
 
+// أيام الأسبوع للواجهة
+const WEEKDAYS = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+
 export function AdminSetupView() {
   const [activeTab, setActiveTab] = useState<TabKey>("owner");
   const [ownersList, setOwnersList] = useState<Owner[]>([]);
@@ -138,6 +144,7 @@ export function AdminSetupView() {
   const [blocksList, setBlocksList] = useState<CourtBlock[]>([]);
   const [expandedBlocks, setExpandedBlocks] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const [blockData, setBlockData] = useState({
     venueId: "",
@@ -169,6 +176,7 @@ export function AdminSetupView() {
     openTime: "08:00",
     closeTime: "02:00",
     eveningStartTime: "18:00",
+    workingDays: [0, 1, 2, 3, 4, 5, 6], // +++ افتراضي: طوال الأسبوع +++
   });
   const [venueImage, setVenueImage] = useState<File | null>(null);
 
@@ -204,6 +212,7 @@ export function AdminSetupView() {
     openTime: "08:00",
     closeTime: "02:00",
     eveningStartTime: "18:00",
+    workingDays: [0, 1, 2, 3, 4, 5, 6], // +++ لتعديل الأيام +++
   });
   const [editVenueImage, setEditVenueImage] = useState<File | null>(null);
 
@@ -243,7 +252,6 @@ export function AdminSetupView() {
     }
   };
 
-  // +++ الدالة التي كانت مفقودة وتسبب خطأ Cannot find name 'loadBlocks' +++
   const loadBlocks = async () => {
     try {
       setBlocksList(await fetchCourtBlocks());
@@ -330,6 +338,9 @@ export function AdminSetupView() {
       formData.append("eveningStartTime", venueData.eveningStartTime);
       formData.append("operatingHours", String(computedHours));
 
+      // +++ إرسال أيام العمل +++
+      venueData.workingDays.forEach((day) => formData.append("workingDays[]", String(day)));
+
       if (venueImage) formData.append("image", venueImage);
       await createVenueByAdmin(formData);
       toast.success("تم إنشاء النادي بنجاح");
@@ -342,6 +353,7 @@ export function AdminSetupView() {
         openTime: "08:00",
         closeTime: "02:00",
         eveningStartTime: "18:00",
+        workingDays: [0, 1, 2, 3, 4, 5, 6],
       });
       setVenueImage(null);
       setVenuesList([]);
@@ -353,7 +365,8 @@ export function AdminSetupView() {
   };
 
   const handleDeleteBlock = async (id: string) => {
-    if (window.confirm("هل أنت متأكد من فتح هذا الموعد للعملاء؟")) {
+    const isConfirmed = await confirm("هل أنت متأكد من فتح هذا الموعد للعملاء؟");
+    if (isConfirmed) {
       try {
         await deleteCourtBlock(id);
         toast.success("تم إعادة فتح الموعد بنجاح");
@@ -363,8 +376,10 @@ export function AdminSetupView() {
       }
     }
   };
+
   const handleDeleteBlockSeries = async (recurrenceId: string) => {
-    if (window.confirm("هل أنت متأكد من إلغاء هذه السلسلة بالكامل (كل الأيام)؟")) {
+    const isConfirmed = await confirm("هل أنت متأكد من إلغاء هذه السلسلة بالكامل (كل الأيام)؟");
+    if (isConfirmed) {
       try {
         await deleteCourtBlockSeries(recurrenceId);
         toast.success("تم إعادة فتح المواعيد بالكامل بنجاح");
@@ -374,6 +389,7 @@ export function AdminSetupView() {
       }
     }
   };
+
   const handleCreateCourt = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -449,7 +465,10 @@ export function AdminSetupView() {
   };
 
   const handleDeleteAccount = async (id: string) => {
-    if (window.confirm("هل أنت متأكد من حذف هذا الحساب نهائياً؟ لا يمكن التراجع عن هذه الخطوة.")) {
+    const isConfirmed = await confirm(
+      "هل أنت متأكد من حذف هذا الحساب نهائياً؟ لا يمكن التراجع عن هذه الخطوة.",
+    );
+    if (isConfirmed) {
       try {
         await deletePaymentAccount(id);
         toast.success("تم حذف الحساب بنجاح");
@@ -472,6 +491,7 @@ export function AdminSetupView() {
       openTime: venue.openTime || "08:00",
       closeTime: venue.closeTime || "02:00",
       eveningStartTime: venue.eveningStartTime || "18:00",
+      workingDays: venue.workingDays || [0, 1, 2, 3, 4, 5, 6], // +++ سحب أيام العمل الحالية +++
     });
   };
 
@@ -489,6 +509,9 @@ export function AdminSetupView() {
       formData.append("closeTime", editVenueForm.closeTime);
       formData.append("eveningStartTime", editVenueForm.eveningStartTime);
       formData.append("operatingHours", String(computedHours));
+
+      // +++ إرسال أيام العمل المعدلة +++
+      editVenueForm.workingDays.forEach((day) => formData.append("workingDays[]", String(day)));
 
       if (editVenueForm.details) formData.append("address[details]", editVenueForm.details);
       formData.append("owner", editVenueForm.ownerId);
@@ -622,7 +645,7 @@ export function AdminSetupView() {
           </button>
         ))}
       </div>
-
+      <ConfirmDialog />
       {activeTab === "owner" && (
         <form
           onSubmit={handleCreateOwner}
@@ -772,6 +795,35 @@ export function AdminSetupView() {
                 dir="ltr"
               />
             </div>
+
+            {/* +++ خيارات تحديد أيام العمل +++ */}
+            <div className="col-span-1 sm:col-span-3 mt-1">
+              <label className="text-[11px] font-bold text-muted-foreground mb-2 block">
+                أيام العمل المتاحة للحجز
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {WEEKDAYS.map((dayName, idx) => (
+                  <label
+                    key={idx}
+                    className="flex items-center gap-1.5 cursor-pointer bg-background border border-border px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-muted transition"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={venueData.workingDays.includes(idx)}
+                      onChange={(e) => {
+                        const newDays = e.target.checked
+                          ? [...venueData.workingDays, idx]
+                          : venueData.workingDays.filter((d) => d !== idx);
+                        setVenueData({ ...venueData, workingDays: newDays });
+                      }}
+                      className="accent-primary w-3.5 h-3.5 cursor-pointer"
+                    />
+                    {dayName}
+                  </label>
+                ))}
+              </div>
+            </div>
+
             <div className="col-span-1 sm:col-span-3">
               <p className="text-[11px] font-bold text-muted-foreground flex items-center gap-1">
                 <Clock className="size-3.5" />
@@ -999,6 +1051,34 @@ export function AdminSetupView() {
                       </div>
                     </div>
 
+                    {/* +++ خيارات تعديل أيام العمل +++ */}
+                    <div className="md:col-span-2 mt-1">
+                      <label className="text-[10px] font-bold text-muted-foreground block mb-2">
+                        أيام العمل المتاحة
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {WEEKDAYS.map((dayName, idx) => (
+                          <label
+                            key={idx}
+                            className="flex items-center gap-1.5 cursor-pointer bg-background border border-border px-2 py-1.5 rounded-md text-[10px] font-bold hover:bg-muted transition"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={editVenueForm.workingDays.includes(idx)}
+                              onChange={(e) => {
+                                const newDays = e.target.checked
+                                  ? [...editVenueForm.workingDays, idx]
+                                  : editVenueForm.workingDays.filter((d) => d !== idx);
+                                setEditVenueForm({ ...editVenueForm, workingDays: newDays });
+                              }}
+                              className="accent-primary w-3 h-3 cursor-pointer"
+                            />
+                            {dayName}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
                     <div className="md:col-span-2 flex flex-col md:flex-row gap-2">
                       <input
                         type="text"
@@ -1011,7 +1091,7 @@ export function AdminSetupView() {
                       />
                       <label className="md:w-1/3 cursor-pointer bg-muted/50 border border-dashed border-border rounded-lg px-2 py-2 text-[11px] text-center hover:bg-muted text-muted-foreground transition flex items-center justify-center">
                         <ImageIcon className="size-3.5 inline mr-1" />
-                        {editVenueImage ? editVenueImage.name : "صورة النادي"}
+                        {editVenueImage ? editVenueImage.name : "تغيير الصورة"}
                         <input
                           type="file"
                           accept="image/*"
@@ -1060,6 +1140,16 @@ export function AdminSetupView() {
                           </span>{" "}
                           <span className="text-muted-foreground">
                             | مسائي بدءاً من: {venue.eveningStartTime || "18:00"}
+                          </span>
+                        </p>
+                        {/* +++ عرض أيام العمل +++ */}
+                        <p className="flex items-center gap-1.5">
+                          <CalendarDays className="size-3" /> أيام العمل:{" "}
+                          <span className="font-bold text-foreground">
+                            {venue.workingDays && venue.workingDays.length === 7
+                              ? "طوال الأسبوع"
+                              : venue.workingDays?.map((d) => WEEKDAYS[d]).join("، ") ||
+                                "طوال الأسبوع"}
                           </span>
                         </p>
                       </div>
@@ -1224,20 +1314,9 @@ export function AdminSetupView() {
         </div>
       )}
 
-      {/* +++ التاب الجديد: إغلاق وصيانة الملاعب تم إصلاحه هنا +++ */}
       {activeTab === "block" && (
         <div className="animate-in slide-in-from-bottom-2">
           <form onSubmit={handleBlockSlots} className="space-y-4 max-w-2xl mx-auto">
-            {/* <div className="bg-destructive/5 border border-destructive/20 rounded-xl p-4 mb-4">
-              <h3 className="font-bold text-destructive mb-2 flex items-center gap-2">
-                <Lock className="size-4" /> إغلاق ساعات الملاعب
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                يمكنك استخدام هذه الواجهة لحجب الساعات عن العملاء سواء للصيانة أو لحجوزات
-                الأكاديميات الثابتة. المواعيد المغلقة لا يمكن للعميل حجزها.
-              </p>
-            </div> */}
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <select
                 required
@@ -1379,7 +1458,7 @@ export function AdminSetupView() {
           </form>
 
           {/* جدول المواعيد المغلقة */}
-          <div className="overflow-x-auto rounded-xl border border-border">
+          <div className="overflow-x-auto rounded-xl border border-border mt-6">
             <table className="w-full text-sm text-right">
               <thead className="bg-muted/50 text-muted-foreground">
                 <tr>
@@ -1402,10 +1481,9 @@ export function AdminSetupView() {
                   </tr>
                 ) : (
                   (() => {
-                    // تجميع الإغلاقات بناءً على recurrenceId
                     const groupedBlocks = blocksList.reduce(
                       (acc, block) => {
-                        const key = block.recurrenceId || block._id; // لو مفيش، اعتبره مجموعة من يوم واحد
+                        const key = block.recurrenceId || block._id;
                         if (!acc[key]) {
                           acc[key] = {
                             recurrenceId: key,
@@ -1435,17 +1513,15 @@ export function AdminSetupView() {
                         return acc;
                       },
                       {} as Record<string, GroupedCourtBlock>,
-                    ); // +++ تم التعديل هنا +++
+                    );
 
                     return Object.values(groupedBlocks).map((group: GroupedCourtBlock) => {
-                      // +++ تم التعديل هنا +++
                       const isAcademy = group.blockType === "academy";
                       const isExpanded = expandedBlocks.includes(group.recurrenceId);
                       const isSingleDay = group.blocks.length === 1;
 
                       return (
                         <React.Fragment key={group.recurrenceId}>
-                          {/* صف المجموعة الرئيسي */}
                           <tr
                             className={cn(
                               "border-b border-border/50 transition-colors",
@@ -1528,11 +1604,9 @@ export function AdminSetupView() {
                             </td>
                           </tr>
 
-                          {/* الصفوف الفرعية للأيام (تظهر فقط لو القائمة مفتوحة) */}
                           {isExpanded &&
                             !isSingleDay &&
                             group.blocks.map((block: CourtBlock) => (
-                              // +++ تم التعديل هنا +++
                               <tr key={block._id} className="bg-muted/10 border-b border-border/30">
                                 <td colSpan={2} className="px-4 py-2 text-left">
                                   <div className="inline-flex items-center gap-1 opacity-50">

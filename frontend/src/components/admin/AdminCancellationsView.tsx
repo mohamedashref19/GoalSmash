@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { AlertTriangle, Loader2, UserX, ShieldAlert, MonitorX } from "lucide-react";
+import { AlertTriangle, Loader2, UserX, ShieldAlert, MonitorX, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -11,11 +11,15 @@ interface CancelledBooking {
   startTime: string;
   createdAt: string;
   updatedAt: string;
+  totalPrice?: number;
+  deposit?: number;
+  paymentStatus?: string;
+  bookingType?: string; // +++ إضافة نوع الحجز هنا +++
   court?: { name: string };
   venue?: { name: string; owner?: string };
   user?: { _id: string; name: string; phone: string };
   guestData?: { name: string; phone: string };
-  cancelledBy?: { _id: string; name: string; role: string }; // الحقل الجديد من الباك إند
+  cancelledBy?: { _id: string; name: string; role: string };
 }
 
 export function AdminCancellationsView() {
@@ -30,7 +34,6 @@ export function AdminCancellationsView() {
       .finally(() => setLoading(false));
   }, []);
 
-  // دالة مساعدة لتحديد من قام بالإلغاء وشكل العرض الخاص به
   const getCancelledByDetails = (booking: CancelledBooking) => {
     if (!booking.cancelledBy) {
       return {
@@ -90,7 +93,9 @@ export function AdminCancellationsView() {
               <tr>
                 <th className="px-5 py-4 font-bold">العميل / الهاتف</th>
                 <th className="px-5 py-4 font-bold">النادي / الملعب</th>
+                <th className="px-5 py-4 font-bold text-center">توقيت إنشاء الحجز</th>
                 <th className="px-5 py-4 font-bold text-center">موعد اللعب (الأساسي)</th>
+                <th className="px-5 py-4 font-bold text-center">تفاصيل الدفع</th>
                 <th className="px-5 py-4 font-bold text-center">تم الإلغاء بواسطة</th>
                 <th className="px-5 py-4 font-bold text-center text-destructive">توقيت الإلغاء</th>
               </tr>
@@ -99,7 +104,7 @@ export function AdminCancellationsView() {
               {cancelledList.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={7}
                     className="px-5 py-16 text-center text-muted-foreground font-bold text-sm"
                   >
                     لا توجد حجوزات ملغاة مسجلة في النظام حالياً.
@@ -108,6 +113,7 @@ export function AdminCancellationsView() {
               ) : (
                 cancelledList.map((m: CancelledBooking) => {
                   const playDate = new Date(m.startTime);
+                  const createdDate = m.createdAt ? new Date(m.createdAt) : null;
                   const cancelledDate = m.updatedAt ? new Date(m.updatedAt) : null;
 
                   const clientName = m.user?.name || m.guestData?.name || "بدون اسم";
@@ -115,6 +121,22 @@ export function AdminCancellationsView() {
 
                   const cancelInfo = getCancelledByDetails(m);
                   const CancelIcon = cancelInfo.icon;
+
+                  // +++ التعديل لحماية الحجوزات اليدوية +++
+                  const isAutoCancelled = !m.cancelledBy;
+                  const isNotPaidYet =
+                    m.paymentStatus === "pending" || m.paymentStatus === "unpaid";
+                  const isManualBooking = m.bookingType === "manual";
+
+                  // لو الحجز يدوي، المالك استلم العربون كاش بالفعل.
+                  // لو من التطبيق، نطبق شرط التأكد من الدفع.
+                  const actualDeposit = isManualBooking
+                    ? m.deposit || 0
+                    : isAutoCancelled || isNotPaidYet
+                      ? 0
+                      : m.deposit || 0;
+
+                  const totalPrice = m.totalPrice || 0;
 
                   return (
                     <tr
@@ -140,6 +162,30 @@ export function AdminCancellationsView() {
                           <span className="text-[11px]">{m.court?.name || "ملعب محذوف"}</span>
                         </div>
                       </td>
+
+                      <td className="px-5 py-4 text-center">
+                        {createdDate ? (
+                          <div className="flex flex-col items-center">
+                            <span className="font-bold text-foreground">
+                              {createdDate.toLocaleDateString("ar-EG", {
+                                day: "numeric",
+                                month: "short",
+                                year: "numeric",
+                              })}
+                            </span>
+                            <span className="text-[11px] font-bold text-muted-foreground mt-0.5">
+                              الساعة{" "}
+                              {createdDate.toLocaleTimeString("ar-EG", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          </div>
+                        ) : (
+                          "--"
+                        )}
+                      </td>
+
                       <td className="px-5 py-4 text-center">
                         <div className="flex flex-col items-center">
                           <span className="font-bold text-foreground">
@@ -159,7 +205,28 @@ export function AdminCancellationsView() {
                         </div>
                       </td>
 
-                      {/* +++ العمود الجديد: مصدر الإلغاء +++ */}
+                      <td className="px-5 py-4 text-center">
+                        {actualDeposit > 0 ? (
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="text-[11px] font-bold text-success bg-success/10 px-2 py-1 rounded-md border border-success/20 flex items-center gap-1">
+                              <Wallet className="size-3" /> دفع: {actualDeposit} ج
+                            </span>
+                            <span className="text-[10px] text-muted-foreground font-semibold">
+                              الإجمالي: {totalPrice} ج
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="text-[11px] font-bold text-muted-foreground bg-muted px-2 py-1 rounded-md border border-border">
+                              لم يُدفع شيء
+                            </span>
+                            <span className="text-[10px] text-muted-foreground font-semibold">
+                              الإجمالي: {totalPrice} ج
+                            </span>
+                          </div>
+                        )}
+                      </td>
+
                       <td className="px-5 py-4 text-center">
                         <div
                           className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold ${cancelInfo.bg} ${cancelInfo.color}`}

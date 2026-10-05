@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { fetchAllVenues, fetchDailyClosing } from "@/api/adminApi";
 // @ts-expect-error: API lacks TypeScript definitions
 import { toggleVenueSettlement } from "@/api/adminApi"; // +++ إضافة الدالة الجديدة
+import { useConfirm } from "../../components/venue/useConfirm";
 
 interface CourtDetails {
   courtId: string;
@@ -71,6 +72,7 @@ export function AdminDailyClosingView() {
   const [isCapturing, setIsCapturing] = useState(false);
   const [settlingVenueId, setSettlingVenueId] = useState<string | null>(null); // حالة التحميل للزر
   const reportRef = useRef<HTMLDivElement>(null);
+  const { confirm, ConfirmDialog } = useConfirm();
 
   useEffect(() => {
     fetchAllVenues()
@@ -103,7 +105,9 @@ export function AdminDailyClosingView() {
       ? "هل أنت متأكد من تصفية حساب هذا النادي لليوم المحدد؟"
       : "هل تريد إلغاء التصفية وفتح الحساب مرة أخرى؟";
 
-    if (!window.confirm(confirmMsg)) return;
+    // if (!window.confirm(confirmMsg)) return;
+    const isConfirmed = await confirm(confirmMsg);
+    if (!isConfirmed) return;
 
     setSettlingVenueId(venueId);
     try {
@@ -185,7 +189,7 @@ export function AdminDailyClosingView() {
             إيرادات وتصفية حسابات
           </p>
         </div>
-
+        <ConfirmDialog />
         <div className="card-surface p-5 border-b-4 border-b-primary flex flex-col lg:flex-row gap-4 items-end mt-4">
           <div className="w-full lg:w-1/3 space-y-1.5">
             <label className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
