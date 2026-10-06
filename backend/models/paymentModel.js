@@ -79,7 +79,8 @@ const paymentSchema = new mongoose.Schema(
 
     receivedAt: Date,
 
-    rawPaymentData: String,
+    // نص الـ SMS كامل: مخفي افتراضياً (الأدمن بس بيطلبه بـ +rawPaymentData)
+    rawPaymentData: { type: String, select: false },
 
     verificationNotes: String,
   },

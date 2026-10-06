@@ -12,7 +12,9 @@ exports.getPlatformOverview = catchAsync(async (req, res, next) => {
   startOfDay.setHours(0, 0, 0, 0);
 
   const platformStats = await Booking.aggregate([
-    { $match: { status: { $ne: "cancelled" } } },
+    // الحجوزات المؤكدة بس: expired/pending_payment عمرها ما اتدفعت، وكانت بتتحسب
+    // إيراد وعمولة (يعني كنت بتقول للملاك إنهم مدينين بعمولة على حجوزات منتهية)
+    { $match: { status: { $in: ["confirmed", "completed"] } } },
     {
       $project: {
         totalPrice: 1,
@@ -101,7 +103,9 @@ exports.getPlatformOverview = catchAsync(async (req, res, next) => {
 // 2. أداء الأندية والملاعب
 exports.getVenuesPerformance = catchAsync(async (req, res, next) => {
   const venuesPerformance = await Booking.aggregate([
-    { $match: { status: { $ne: "cancelled" } } },
+    // الحجوزات المؤكدة بس: expired/pending_payment عمرها ما اتدفعت، وكانت بتتحسب
+    // إيراد وعمولة (يعني كنت بتقول للملاك إنهم مدينين بعمولة على حجوزات منتهية)
+    { $match: { status: { $in: ["confirmed", "completed"] } } },
     {
       $project: {
         venue: 1,
@@ -243,8 +247,8 @@ exports.getAllOwners = catchAsync(async (req, res, next) => {
 });
 // +++ 5. دالة جديدة: جلب جميع العملاء مع عدد حجوزاتهم +++
 exports.getAllCustomers = catchAsync(async (req, res, next) => {
-  const page = parseInt(req.query.page, 10) || 1;
-  const limit = parseInt(req.query.limit, 10) || 50;
+  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
   const skip = (page - 1) * limit;
 
   // جلب إجمالي عدد العملاء لحساب الصفحات
@@ -298,6 +302,9 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
   const { date, venue } = req.query;
 
   const targetDate = date ? new Date(date) : new Date();
+  if (Number.isNaN(targetDate.getTime())) {
+    return next(new AppError("صيغة التاريخ غير صحيحة", 400));
+  }
   const startOfDay = new Date(targetDate);
   startOfDay.setHours(0, 0, 0, 0);
 
@@ -306,6 +313,9 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
 
   let venueMatch = {};
   if (venue && venue !== "all") {
+    if (!mongoose.isValidObjectId(venue)) {
+      return next(new AppError("معرف النادي غير صالح", 400));
+    }
     venueMatch = { "bookingDetails.venue": new mongoose.Types.ObjectId(venue) };
   }
 
@@ -486,31 +496,29 @@ exports.toggleDailySettlement = catchAsync(async (req, res, next) => {
   if (!venue || !date || isSettled === undefined) {
     return next(new AppError("بيانات التصفية غير مكتملة", 400));
   }
+  if (typeof venue !== "string" || !mongoose.isValidObjectId(venue)) {
+    return next(new AppError("معرف النادي غير صالح", 400));
+  }
+  const parsedDate = new Date(date);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return next(new AppError("صيغة التاريخ غير صحيحة", 400));
+  }
 
   // توحيد صيغة التاريخ YYYY-MM-DD
-  const targetDateStr = new Date(date).toISOString().split("T")[0];
+  const targetDateStr = parsedDate.toISOString().split("T")[0];
 
-  let settlement = await DailySettlement.findOne({
-    venue,
-    dateString: targetDateStr,
-  });
-
-  if (settlement) {
-    settlement.isSettled = isSettled;
-    settlement.settledBy = req.user.id;
-    await settlement.save();
-  } else {
-    settlement = await DailySettlement.create({
-      venue,
-      dateString: targetDateStr,
-      isSettled,
-      settledBy: req.user.id,
-    });
-  }
+  // upsert ذري: كان findOne ثم create، فضغطتين متزامنتين بيعملوا سجلين لنفس اليوم
+  const settlement = await DailySettlement.findOneAndUpdate(
+    { venue, dateString: targetDateStr },
+    { $set: { isSettled: Boolean(isSettled), settledBy: req.user.id } },
+    { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true },
+  );
 
   res.status(200).json({
     status: "success",
-    message: isSettled ? "تم تأكيد تصفية الحساب" : "تم إلغاء تأكيد التصفية",
+    message: settlement.isSettled
+      ? "تم تأكيد تصفية الحساب"
+      : "تم إلغاء تأكيد التصفية",
     data: { isSettled: settlement.isSettled },
   });
 });

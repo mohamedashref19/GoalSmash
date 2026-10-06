@@ -6,6 +6,61 @@ const AppError = require("../utils/appError");
 const catchAsync = require("../utils/catchAsync");
 const Email = require("../utils/email");
 
+const OTP_TTL_MS = 10 * 60 * 1000;
+const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+
+// OTP آمن تشفيرياً (Math.random قابل للتوقع)
+const generateOTP = () => crypto.randomInt(100000, 1000000).toString();
+
+// وقت إصدار الكود الحالي = وقت انتهائه - مدة الصلاحية. بنستخدمه كفترة انتظار بين الإرسالات
+// (بدون ما نضيف حقول جديدة للموديل). new Date() بتشتغل سواء الحقل Date أو Number.
+const issuedRecently = (expires) =>
+  !!expires &&
+  new Date(expires).getTime() - OTP_TTL_MS >
+    Date.now() - OTP_RESEND_COOLDOWN_MS;
+
+// عدّاد المحاولات الفاشلة لكل إيميل: بيمنع تخمين الـ OTP حتى لو المهاجم بيبدّل الـ IP.
+// في الذاكرة، مناسب لعملية PM2 واحدة (fork mode). لو شغّلت cluster انقله لـ Redis/DB.
+const MAX_OTP_ATTEMPTS = 5;
+const OTP_LOCK_MS = 15 * 60 * 1000;
+const otpFailures = new Map();
+
+const isOtpLocked = (key) => {
+  const entry = otpFailures.get(key);
+  if (!entry) return false;
+  if (entry.resetAt <= Date.now()) {
+    otpFailures.delete(key);
+    return false;
+  }
+  return entry.count >= MAX_OTP_ATTEMPTS;
+};
+
+const registerOtpFailure = (key) => {
+  const now = Date.now();
+  const entry = otpFailures.get(key);
+  if (!entry || entry.resetAt <= now) {
+    otpFailures.set(key, { count: 1, resetAt: now + OTP_LOCK_MS });
+  } else {
+    entry.count += 1;
+  }
+};
+
+const clearOtpFailures = (key) => otpFailures.delete(key);
+
+setInterval(
+  () => {
+    const now = Date.now();
+    for (const [key, entry] of otpFailures) {
+      if (entry.resetAt <= now) otpFailures.delete(key);
+    }
+  },
+  10 * 60 * 1000,
+).unref();
+
+// الـ OTP ممكن يوصل كنص أو رقم
+const normalizeOtp = (value) =>
+  typeof value === "number" ? String(value) : value;
+
 const signToken = (id) =>
   jwt.sign({ id }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN,
@@ -36,6 +91,13 @@ const createAndSendToken = (user, statusCode, res) => {
 };
 
 exports.signup = catchAsync(async (req, res, next) => {
+  if (
+    typeof req.body.email !== "string" ||
+    typeof req.body.phone !== "string"
+  ) {
+    return next(new AppError("يرجى إدخال البريد الإلكتروني ورقم الهاتف", 400));
+  }
+
   const existingUser = await User.findOne({
     $or: [{ email: req.body.email }, { phone: req.body.phone }],
   });
@@ -49,10 +111,12 @@ exports.signup = catchAsync(async (req, res, next) => {
       await User.findByIdAndDelete(existingUser._id);
     }
   }
-  const allowedRoles = ["customer", "owner"];
-  const userRole = allowedRoles.includes(req.body.role)
-    ? req.body.role
-    : "customer";
+  // التسجيل الذاتي كـ owner مقفول افتراضياً: أي حد كان يقدر يبعت role: "owner"
+  // ويعمل نوادي ويحجز بصلاحيات مالك. الملاك بيتعملوا من لوحة الأدمن (POST /admin/owners).
+  // لو محتاج التسجيل كمالك مفتوح، حط ALLOW_OWNER_SIGNUP=true في .env
+  const allowOwnerSignup = process.env.ALLOW_OWNER_SIGNUP === "true";
+  const userRole =
+    allowOwnerSignup && req.body.role === "owner" ? "owner" : "customer";
 
   const newUser = await User.create({
     name: req.body.name,
@@ -64,11 +128,12 @@ exports.signup = catchAsync(async (req, res, next) => {
     verified: false,
   });
 
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const otp = generateOTP();
   newUser.otp = otp;
-  newUser.otpExpires = Date.now() + 10 * 60 * 1000;
+  newUser.otpExpires = Date.now() + OTP_TTL_MS;
 
   await newUser.save({ validateBeforeSave: false });
+  clearOtpFailures(`verify:${newUser.email.toLowerCase()}`);
 
   try {
     await new Email(newUser, "").sendOTP(otp);
@@ -92,7 +157,23 @@ exports.signup = catchAsync(async (req, res, next) => {
 });
 
 exports.verifyOTP = catchAsync(async (req, res, next) => {
-  const { email, otp } = req.body;
+  const { email } = req.body;
+  const otp = normalizeOtp(req.body.otp);
+
+  if (typeof email !== "string" || typeof otp !== "string") {
+    return next(new AppError("يرجى إدخال البريد الإلكتروني ورمز التحقق", 400));
+  }
+
+  const lockKey = `verify:${email.toLowerCase()}`;
+  if (isOtpLocked(lockKey)) {
+    return next(
+      new AppError(
+        "محاولات خاطئة كثيرة، اطلب رمزاً جديداً أو حاول بعد 15 دقيقة",
+        429,
+      ),
+    );
+  }
+
   const user = await User.findOne({
     email,
     otp,
@@ -100,16 +181,23 @@ exports.verifyOTP = catchAsync(async (req, res, next) => {
   });
 
   if (!user) {
+    registerOtpFailure(lockKey);
     return next(new AppError("رمز التحقق غير صالح أو قد انتهت صلاحيته!", 400));
   }
+  clearOtpFailures(lockKey);
 
   user.verified = true;
   user.otp = undefined;
   user.otpExpires = undefined;
   await user.save({ validateBeforeSave: false });
 
-  const url = `${process.env.FRONTEND_URL}/explore`;
-  await new Email(user, url).sendWelcome();
+  // فشل إيميل الترحيب ماينفعش يمنع المستخدم من الدخول (الكود اتمسح خلاص ومش هيقدر يعيد)
+  try {
+    const url = `${process.env.FRONTEND_URL}/explore`;
+    await new Email(user, url).sendWelcome();
+  } catch (err) {
+    console.error("خطأ أثناء إرسال إيميل الترحيب:", err);
+  }
 
   createAndSendToken(user, 200, res);
 });
@@ -117,7 +205,12 @@ exports.verifyOTP = catchAsync(async (req, res, next) => {
 exports.login = catchAsync(async (req, res, next) => {
   const { phone, password } = req.body;
 
-  if (!phone || !password) {
+  if (
+    typeof phone !== "string" ||
+    typeof password !== "string" ||
+    !phone ||
+    !password
+  ) {
     return next(new AppError("يرجى تقديم رقم الهاتف وكلمة المرور", 400));
   }
 
@@ -142,36 +235,36 @@ exports.login = catchAsync(async (req, res, next) => {
 exports.resendOTP = catchAsync(async (req, res, next) => {
   const { email } = req.body;
 
-  if (!email) {
+  if (!email || typeof email !== "string") {
     return next(new AppError("يرجى توفير البريد الإلكتروني", 400));
   }
 
+  // نفس الرد في كل الحالات (مسجل / مش مسجل / مفعل / فترة انتظار)
+  // عشان محدش يعرف مين عنده حساب على التطبيق
+  const respond = () =>
+    res.status(200).json({
+      status: "success",
+      message:
+        "إذا كان البريد مسجلاً وغير مفعل، فقد تم إرسال كود تحقق جديد إليه",
+      email,
+    });
+
   const user = await User.findOne({ email });
 
-  if (!user) {
-    return next(new AppError("لا يوجد مستخدم بهذا البريد الإلكتروني", 404));
-  }
+  if (!user || user.verified) return respond();
+  if (issuedRecently(user.otpExpires)) return respond();
 
-  if (user.verified) {
-    return res.status(400).json({
-      status: "fail",
-      message: "هذا الحساب مفعل بالفعل، يمكنك تسجيل الدخول.",
-    });
-  }
-
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const otp = generateOTP();
   user.otp = otp;
-  user.otpExpires = Date.now() + 10 * 60 * 1000;
+  user.otpExpires = Date.now() + OTP_TTL_MS;
   await user.save({ validateBeforeSave: false });
+  clearOtpFailures(`verify:${email.toLowerCase()}`);
 
   try {
     await new Email(user, "").sendOTP(otp);
-    res.status(200).json({
-      status: "success",
-      message: "تم إرسال كود تحقق جديد إلى بريدك الإلكتروني",
-      email: user.email,
-    });
+    return respond();
   } catch (err) {
+    console.error("خطأ أثناء إرسال إيميل إعادة الإرسال (resendOTP):", err);
     user.otp = undefined;
     user.otpExpires = undefined;
     await user.save({ validateBeforeSave: false });
@@ -281,22 +374,34 @@ exports.updatePassword = catchAsync(async (req, res, next) => {
 });
 
 exports.forgetPassword = catchAsync(async (req, res, next) => {
-  const user = await User.findOne({ email: req.body.email });
-  if (!user) {
-    return next(new AppError("عنوان البريد الإلكتروني المُدخل غير مسجل.", 404));
+  const { email } = req.body;
+
+  if (!email || typeof email !== "string") {
+    return next(new AppError("يرجى توفير البريد الإلكتروني", 400));
   }
 
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  // نفس الرد سواء الإيميل مسجل أو لأ (منع تخمين الإيميلات المسجلة)
+  const respond = () =>
+    res.status(200).json({
+      status: "success",
+      message: "إذا كان البريد مسجلاً، فقد تم إرسال رمز إعادة التعيين إليه",
+      email,
+    });
+
+  const user = await User.findOne({ email });
+  if (!user) return respond();
+
+  // فترة انتظار بين كل إرسال: بتمنع إغراق صاحب الإيميل برسائل
+  if (issuedRecently(user.passwordResetOTPExpires)) return respond();
+
+  const otp = generateOTP();
   user.passwordResetOTP = otp;
-  user.passwordResetOTPExpires = Date.now() + 10 * 60 * 1000;
+  user.passwordResetOTPExpires = Date.now() + OTP_TTL_MS;
   await user.save({ validateBeforeSave: false });
+  clearOtpFailures(`reset:${email.toLowerCase()}`);
 
   // نرجع رد للمستخدم فورًا من غير ما ننتظر إرسال الإيميل يخلص
-  res.status(200).json({
-    status: "success",
-    message: "OTP sent to your email",
-    email: user.email,
-  });
+  respond();
 
   // إرسال الإيميل يحصل في الخلفية - لو فشل، بنسجل الخطأ الحقيقي في الكونسول
   // من غير ما نأثر على رد المستخدم اللي وصله بالفعل
@@ -311,7 +416,27 @@ exports.forgetPassword = catchAsync(async (req, res, next) => {
 });
 
 exports.resetPassword = catchAsync(async (req, res, next) => {
-  const { email, otp, password, passwordConfirm } = req.body;
+  const { email, password, passwordConfirm } = req.body;
+  const otp = normalizeOtp(req.body.otp);
+
+  if (
+    typeof email !== "string" ||
+    typeof otp !== "string" ||
+    typeof password !== "string" ||
+    typeof passwordConfirm !== "string"
+  ) {
+    return next(new AppError("يرجى إدخال جميع البيانات المطلوبة", 400));
+  }
+
+  const lockKey = `reset:${email.toLowerCase()}`;
+  if (isOtpLocked(lockKey)) {
+    return next(
+      new AppError(
+        "محاولات خاطئة كثيرة، اطلب رمزاً جديداً أو حاول بعد 15 دقيقة",
+        429,
+      ),
+    );
+  }
 
   const user = await User.findOne({
     email,
@@ -320,8 +445,10 @@ exports.resetPassword = catchAsync(async (req, res, next) => {
   });
 
   if (!user) {
+    registerOtpFailure(lockKey);
     return next(new AppError("رمز التحقق غير صالح أو منتهي الصلاحية", 400));
   }
+  clearOtpFailures(lockKey);
 
   user.password = password;
   user.passwordConfirm = passwordConfirm;

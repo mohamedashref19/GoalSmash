@@ -2,6 +2,19 @@ const nodemailer = require("nodemailer");
 const { convert } = require("html-to-text");
 const Sentry = require("@sentry/node");
 
+// الاسم بيتحط جوه HTML: من غير escape أي حد يسجل باسم فيه HTML يحقنه في الإيميل
+const escapeHtml = (str = "") =>
+  String(str).replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ],
+  );
+
+// مهلة للطلبات الخارجية: من غيرها مزود إيميل بطيء يعلّق طلب التسجيل/الـ OTP للأبد
+const EMAIL_API_TIMEOUT_MS = 10000;
+
 const LOGO_URL = `${process.env.SERVER_URL || "https://mla3balexandria-api.online"}/assets/logo.png`;
 
 module.exports = class Email {
@@ -47,6 +60,7 @@ module.exports = class Email {
         htmlContent,
         textContent,
       }),
+      signal: AbortSignal.timeout(EMAIL_API_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -71,6 +85,7 @@ module.exports = class Email {
         html: htmlContent,
         text: textContent,
       }),
+      signal: AbortSignal.timeout(EMAIL_API_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -128,7 +143,7 @@ module.exports = class Email {
 
   async sendWelcome() {
     const body = `
-      <h2 style="color:#1f3d2b; font-size:22px; margin:0 0 12px;">أهلاً بيك يا ${this.firstName} 👋</h2>
+      <h2 style="color:#1f3d2b; font-size:22px; margin:0 0 12px;">أهلاً بيك يا ${escapeHtml(this.firstName)} 👋</h2>
       <p style="color:#555; font-size:15px; line-height:1.8; margin:0 0 16px;">
         اتسجلت معانا في <strong>Tigi Hagz</strong>، وده يبقى أول خطوة على طريق إنك تحجز ملعبك المفضل بكل سهولة وبدون أي تعقيد.
       </p>
@@ -136,7 +151,7 @@ module.exports = class Email {
         هتلاقي عندنا أحسن ملاعب البادل والخماسي في المنطقة، وحجز في دقيقة واحدة بس.
       </p>
       <div style="text-align:center; margin:28px 0;">
-        <a href="${this.url}" style="background:#28a745; color:#fff; padding:13px 32px; text-decoration:none; border-radius:50px; font-weight:bold; font-size:15px; display:inline-block;">
+        <a href="${escapeHtml(this.url)}" style="background:#28a745; color:#fff; padding:13px 32px; text-decoration:none; border-radius:50px; font-weight:bold; font-size:15px; display:inline-block;">
           يلا نبدأ ⚽
         </a>
       </div>

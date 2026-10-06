@@ -1,18 +1,28 @@
 import { useState, useEffect } from "react";
-import { LayoutDashboard, CalendarDays, Settings, Trophy, X, Wallet, FileText } from "lucide-react";
+import {
+  LayoutDashboard,
+  CalendarDays,
+  Settings,
+  Trophy,
+  X,
+  Wallet,
+  FileText,
+  Star, // +++ تمت إضافة أيقونة النجمة +++
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // @ts-expect-error: API lacks TypeScript definitions
 import { fetchTodayStats } from "@/api/dashboardApi";
 
-export type ViewKey = "overview" | "schedule" | "payments" | "reports" | "settings";
+// +++ تمت إضافة reviews للأنواع المسموحة +++
+export type ViewKey = "overview" | "schedule" | "payments" | "reports" | "reviews" | "settings";
 
-// +++ تمت إضافة تبويب المدفوعات هنا +++
 const navItems = [
   { key: "overview" as ViewKey, label: "نظرة عامة", icon: LayoutDashboard },
   { key: "schedule" as ViewKey, label: "الجدول", icon: CalendarDays },
   { key: "payments" as ViewKey, label: "المدفوعات", icon: Wallet },
   { key: "reports" as ViewKey, label: "التقارير", icon: FileText },
+  { key: "reviews" as ViewKey, label: "التقييمات", icon: Star }, // +++ التاب الجديد +++
   { key: "settings" as ViewKey, label: "الإعدادات", icon: Settings },
 ];
 
@@ -82,17 +92,6 @@ export function SidebarContent({ activeView, venueId, onNavigate, onClose }: Pro
           );
         })}
       </nav>
-
-      {/* <div className="mt-auto rounded-2xl bg-surface p-4 border border-border shadow-sm">
-        <p className="text-sm font-bold text-muted-foreground">نسبة الإشغال اليوم</p>
-        <p className="mt-1 font-display text-2xl font-extrabold text-primary">{occupancy}</p>
-        <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted border border-border">
-          <div
-            className="gradient-primary h-full rounded-full transition-all duration-500 ease-out"
-            style={{ width: occupancy }}
-          />
-        </div>
-      </div> */}
     </div>
   );
 }

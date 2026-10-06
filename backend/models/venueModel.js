@@ -19,10 +19,12 @@ const venueSchema = new mongoose.Schema(
     openTime: {
       type: String,
       default: "08:00",
+      match: [/^([01]?\d|2[0-3]):[0-5]\d$/, "صيغة الوقت يجب أن تكون HH:MM"],
     },
     closeTime: {
       type: String,
       default: "04:00",
+      match: [/^([01]?\d|2[0-3]):[0-5]\d$/, "صيغة الوقت يجب أن تكون HH:MM"],
     },
     operatingHours: {
       type: Number,
@@ -32,11 +34,27 @@ const venueSchema = new mongoose.Schema(
     eveningStartTime: {
       type: String,
       default: "18:00", // الافتراضي 6 مساءً
+      match: [/^([01]?\d|2[0-3]):[0-5]\d$/, "صيغة الوقت يجب أن تكون HH:MM"],
     },
     //  ا (0 = الأحد، 1 = الإثنين ... 6 = السبت)
     workingDays: {
       type: [Number],
       default: [0, 1, 2, 3, 4, 5, 6],
+      validate: {
+        validator: (days) =>
+          days.every((d) => Number.isInteger(d) && d >= 0 && d <= 6),
+        message: "أيام العمل يجب أن تكون أرقاماً من 0 إلى 6",
+      },
+    },
+    ratingsAverage: {
+      type: Number,
+      default: 4.5,
+      min: [1, "التقييم يجب أن يكون أعلى من 1"],
+      max: [5, "التقييم يجب أن يكون أقل من 5"],
+    },
+    ratingsQuantity: {
+      type: Number,
+      default: 0,
     },
     address: {
       city: {

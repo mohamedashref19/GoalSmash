@@ -37,10 +37,12 @@ const courtSchema = new mongoose.Schema(
     priceMorning: {
       type: Number,
       required: [true, "يرجى تحديد سعر الحجز الصباحي للملعب"],
+      min: [0, "السعر لا يمكن أن يكون سالباً"],
     },
     priceEvening: {
       type: Number,
       required: [true, "يرجى تحديد سعر الحجز المسائي للملعب"],
+      min: [0, "السعر لا يمكن أن يكون سالباً"],
     },
   },
   {

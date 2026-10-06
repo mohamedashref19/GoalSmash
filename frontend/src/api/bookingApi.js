@@ -31,6 +31,16 @@ export const fetchMyBookings = async () => {
   }
 };
 
+// +++ جلب جميع حجوزات الملعب (التطبيق واليدوي) +++
+export const fetchVenueBookings = async (venueId) => {
+  try {
+    const response = await apiClient.get(`/bookings?venue=${venueId}`);
+    return response.data.data.bookings || response.data.data;
+  } catch (error) {
+    throw error.response?.data?.message || "حدث خطأ أثناء جلب حجوزات الملعب";
+  }
+};
+
 // إلغاء الحجز
 export const cancelBooking = async (id) => {
   try {

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   ArrowRight,
@@ -21,6 +21,10 @@ import {
   X,
   Hourglass,
   Phone,
+  Trash2,
+  Edit,
+  MessageSquare,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -61,8 +65,10 @@ const MosqueIcon = ({ className }: MosqueIconProps) => (
 // @ts-expect-error APIs without TS definitions
 import { fetchVenueById } from "@/api/venueApi";
 // @ts-expect-error APIs without TS definitions
-import { fetchBookedSlots, createBooking } from "@/api/bookingApi";
+import { fetchBookedSlots, createBooking, fetchMyBookings } from "@/api/bookingApi";
 import { PaymentModal } from "@/components/venue/PaymentModal";
+// @ts-expect-error APIs without TS definitions
+import { fetchVenueReviews, submitReview, updateReview, deleteReview } from "@/api/reviewApi";
 // @ts-expect-error API has no TypeScript declaration
 import { BACKEND_URL } from "@/api/axiosConfig";
 
@@ -82,9 +88,9 @@ interface VenueType {
   name: string;
   description?: string;
   openTime?: string;
-  closeTime?: string; // +++ تمت الإضافة +++
+  closeTime?: string;
   eveningStartTime?: string;
-  workingDays?: number[]; // +++ تمت الإضافة +++
+  workingDays?: number[];
   phone?: string;
   address?: {
     city: string;
@@ -94,12 +100,30 @@ interface VenueType {
   courts?: CourtType[];
   owner?: string;
   image?: string;
+  ratingsAverage?: number;
+  ratingsQuantity?: number;
 }
-
+interface ReviewType {
+  _id: string;
+  review: string;
+  rating: number;
+  createdAt: string;
+  user: {
+    _id: string;
+    name: string;
+  };
+}
 interface BookingResponse {
   startTime: string;
   endTime: string;
   status: string;
+}
+
+// +++ تم إضافة واجهة لبيانات الحجز لحل خطأ (no-explicit-any) +++
+interface FetchedBooking {
+  venue?: { _id: string } | string;
+  status: string;
+  startTime: string;
 }
 
 interface PaymentDataType {
@@ -168,6 +192,15 @@ function VenueDetailsPage() {
   const [error, setError] = useState("");
   const [bookingLoading, setBookingLoading] = useState(false);
 
+  const [reviews, setReviews] = useState<ReviewType[]>([]);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [reviewText, setReviewText] = useState("");
+  const [reviewRating, setReviewRating] = useState(5);
+  const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+  const [currentUser, setCurrentUser] = useState<{ _id: string; role: string } | null>(null);
+  const [canReview, setCanReview] = useState(false);
+
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentData, setPaymentData] = useState<PaymentDataType | null>(null);
 
@@ -189,8 +222,48 @@ function VenueDetailsPage() {
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
 
   const [timeTab, setTimeTab] = useState<"morning" | "evening">("morning");
-
   const [selectedDuration, setSelectedDuration] = useState<60 | 120>(60);
+
+  useEffect(() => {
+    const userData = localStorage.getItem("userData") || sessionStorage.getItem("userData");
+    if (userData) {
+      const parsedUser = JSON.parse(userData);
+      setCurrentUser({
+        ...parsedUser,
+        _id: parsedUser._id || parsedUser.id,
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (currentUser?.role === "customer") {
+      fetchMyBookings()
+        // +++ تم استخدام الواجهة FetchedBooking بدلاً من any +++
+        .then((bookingsArray: FetchedBooking[]) => {
+          const hasPlayed = bookingsArray.some((b: FetchedBooking) => {
+            const bVenueId =
+              typeof b.venue === "object" && b.venue !== null && "_id" in b.venue
+                ? b.venue._id
+                : b.venue;
+            return (
+              bVenueId === venueId && b.status === "confirmed" && new Date(b.startTime) < new Date()
+            );
+          });
+          setCanReview(hasPlayed);
+        })
+        .catch(() => setCanReview(false));
+    }
+  }, [currentUser, venueId]);
+
+  // +++ تم تغليف الدالة بـ useCallback لحل مشكلة exhaustive-deps +++
+  const loadReviews = useCallback(async () => {
+    try {
+      const data = await fetchVenueReviews(venueId);
+      setReviews(data);
+    } catch (error) {
+      console.error("خطأ في جلب التقييمات:", error);
+    }
+  }, [venueId]);
 
   const getBookingSummary = () => {
     if (!days || !days[selectedDay]) return { dayText: "", mobileText: "", timeText: "" };
@@ -230,6 +303,7 @@ function VenueDetailsPage() {
           data.courts = data.courts.filter((c: CourtType) => c.status !== "inactive");
         setVenue(data);
         if (data.courts && data.courts.length > 0) setSelectedCourt(data.courts[0]);
+        await loadReviews();
       } catch (err) {
         setError(err as string);
       } finally {
@@ -237,7 +311,7 @@ function VenueDetailsPage() {
       }
     };
     getVenue();
-  }, [venueId]);
+  }, [venueId, loadReviews]); // +++ تمت إضافة loadReviews لمصفوفة الاعتمادات +++
 
   useEffect(() => {
     if (!selectedCourt) return;
@@ -289,7 +363,6 @@ function VenueDetailsPage() {
     };
   }, [selectedCourt, selectedDay, days]);
 
-  // +++ توليد الساعات ديناميكياً استناداً إلى بيانات النادي +++
   const slots = useMemo(() => {
     if (!days || !days[selectedDay] || !days[selectedDay].dateObj || !venue) return [];
 
@@ -434,6 +507,74 @@ function VenueDetailsPage() {
     }
   };
 
+  const handleOpenReviewModal = (existingReview?: ReviewType) => {
+    if (!currentUser) {
+      toast.error("يجب تسجيل الدخول أولاً لتقييم الملعب.");
+      navigate({ to: "/login" });
+      return;
+    }
+    if (existingReview) {
+      setReviewText(existingReview.review);
+      setReviewRating(existingReview.rating);
+      setEditingReviewId(existingReview._id);
+    } else {
+      setReviewText("");
+      setReviewRating(5);
+      setEditingReviewId(null);
+    }
+    setShowReviewModal(true);
+  };
+
+  const handleSaveReview = async () => {
+    setIsSubmittingReview(true);
+    try {
+      if (editingReviewId) {
+        await updateReview(editingReviewId, { review: reviewText, rating: reviewRating });
+        toast.success("تم تحديث تقييمك بنجاح.");
+      } else {
+        await submitReview(venueId, { review: reviewText, rating: reviewRating });
+        toast.success("شكراً لك! تم إضافة تقييمك بنجاح.");
+      }
+      setShowReviewModal(false);
+      await loadReviews();
+      const updatedVenue = await fetchVenueById(venueId);
+      setVenue(updatedVenue);
+    } catch (err) {
+      toast.error(err as string);
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
+
+  const handleDeleteReview = async (reviewId: string) => {
+    if (!window.confirm("هل أنت متأكد من حذف هذا التقييم؟")) return;
+    try {
+      await deleteReview(reviewId);
+      toast.success("تم حذف التقييم بنجاح.");
+      await loadReviews();
+      const updatedVenue = await fetchVenueById(venueId);
+      setVenue(updatedVenue);
+    } catch (err) {
+      toast.error(err as string);
+    }
+  };
+
+  const StarRating = ({ rating, size = 4 }: { rating: number; size?: number }) => {
+    return (
+      <div className="flex items-center gap-0.5" dir="ltr">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <Star
+            key={star}
+            className={cn(
+              `size-${size}`,
+              star <= Math.round(rating) ? "fill-warning text-warning" : "text-muted-foreground/30",
+            )}
+          />
+        ))}
+      </div>
+    );
+  };
+
   if (loading)
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
@@ -505,9 +646,15 @@ function VenueDetailsPage() {
           <section className="card-surface space-y-3 p-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h1 className="text-lg font-bold sm:text-xl">{venue.name}</h1>
-              <span className="flex items-center gap-1 text-sm font-bold text-warning">
-                <Star className="size-4 fill-current" /> 4.8
-              </span>
+              <div className="flex items-center gap-1.5 rounded-full bg-warning/10 px-2.5 py-1 text-xs font-bold text-warning border border-warning/20">
+                <Star className="size-3.5 fill-current" />
+                <span>{(venue.ratingsAverage || 4.5).toFixed(1)}</span>
+                {venue.ratingsQuantity !== undefined && venue.ratingsQuantity > 0 && (
+                  <span className="text-muted-foreground text-[10px]">
+                    ({venue.ratingsQuantity})
+                  </span>
+                )}
+              </div>
             </div>
 
             <p className="flex items-start gap-1.5 text-sm text-muted-foreground">
@@ -572,7 +719,6 @@ function VenueDetailsPage() {
               <CalendarDays className="size-4 text-primary" /> اختر اليوم
             </h2>
             <div className="flex gap-2 overflow-x-auto pb-1">
-              {/* +++ تعطيل الأيام المغلقة بناءً على أيام العمل +++ */}
               {days.map((d) => {
                 const isWorkingDay = venue.workingDays
                   ? venue.workingDays.includes(d.dateObj.getDay())
@@ -694,6 +840,96 @@ function VenueDetailsPage() {
             <p className="text-[11px] text-muted-foreground mt-2">
               الساعات المشطوبة محجوزة مسبقاً أو الوقت لم يعد كافياً للحجز.
             </p>
+          </section>
+
+          <section className="card-surface space-y-4 p-5" id="reviews-section">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h2 className="flex items-center gap-2 text-sm font-bold sm:text-base">
+                <MessageSquare className="size-5 text-primary" /> آراء اللاعبين
+              </h2>
+              {currentUser?.role === "customer" &&
+                canReview &&
+                !reviews.some((r) => r.user._id === currentUser._id) && (
+                  <button
+                    onClick={() => handleOpenReviewModal()}
+                    className="rounded-xl bg-primary/10 px-4 py-2 text-xs font-bold text-primary hover:bg-primary hover:text-primary-foreground transition-colors"
+                  >
+                    قيّم تجربتك
+                  </button>
+                )}
+            </div>
+
+            {reviews.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
+                <Star className="size-10 mb-2 opacity-20" />
+                <p className="text-sm font-bold">لا توجد تقييمات حتى الآن.</p>
+                <p className="text-xs">كُن أول من يقيّم هذا الملعب!</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {reviews.map((review) => {
+                  const isOwner = currentUser?._id === review.user._id;
+                  const canDelete =
+                    isOwner || currentUser?.role === "admin" || currentUser?._id === venue.owner;
+
+                  return (
+                    <div
+                      key={review._id}
+                      className="rounded-2xl border border-border bg-surface p-4"
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <div className="grid size-10 place-items-center rounded-full bg-accent text-accent-foreground font-bold text-sm">
+                            {review.user.name.substring(0, 2)}
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-foreground">
+                              {review.user.name}
+                              {isOwner && (
+                                <span className="text-[10px] text-primary mr-2 bg-primary/10 px-2 py-0.5 rounded-md">
+                                  أنت
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {new Date(review.createdAt).toLocaleDateString("ar-EG")}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-2">
+                          <StarRating rating={review.rating} size={4} />
+                          <div className="flex items-center gap-2">
+                            {isOwner && (
+                              <button
+                                onClick={() => handleOpenReviewModal(review)}
+                                className="text-muted-foreground hover:text-primary transition"
+                                title="تعديل التقييم"
+                              >
+                                <Edit className="size-3.5" />
+                              </button>
+                            )}
+                            {canDelete && (
+                              <button
+                                onClick={() => handleDeleteReview(review._id)}
+                                className="text-muted-foreground hover:text-destructive transition"
+                                title="حذف التقييم"
+                              >
+                                <Trash2 className="size-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      {review.review && (
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          {review.review}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </section>
         </div>
 
@@ -852,6 +1088,79 @@ function VenueDetailsPage() {
           </div>
         </div>
       </div>
+
+      {showReviewModal && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6"
+          dir="rtl"
+        >
+          <div
+            className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            onClick={() => setShowReviewModal(false)}
+          />
+          <div className="relative z-10 w-full max-w-sm rounded-3xl bg-card shadow-2xl border border-border animate-in fade-in zoom-in-95 p-5">
+            <div className="flex items-center justify-between border-b border-border pb-3 mb-4">
+              <h3 className="font-bold text-lg text-foreground">
+                {editingReviewId ? "تعديل تقييمك" : "قيّم تجربتك في الملعب"}
+              </h3>
+              <button
+                onClick={() => setShowReviewModal(false)}
+                className="rounded-full p-1 hover:bg-muted text-muted-foreground transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-5">
+              <div className="flex flex-col items-center gap-2">
+                <span className="text-sm font-bold text-muted-foreground">كيف كانت تجربتك؟</span>
+                <div className="flex items-center gap-1" dir="ltr">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setReviewRating(star)}
+                      className="p-1 transition-transform hover:scale-110 focus:outline-none"
+                    >
+                      <Star
+                        className={cn(
+                          "size-8 transition-colors",
+                          star <= reviewRating
+                            ? "fill-warning text-warning"
+                            : "text-muted-foreground/30",
+                        )}
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-foreground">التعليق (اختياري)</label>
+                <textarea
+                  value={reviewText}
+                  onChange={(e) => setReviewText(e.target.value)}
+                  placeholder="شاركنا رأيك في أرضية الملعب، الإضاءة، والتعامل..."
+                  className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm font-medium outline-none focus:border-primary transition min-h-24 resize-none"
+                />
+              </div>
+
+              <button
+                onClick={handleSaveReview}
+                disabled={isSubmittingReview}
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition disabled:opacity-50"
+              >
+                {isSubmittingReview ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Star className="size-4" />
+                )}
+                {isSubmittingReview ? "جاري الحفظ..." : "حفظ التقييم"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showInfoModal && (
         <div

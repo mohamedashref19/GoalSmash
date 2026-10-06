@@ -10,14 +10,15 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner"; // +++ إضافة sonner للتنبيهات
+import { toast } from "sonner";
 
 // @ts-expect-error: API lacks TypeScript definitions
 import { fetchTodayStats, fetchTopCustomers } from "@/api/dashboardApi";
+// +++ استيراد دالة fetchVenueBookings بدلاً من fetchMyBookings +++
 // @ts-expect-error: API lacks TypeScript definitions
-import { fetchMyBookings } from "@/api/bookingApi";
+import { fetchVenueBookings } from "@/api/bookingApi";
 // @ts-expect-error: API lacks TypeScript definitions
-import apiClient from "@/api/axiosConfig"; // +++ إضافة apiClient للتواصل المباشر في تحديث الدفع
+import apiClient from "@/api/axiosConfig";
 import { useConfirm } from "../../components/venue/useConfirm";
 
 interface StatsData {
@@ -75,18 +76,18 @@ export function OverviewView({
   const [stats, setStats] = useState<StatsData | null>(null);
   const [customers, setCustomers] = useState<CustomerData[]>([]);
   const [upcomingBookings, setUpcomingBookings] = useState<BookingData[]>([]);
-  const [updatingPaymentId, setUpdatingPaymentId] = useState<string | null>(null); // +++ حالة زر التحديث
+  const [updatingPaymentId, setUpdatingPaymentId] = useState<string | null>(null);
   const { confirm, ConfirmDialog } = useConfirm();
 
-  // +++ إضافة useCallback هنا +++
   const loadDashboardData = useCallback(async () => {
     try {
       setLoading(true);
 
+      // +++ استخدام الدالة الجديدة لجلب حجوزات الملعب بالكامل +++
       const [statsData, topCustomersData, allBookingsData] = await Promise.all([
         fetchTodayStats(venueId),
         fetchTopCustomers(venueId),
-        fetchMyBookings(),
+        fetchVenueBookings(venueId),
       ]);
 
       setStats(statsData);
@@ -94,34 +95,35 @@ export function OverviewView({
 
       const now = new Date();
       const safeBookings = Array.isArray(allBookingsData) ? allBookingsData : [];
+
       const upcoming = safeBookings
         .filter(
           (b: BookingData) =>
-            b &&
-            b.startTime &&
-            new Date(b.startTime) >= now &&
-            b.venue?._id === venueId &&
-            b.status === "confirmed",
+            b && b.startTime && new Date(b.startTime) >= now && b.status === "confirmed",
+        )
+        // +++ ترتيب الحجوزات زمنياً من الأقرب للأبعد +++
+        .sort(
+          (a: BookingData, b: BookingData) =>
+            new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
         )
         .slice(0, 5);
+
       setUpcomingBookings(upcoming);
     } catch (err) {
       setError(err as string);
     } finally {
       setLoading(false);
     }
-  }, [venueId]); // +++ مصفوفة الاعتمادات للدالة +++
+  }, [venueId]);
 
   useEffect(() => {
     if (venueId) {
       loadDashboardData();
     }
-  }, [venueId, loadDashboardData]); // +++ إضافة loadDashboardData هنا كاعتماد +++
+  }, [venueId, loadDashboardData]);
 
-  // +++ دالة تأكيد استلام الكاش من صفحة النظرة العامة +++
   const handleMarkAsPaid = async (id: string, fullPrice: number) => {
     const isConfirmed = await confirm("هل تأكدت من استلام باقي المبلغ نقداً؟");
-    // if (!window.confirm("هل تأكدت من استلام باقي المبلغ نقداً؟")) return;
     if (!isConfirmed) return;
     setUpdatingPaymentId(id);
     try {
@@ -131,7 +133,6 @@ export function OverviewView({
       });
 
       toast.success("تم تأكيد استلام باقي المبلغ بنجاح");
-      // تحديث البيانات لعرض التغيير فوراً
       await loadDashboardData();
     } catch (err) {
       toast.error("حدث خطأ أثناء تحديث بيانات الدفع");
@@ -243,7 +244,6 @@ export function OverviewView({
                       <td className="px-5 py-3">
                         <StatusBadge status={m.status} />
                       </td>
-                      {/* +++ التعديل هنا: إظهار المتبقي مع زر تفاعلي لتأكيد الدفع +++ */}
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-3">
                           <div className="flex flex-col">
@@ -259,7 +259,6 @@ export function OverviewView({
                             )}
                           </div>
 
-                          {/* زر تأكيد استلام المتبقي */}
                           {remaining > 0 && (
                             <button
                               onClick={() => handleMarkAsPaid(m._id, m.totalPrice)}

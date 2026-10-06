@@ -12,6 +12,19 @@ const CourtBlock = require("../models/courtBlockModel");
 
 const courtMutexes = new Map();
 
+// أقصى عدد حجوزات "بانتظار الدفع" للعميل في نفس الوقت (منع حجز كل المواعيد بدون دفع)
+const ACTIVE_PENDING_LIMIT = 3;
+const isId = (v) => typeof v === "string" && mongoose.isValidObjectId(v);
+// يرجّع الـ id سواء الحقل populated أو لأ
+// (toString على document مش populated بيرجّع نص طويل مش الـ id)
+const idOf = (v) => ((v && v._id) || v)?.toString();
+
+// الموظف مربوط بنادي واحد (userModel.venue): كل صلاحياته محصورة فيه.
+// موظف من غير نادي مربوط = مرفوض في كل حاجة.
+const isOtherVenueEmployee = (user, venueRef) =>
+  user.role === "employee" &&
+  (!user.venue || user.venue.toString() !== idOf(venueRef));
+
 const getCourtMutex = (courtId) => {
   if (!courtMutexes.has(courtId)) {
     courtMutexes.set(courtId, new Mutex());
@@ -52,6 +65,13 @@ exports.createBooking = catchAsync(async (req, res, next) => {
     paymentMethod,
   } = req.body;
 
+  if (!isId(venue) || !isId(court)) {
+    return next(new AppError("بيانات النادي أو الملعب غير صالحة", 400));
+  }
+  if (!startTime || !endTime) {
+    return next(new AppError("يرجى تحديد وقت البداية والنهاية", 400));
+  }
+
   const venueObj = await Venue.findById(venue);
   if (!venueObj) {
     return next(new AppError("هذا النادي غير موجود", 404));
@@ -63,8 +83,16 @@ exports.createBooking = catchAsync(async (req, res, next) => {
     }
   }
 
+  if (req.user && isOtherVenueEmployee(req.user, venueObj._id)) {
+    return next(new AppError("غير مصرح لك بإنشاء حجز في هذا الملعب!", 403));
+  }
+
   const newStart = new Date(startTime);
   const newEnd = new Date(endTime);
+
+  if (Number.isNaN(newStart.getTime()) || Number.isNaN(newEnd.getTime())) {
+    return next(new AppError("صيغة التاريخ غير صحيحة", 400));
+  }
 
   if (newStart >= newEnd)
     return next(new AppError("وقت النهاية يجب أن يكون بعد وقت البداية", 400));
@@ -159,6 +187,34 @@ exports.createBooking = catchAsync(async (req, res, next) => {
   const courtExists = await Court.findById(court);
   if (!courtExists) return next(new AppError("هذا الملعب غير موجود", 404));
 
+  // الملعب لازم يكون تابع للنادي المرسل. من غير الفحص ده كان ممكن تحجز ملعب نادي تاني
+  // باستخدام ساعات عمل وصلاحيات نادي مختلف (وتعطّل مواعيد منافس).
+  // courtModel بيعمل populate للـ venue تلقائياً، فلازم idOf مش toString
+  if (idOf(courtExists.venue) !== venueObj._id.toString()) {
+    return next(new AppError("هذا الملعب لا يتبع هذا النادي", 400));
+  }
+
+  // ملعب في الصيانة ماينفعش يتحجز (الـ inactive بيتفلتر في الموديل، الـ maintenance لأ)
+  if (courtExists.status !== "active") {
+    return next(new AppError("هذا الملعب غير متاح للحجز حالياً", 400));
+  }
+
+  if (req.user && req.user.role === "customer") {
+    const activePending = await Booking.countDocuments({
+      user: req.user.id,
+      status: "pending_payment",
+      expiresAt: { $gt: new Date() },
+    });
+    if (activePending >= ACTIVE_PENDING_LIMIT) {
+      return next(
+        new AppError(
+          "لديك حجوزات بانتظار الدفع، أكمل دفعها أو انتظر انتهاءها قبل حجز جديد",
+          429,
+        ),
+      );
+    }
+  }
+
   const bookingHour = newStart.getHours();
   const eveningStartHour = parseInt(
     (venueObj.eveningStartTime || "18:00").split(":")[0],
@@ -213,6 +269,9 @@ exports.createBooking = catchAsync(async (req, res, next) => {
   let finalManualDeposit = calculatedTotalPrice;
   if (req.body.deposit !== undefined) {
     finalManualDeposit = Number(req.body.deposit);
+    if (!Number.isFinite(finalManualDeposit)) {
+      return next(new AppError("قيمة العربون غير صحيحة", 400));
+    }
     if (finalManualDeposit < 0) finalManualDeposit = 0;
     if (finalManualDeposit > calculatedTotalPrice)
       finalManualDeposit = calculatedTotalPrice;
@@ -432,6 +491,12 @@ exports.getAllBookings = catchAsync(async (req, res, next) => {
     } else {
       filter.venue = { $in: myVenueIds };
     }
+  } else if (req.user && req.user.role === "employee") {
+    // الموظف يشوف حجوزات ناديه بس (النادي من حسابه مش من الـ query)
+    if (!req.user.venue) {
+      return next(new AppError("حسابك غير مرتبط بنادي، تواصل مع الإدارة", 403));
+    }
+    filter.venue = req.user.venue;
   } else if (req.query.venue) {
     filter.venue = req.query.venue;
   }
@@ -442,13 +507,21 @@ exports.getAllBookings = catchAsync(async (req, res, next) => {
   let startOfLogicalDay, endOfLogicalDay;
 
   // إعدادات الـ Pagination
-  const page = parseInt(req.query.page, 10) || 1;
+  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
   // السماح بـ limit أعلى في حالة عرض تقويم يوم كامل لتجنب اختفاء حجوزات من التقويم
   const defaultLimit = req.query.date ? 500 : 50;
-  const limit = parseInt(req.query.limit, 10) || defaultLimit;
+  // سقف للـ limit: من غيره ?limit=1000000 يقدر يوقّع السيرفر
+  const maxLimit = req.query.date ? 500 : 100;
+  const limit = Math.min(
+    Math.max(parseInt(req.query.limit, 10) || defaultLimit, 1),
+    maxLimit,
+  );
   const skip = (page - 1) * limit;
 
   if (req.query.date) {
+    if (Number.isNaN(new Date(req.query.date).getTime())) {
+      return next(new AppError("صيغة التاريخ غير صحيحة", 400));
+    }
     startOfLogicalDay = new Date(req.query.date);
     startOfLogicalDay.setHours(8, 0, 0, 0);
 
@@ -478,31 +551,51 @@ exports.getAllBookings = catchAsync(async (req, res, next) => {
   let processedBookings = bookings.map((b) => b.toObject());
 
   if (req.user && req.user.role === "customer") {
-    processedBookings = await Promise.all(
-      processedBookings.map(async (b) => {
-        const isMyBooking = b.user && b.user._id.toString() === req.user.id;
-
-        if (!isMyBooking) {
-          delete b.user;
-          delete b.guestData;
-          delete b.notes;
-        } else if (
+    // استعلام واحد لكل دفعات حجوزاتي المعلّقة (بدل استعلام لكل حجز)
+    const myPendingIds = processedBookings
+      .filter(
+        (b) =>
+          b.user &&
+          b.user._id.toString() === req.user.id &&
           b.status === "pending_payment" &&
-          b.paymentMethod !== "cash"
-        ) {
-          const payment = await Payment.findOne({
-            booking: b._id,
-            status: { $in: ["pending", "pending_verification"] },
-          });
+          b.paymentMethod !== "cash",
+      )
+      .map((b) => b._id);
 
-          if (payment) {
-            b.paymentId = payment._id;
-            b.actualPaymentStatus = payment.status;
-          }
-        }
-        return b;
-      }),
+    const pendingPayments = myPendingIds.length
+      ? await Payment.find({
+          booking: { $in: myPendingIds },
+          status: { $in: ["pending", "pending_verification"] },
+        }).select("booking status")
+      : [];
+    const paymentByBooking = new Map(
+      pendingPayments.map((p) => [p.booking.toString(), p]),
     );
+
+    processedBookings = processedBookings.map((b) => {
+      const isMyBooking = b.user && b.user._id.toString() === req.user.id;
+
+      if (!isMyBooking) {
+        // حجوزات غيري: بس اللي الجدول محتاجه (الوقت والحالة).
+        // قبل كده كانت بترجع السعر والعمولة والعربون وطريقة الدفع ومين لغى الحجز.
+        return {
+          _id: b._id,
+          venue: b.venue,
+          court: b.court,
+          startTime: b.startTime,
+          endTime: b.endTime,
+          status: b.status,
+          bookingType: b.bookingType,
+        };
+      }
+
+      const payment = paymentByBooking.get(b._id.toString());
+      if (payment) {
+        b.paymentId = payment._id;
+        b.actualPaymentStatus = payment.status;
+      }
+      return b;
+    });
   }
 
   if (req.query.date && startOfLogicalDay && endOfLogicalDay) {
@@ -567,10 +660,11 @@ exports.getBooking = catchAsync(async (req, res, next) => {
     return next(new AppError("لا يوجد حجز بهذا المعرف", 404));
   }
 
-  if (
-    req.user.role === "customer" &&
-    booking.user?.toString() !== req.user.id
-  ) {
+  if (isOtherVenueEmployee(req.user, booking.venue)) {
+    return next(new AppError("ليس لديك صلاحية لعرض هذا الحجز", 403));
+  }
+
+  if (req.user.role === "customer" && idOf(booking.user) !== req.user.id) {
     return next(new AppError("ليس لديك صلاحية لعرض هذا الحجز", 403));
   }
 
@@ -594,6 +688,10 @@ exports.cancelBooking = catchAsync(async (req, res, next) => {
 
   if (!booking) return next(new AppError("لا يوجد حجز بهذا المعرف", 404));
 
+  if (isOtherVenueEmployee(req.user, booking.venue)) {
+    return next(new AppError("ليس لديك صلاحية لإلغاء هذا الحجز", 403));
+  }
+
   const bookingUserId =
     booking.user && booking.user._id
       ? booking.user._id.toString()
@@ -616,9 +714,23 @@ exports.cancelBooking = catchAsync(async (req, res, next) => {
     return next(new AppError("هذا الحجز ملغى بالفعل", 400));
   }
 
+  if (!["pending_payment", "confirmed"].includes(booking.status)) {
+    return next(new AppError("لا يمكن إلغاء هذا الحجز في حالته الحالية", 400));
+  }
+
   booking.status = "cancelled";
   booking.cancelledBy = req.user.id;
   await booking.save();
+
+  // إنهاء أي دفعة معلّقة للحجز. من غير كده SMS متأخر كان بيلاقي الدفعة لسه pending
+  // ويحيي الحجز الملغي، والموعد ممكن يكون اتحجز لعميل تاني = حجز مزدوج.
+  await Payment.updateMany(
+    {
+      booking: booking._id,
+      status: { $in: ["pending", "pending_verification"] },
+    },
+    { $set: { status: "expired" } },
+  );
 
   res.status(200).json({
     status: "success",
@@ -628,17 +740,42 @@ exports.cancelBooking = catchAsync(async (req, res, next) => {
 });
 
 exports.updatePayment = catchAsync(async (req, res, next) => {
-  const { paymentStatus, paymentMethod, deposit } = req.body;
+  const { paymentStatus, paymentMethod } = req.body;
+  let { deposit } = req.body;
 
   if (!paymentStatus && deposit === undefined)
     return next(
       new AppError("يرجى تحديد حالة الدفع الجديدة أو العربون المحدث", 400),
     );
 
+  if (paymentStatus && !["unpaid", "partial", "paid"].includes(paymentStatus)) {
+    return next(new AppError("حالة الدفع غير صالحة", 400));
+  }
+  if (
+    paymentMethod &&
+    !["cash", "vodafone_cash", "instapay", "card"].includes(paymentMethod)
+  ) {
+    return next(new AppError("طريقة الدفع غير صالحة", 400));
+  }
+  if (deposit !== undefined) {
+    deposit = Number(deposit);
+    if (!Number.isFinite(deposit) || deposit < 0) {
+      return next(new AppError("قيمة العربون غير صحيحة", 400));
+    }
+  }
+
   const booking = await Booking.findById(req.params.id).populate("venue");
   if (!booking) return next(new AppError("لا يوجد حجز بهذا المعرف", 404));
 
-  // +++ التعديل الأمني الحاسم: منع تكرار الدفع (Double Click) +++
+  if (isOtherVenueEmployee(req.user, booking.venue)) {
+    return next(new AppError("ليس لديك صلاحية لتعديل دفع هذا الحجز", 403));
+  }
+
+  if (["cancelled", "expired", "blocked"].includes(booking.status)) {
+    return next(new AppError("لا يمكن تعديل دفع حجز ملغي أو منتهي", 400));
+  }
+
+  // منع تكرار الدفع (Double Click)
   if (booking.paymentStatus === "paid") {
     return next(
       new AppError(
@@ -657,15 +794,36 @@ exports.updatePayment = catchAsync(async (req, res, next) => {
     return next(new AppError("ليس لديك صلاحية لتعديل دفع هذا الحجز", 403));
   }
 
+  // العربون ماينفعش يعدّي السعر الإجمالي (كان بيسمح بتضخيم الإيراد النقدي في التقارير)
+  if (deposit !== undefined && deposit > booking.totalPrice) {
+    return next(new AppError("العربون لا يمكن أن يتجاوز السعر الإجمالي", 400));
+  }
+
   // حفظ العربون القديم قبل التحديث لمعرفة الفارق
   const oldDeposit = booking.deposit || 0;
 
-  if (paymentStatus) booking.paymentStatus = paymentStatus;
-  if (paymentMethod)
-    booking.paymentMethod = paymentMethod || booking.paymentMethod;
-  if (deposit !== undefined) booking.deposit = deposit;
+  const update = {};
+  if (paymentStatus) update.paymentStatus = paymentStatus;
+  if (paymentMethod) update.paymentMethod = paymentMethod;
+  if (deposit !== undefined) update.deposit = deposit;
 
-  await booking.save();
+  // تحديث مشروط: لو ضغطتين متزامنتين (أو موظفين على نفس الحجز)، واحدة بس بتعدّي
+  // وبالتالي فاتورة الكاش مابتتكررش.
+  const updatedBooking = await Booking.findOneAndUpdate(
+    {
+      _id: booking._id,
+      paymentStatus: { $ne: "paid" },
+      updatedAt: booking.updatedAt,
+    },
+    { $set: update },
+    { new: true, runValidators: true },
+  ).populate("venue");
+
+  if (!updatedBooking) {
+    return next(
+      new AppError("تم تعديل هذا الحجز للتو، حدّث الصفحة وحاول مرة أخرى", 409),
+    );
+  }
 
   // إنشاء فاتورة كاش جديدة بالمبلغ المتبقي بدلاً من تغيير القديمة
   if (deposit !== undefined && deposit > oldDeposit) {
@@ -689,7 +847,7 @@ exports.updatePayment = catchAsync(async (req, res, next) => {
   res.status(200).json({
     status: "success",
     message: "تم تحديث بيانات الدفع وتوثيق تحصيل الكاش بنجاح",
-    data: { booking },
+    data: { booking: updatedBooking },
   });
 });
 

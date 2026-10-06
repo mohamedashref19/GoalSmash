@@ -5,10 +5,24 @@ const Venue = require("../models/venueModel"); // +++ استدعاء موديل 
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
 
+// الأدوار المسموح لها بالداشبورد (حماية داخل الكنترولر حتى لو الـ route مفيهوش restrictTo)
+const DASHBOARD_ROLES = ["owner", "admin", "employee"];
+
+// الموظف يشوف ناديه بس (userModel.venue)
+const employeeNotAllowed = (user, venueId) =>
+  user.role === "employee" &&
+  (!user.venue || user.venue.toString() !== venueId.toString());
+
 exports.getTodayStats = catchAsync(async (req, res, next) => {
   const venueId = req.query.venue;
   if (!venueId) {
     return next(new AppError("يرجى تحديد المكان (venue)", 400));
+  }
+  if (typeof venueId !== "string" || !mongoose.isValidObjectId(venueId)) {
+    return next(new AppError("معرف المكان غير صالح", 400));
+  }
+  if (!DASHBOARD_ROLES.includes(req.user?.role)) {
+    return next(new AppError("ليس لديك صلاحية لعرض الإحصائيات", 403));
   }
 
   const venueDoc = await Venue.findById(venueId);
@@ -24,6 +38,10 @@ exports.getTodayStats = catchAsync(async (req, res, next) => {
     return next(new AppError("غير مصرح لك بالوصول لإحصائيات هذا الملعب!", 403));
   }
 
+  if (employeeNotAllowed(req.user, venueDoc._id)) {
+    return next(new AppError("غير مصرح لك بالوصول لإحصائيات هذا الملعب!", 403));
+  }
+
   const now = new Date();
   const cairoTime = new Date(
     now.toLocaleString("en-US", { timeZone: "Africa/Cairo" }),
@@ -31,11 +49,20 @@ exports.getTodayStats = catchAsync(async (req, res, next) => {
   const utcTime = new Date(now.toLocaleString("en-US", { timeZone: "UTC" }));
   const dynamicEgyptOffset = (cairoTime - utcTime) / (1000 * 60 * 60);
 
-  const startOfDay = new Date(now);
-  startOfDay.setUTCHours(0 - dynamicEgyptOffset, 0, 0, 0);
-
-  const endOfDay = new Date(now);
-  endOfDay.setUTCHours(23 - dynamicEgyptOffset, 59, 59, 999);
+  // اليوم بتوقيت القاهرة (مش بتوقيت UTC): بين 12 والـ 3 صباحاً تاريخ UTC لسه اليوم اللي فات
+  const startOfDay = new Date(
+    Date.UTC(
+      cairoTime.getFullYear(),
+      cairoTime.getMonth(),
+      cairoTime.getDate(),
+      0,
+      0,
+      0,
+      0,
+    ) -
+      dynamicEgyptOffset * 60 * 60 * 1000,
+  );
+  const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000 - 1);
 
   const todayStats = await Booking.aggregate([
     {
@@ -97,6 +124,16 @@ exports.getTopCustomers = catchAsync(async (req, res, next) => {
   const venueId = req.query.venue;
   if (!venueId) {
     return next(new AppError("يرجى تحديد المكان (venue)", 400));
+  }
+  if (typeof venueId !== "string" || !mongoose.isValidObjectId(venueId)) {
+    return next(new AppError("معرف المكان غير صالح", 400));
+  }
+  // بيانات العملاء (أسماء وأرقام وإنفاق): للمالك والأدمن وموظف النادي نفسه فقط
+  if (!DASHBOARD_ROLES.includes(req.user?.role)) {
+    return next(new AppError("ليس لديك صلاحية لعرض هذه البيانات", 403));
+  }
+  if (employeeNotAllowed(req.user, venueId)) {
+    return next(new AppError("غير مصرح لك بالوصول لبيانات هذا الملعب!", 403));
   }
 
   if (req.user && req.user.role === "owner") {

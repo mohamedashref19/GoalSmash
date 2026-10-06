@@ -9,7 +9,7 @@ import {
   Loader2,
   Info,
   AlertTriangle,
-  CalendarDays, // +++ أيقونة النتيجة +++
+  CalendarDays,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -32,7 +32,6 @@ interface PaymentData {
   } | null;
 }
 
-// +++ واجهة تفاصيل الحجز الجديدة +++
 export interface BookingDetails {
   startTime: string;
   endTime: string;
@@ -41,7 +40,7 @@ export interface BookingDetails {
 interface PaymentModalProps {
   open: boolean;
   paymentData: PaymentData | null;
-  bookingDetails?: BookingDetails | null; // +++ إضافة الـ Prop الجديد +++
+  bookingDetails?: BookingDetails | null;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -57,7 +56,6 @@ export function PaymentModal({
   const [isExpired, setIsExpired] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // حالات الإثبات اليدوي
   const [showProofForm, setShowProofForm] = useState(false);
   const [manualTrxId, setManualTrxId] = useState("");
   const [proofFile, setProofFile] = useState<File | null>(null);
@@ -84,21 +82,39 @@ export function PaymentModal({
     return () => clearInterval(timerInterval);
   }, [open, paymentData]);
 
+  const onSuccessRef = useRef(onSuccess);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onSuccessRef.current = onSuccess;
+    onCloseRef.current = onClose;
+  }, [onSuccess, onClose]);
+
+  // 3. اتصال السوكت النظيف (بدون console.log)
   useEffect(() => {
     if (!open) return;
+
     const userDataStr = localStorage.getItem("userData") || sessionStorage.getItem("userData");
     if (!userDataStr) return;
+
     const user = JSON.parse(userDataStr);
     const userId = user._id || user.id;
-    const socket = io(SOCKET_URL);
+
+    const socket = io(SOCKET_URL, {
+      transports: ["websocket", "polling"],
+      withCredentials: true,
+    });
+
     socket.on(`booking-confirmed-${userId}`, () => {
       toast.success("تم تأكيد دفعك وحجزك بنجاح! 🎉");
-      onSuccess();
+      onSuccessRef.current();
+      onCloseRef.current();
     });
+
     return () => {
       socket.disconnect();
     };
-  }, [open, onSuccess]);
+  }, [open]);
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -120,7 +136,7 @@ export function PaymentModal({
     try {
       await uploadPaymentProof(paymentData.id, formData);
       toast.success("تم إرسال الإثبات للإدارة بنجاح!");
-      onSuccess(); // قفل الشاشة والتوجه لحجوزاتي
+      onSuccess();
     } catch (err) {
       toast.error(err as string);
     } finally {
@@ -155,7 +171,6 @@ export function PaymentModal({
         </div>
 
         <div className="p-6 space-y-5">
-          {/* مؤقت الانتهاء */}
           <div className="flex flex-col items-center justify-center gap-2">
             <div
               className={cn(
@@ -175,8 +190,6 @@ export function PaymentModal({
 
           {!isExpired && !showProofForm && (
             <div className="animate-in fade-in slide-in-from-bottom-2 space-y-5">
-              {/* +++ صندوق تفاصيل الحجز +++ */}
-              {/* +++ صندوق تفاصيل الحجز +++ */}
               {bookingDetails && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between bg-muted/40 border border-border rounded-xl p-3">
@@ -217,8 +230,6 @@ export function PaymentModal({
                     </div>
                   </div>
 
-                  {/* +++ رسالة تنبيه ما بعد منتصف الليل +++ */}
-                  {/* +++ رسالة تنبيه ما بعد منتصف الليل +++ */}
                   {(() => {
                     const startDate = new Date(bookingDetails.startTime);
                     const endDate = new Date(bookingDetails.endTime);
@@ -229,10 +240,9 @@ export function PaymentModal({
                     const crossesMidnight = startHour > endHour;
 
                     if (isAfterMidnight || crossesMidnight) {
-                      // الحالة الأولى: الحجز بيبدأ الفجر (من 12 لـ 6 الصبح)
                       if (isAfterMidnight) {
                         const displayDate = new Date(startDate);
-                        displayDate.setDate(displayDate.getDate() - 1); // اليوم الذي تم اختياره من الواجهة
+                        displayDate.setDate(displayDate.getDate() - 1);
 
                         return (
                           <div className="bg-warning/10 border border-warning/30 rounded-xl p-3 flex gap-3 items-start animate-in fade-in">
@@ -258,7 +268,6 @@ export function PaymentModal({
                         );
                       }
 
-                      // الحالة الثانية: الحجز يعبر منتصف الليل (مثال: 11 م إلى 1 ص)
                       if (crossesMidnight) {
                         return (
                           <div className="bg-warning/10 border border-warning/30 rounded-xl p-3 flex gap-3 items-start animate-in fade-in">
@@ -288,7 +297,6 @@ export function PaymentModal({
                 </div>
               )}
 
-              {/* صندوق المبلغ المطلوب */}
               <div className="rounded-2xl border-2 border-primary/20 bg-primary/5 p-5 text-center space-y-2 relative overflow-hidden">
                 <div className="absolute top-0 right-0 bg-primary text-primary-foreground px-3 py-0.5 rounded-bl-xl text-[10px] font-bold">
                   هام جداً
@@ -309,7 +317,6 @@ export function PaymentModal({
                 </p>
               </div>
 
-              {/* تفاصيل التحويل */}
               <div className="space-y-3">
                 <p className="text-sm font-bold flex items-center gap-1.5">
                   طريقة الدفع المختارة:

@@ -2,6 +2,7 @@ import axios from "axios";
 
 // 1. رابط الباك إند الأساسي (بدون /api/v1) عشان نستخدمه للصور والـ Sockets
 //export const BACKEND_URL = "http://192.168.1.4:3000";
+//export const BACKEND_URL = "http://127.0.0.1:3000";
 //export const BACKEND_URL = "https://goalsmash-api.onrender.com";
 export const BACKEND_URL = "https://mla3balexandria-api.online";
 
@@ -17,9 +18,12 @@ const apiClient = axios.create({
 
 apiClient.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("token") || sessionStorage.getItem("token");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    // 2. تغليف localStorage بشرط التأكد من وجود المتصفح (window) لمنع سقوط الـ SSR
+    if (typeof window !== "undefined") {
+      const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
     }
     return config;
   },

@@ -24,7 +24,6 @@ import { fetchAllVenues } from "@/api/venueApi";
 // @ts-expect-error API has no TypeScript declaration
 import { BACKEND_URL } from "@/api/axiosConfig";
 
-// +++ تعديل الواجهة لدعم الأسعار الصباحية والمسائية +++
 interface CourtType {
   _id: string;
   sportType: string;
@@ -42,6 +41,8 @@ interface VenueType {
   };
   courts?: CourtType[];
   image?: string;
+  ratingsAverage?: number;
+  ratingsQuantity?: number;
 }
 
 const getImageUrl = (imagePath?: string) => {
@@ -119,7 +120,7 @@ function PromoSlider() {
     {
       id: 2,
       title: "كمّل فريقك",
-      subtitle: "ميزة الماتشات",
+      subtitle: "ميزة الشله",
       badge: "قريباً 🚀",
       bg: "bg-emerald-950",
       accent: "text-emerald-400",
@@ -275,14 +276,13 @@ function ExplorePage() {
   const uniqueAreas = Array.from(
     new Set(venues.map((venue) => venue.address?.area).filter(Boolean)),
   ) as string[];
-  // قاموس لترجمة أنواع الرياضات للعربي
+
   const sportTypeLabels: Record<string, string> = {
     padel: "بادل",
     football: "خماسي",
     football_7: "سباعي",
   };
 
-  // استخراج أنواع الرياضات الموجودة في الأندية ديناميكياً بدون تكرار
   const uniqueSports = Array.from(
     new Set(
       venues.flatMap((venue) =>
@@ -291,12 +291,11 @@ function ExplorePage() {
     ),
   ) as string[];
 
-  // تجهيز الفلاتر بناءً على الأنواع المتوفرة
   const dynamicFilters = [
     { id: "all", label: "الكل" },
     ...uniqueSports.map((sport) => ({
       id: sport,
-      label: sportTypeLabels[sport] || sport, // استخدم الترجمة، أو الاسم الإنجليزي لو مش مترجم
+      label: sportTypeLabels[sport] || sport,
     })),
   ];
 
@@ -399,7 +398,6 @@ function ExplorePage() {
             ) : (
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
                 {filteredVenues.map((venue) => {
-                  // +++ حساب أقل سعر للملعب (سواء كان صباحي أو مسائي) +++
                   let minPrice = Infinity;
                   if (venue.courts && venue.courts.length > 0) {
                     venue.courts.forEach((court) => {
@@ -425,8 +423,18 @@ function ExplorePage() {
                         ) : (
                           <div className="absolute inset-0 bg-gradient-to-br from-primary/40 to-emerald-900/60 mix-blend-multiply" />
                         )}
+
+                        {/* +++ تم التعديل: إظهار التقييم دائماً (الافتراضي 4.5) +++ */}
                         <div className="absolute left-3 top-3 flex items-center gap-1 rounded-lg bg-background/90 px-2 py-1 text-xs font-bold backdrop-blur">
-                          <Star className="h-3.5 w-3.5 fill-warning text-warning" /> 4.8
+                          <Star className="h-3.5 w-3.5 fill-warning text-warning" />
+                          <span className="text-foreground">
+                            {(venue.ratingsAverage || 4.5).toFixed(1)}
+                          </span>
+                          {venue.ratingsQuantity ? (
+                            <span className="text-muted-foreground text-[10px] ml-0.5">
+                              ({venue.ratingsQuantity})
+                            </span>
+                          ) : null}
                         </div>
                       </div>
 
@@ -444,7 +452,6 @@ function ExplorePage() {
                           <div>
                             <p className="text-xs font-semibold text-muted-foreground">يبدأ من</p>
                             <p className="font-display text-lg font-bold text-primary">
-                              {/* +++ عرض أقل سعر حقيقي +++ */}
                               {minPrice !== Infinity ? `${minPrice} ج` : "--- ج"}
                               <span className="text-sm font-normal text-muted-foreground">
                                 {" "}

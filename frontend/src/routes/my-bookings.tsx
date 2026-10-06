@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   CalendarDays,
@@ -19,7 +19,9 @@ import {
   Settings,
   XCircle,
   Hourglass,
-  CheckCircle2, // +++ أيقونة الخالص +++
+  CheckCircle2,
+  Star,
+  QrCode,
 } from "lucide-react";
 import { Header } from "@/components/venue/Header";
 import { cn } from "@/lib/utils";
@@ -29,6 +31,8 @@ import { Toaster } from "@/components/ui/sonner";
 import { fetchMyBookings, cancelBooking } from "@/api/bookingApi";
 // @ts-expect-error: paymentApi lacks TypeScript declarations
 import { submitPaymentProof } from "@/api/paymentApi";
+// @ts-expect-error APIs without TS definitions
+import { submitReview, fetchVenueReviews } from "@/api/reviewApi";
 import { MobileSidebar } from "@/components/venue/Sidebar";
 
 export const Route = createFileRoute("/my-bookings")({
@@ -40,6 +44,13 @@ export const Route = createFileRoute("/my-bookings")({
 
 type Tab = "upcoming" | "past";
 
+// +++ إضافة واجهة لتقييمات الملعب العائدة من API لحل خطأ type any +++
+interface FetchedReview {
+  user: {
+    _id: string;
+  };
+}
+
 interface BookingType {
   _id: string;
   startTime: string;
@@ -47,11 +58,210 @@ interface BookingType {
   status: string;
   paymentStatus?: string;
   totalPrice: number;
-  deposit?: number; // +++ إضافة حقل العربون للواجهة +++
-  venue?: { name: string };
+  deposit?: number;
+  venue?: { _id?: string; name: string } | string; // تم التعديل لدعم الـ String ID
   court?: { name: string };
   paymentId?: string;
   actualPaymentStatus?: string;
+}
+
+// =========================================
+// +++ مكون نافذة التقييم (Review Modal) +++
+// =========================================
+function ReviewModal({
+  venueId,
+  venueName,
+  isOpen,
+  onClose,
+  onSuccess,
+}: {
+  venueId: string;
+  venueName: string;
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [rating, setRating] = useState(5);
+  const [reviewText, setReviewText] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    try {
+      await submitReview(venueId, { review: reviewText, rating });
+      toast.success("شكراً لك! تم إضافة تقييمك بنجاح.");
+      onSuccess();
+      onClose();
+    } catch (err) {
+      toast.error(err as string);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm"
+      dir="rtl"
+    >
+      <div className="bg-card w-full max-w-sm rounded-3xl border border-border shadow-2xl p-5 animate-in fade-in zoom-in-95">
+        <div className="flex items-center justify-between border-b border-border pb-3 mb-4">
+          <h3 className="font-bold text-lg text-foreground">قيّم تجربتك في {venueName}</h3>
+          <button
+            onClick={onClose}
+            className="rounded-full p-1 hover:bg-muted text-muted-foreground transition"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="space-y-5">
+          <div className="flex flex-col items-center gap-2">
+            <span className="text-sm font-bold text-muted-foreground">كيف كانت تجربتك؟</span>
+            <div className="flex items-center gap-1" dir="ltr">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  type="button"
+                  onClick={() => setRating(star)}
+                  className="p-1 transition-transform hover:scale-110 focus:outline-none"
+                >
+                  <Star
+                    className={cn(
+                      "size-8 transition-colors",
+                      star <= rating ? "fill-warning text-warning" : "text-muted-foreground/30",
+                    )}
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-bold text-foreground">التعليق (اختياري)</label>
+            <textarea
+              value={reviewText}
+              onChange={(e) => setReviewText(e.target.value)}
+              placeholder="شاركنا رأيك في أرضية الملعب، الإضاءة، والتعامل..."
+              className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm font-medium outline-none focus:border-primary transition min-h-24 resize-none"
+            />
+          </div>
+
+          <button
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition disabled:opacity-50"
+          >
+            {isSubmitting ? "جاري الحفظ..." : "حفظ التقييم"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =========================================
+// +++ مكون تذكرة الحجز (Booking Ticket Modal) +++
+// =========================================
+function BookingTicketModal({
+  booking,
+  isOpen,
+  onClose,
+}: {
+  booking: BookingType | null;
+  isOpen: boolean;
+  onClose: () => void;
+}) {
+  if (!isOpen || !booking) return null;
+
+  const startDate = new Date(booking.startTime);
+  const endDate = new Date(booking.endTime);
+  const dateStr = startDate.toLocaleDateString("ar-EG", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+  const timeStr = startDate.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" });
+
+  const durationMinutes = Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60));
+  let durationText = `${durationMinutes} دقيقة`;
+  if (durationMinutes === 60) durationText = "ساعة";
+  else if (durationMinutes === 90) durationText = "ساعة ونصف";
+  else if (durationMinutes === 120) durationText = "ساعتين";
+
+  const price = booking.totalPrice || 0;
+  const deposit = booking.deposit || price;
+  const remaining = Math.max(price - deposit, 0);
+
+  const venueName = typeof booking.venue === "object" ? booking.venue?.name : "مكان غير محدد";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm"
+      dir="rtl"
+    >
+      <div className="bg-card w-full max-w-sm rounded-3xl border border-border shadow-2xl overflow-hidden animate-in fade-in zoom-in-95">
+        <div className="bg-primary p-5 text-primary-foreground relative text-center">
+          <button
+            onClick={onClose}
+            className="absolute right-4 top-4 p-1 hover:bg-white/20 rounded-full transition"
+          >
+            <X size={18} />
+          </button>
+          <div className="mx-auto bg-white p-3 rounded-xl w-fit mb-3">
+            <QrCode className="size-16 text-primary" />
+          </div>
+          <h3 className="font-bold text-xl">{venueName}</h3>
+          <p className="text-sm opacity-90">{booking.court?.name || "ملعب غير محدد"}</p>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <div className="flex items-center justify-between border-b border-border pb-3">
+            <div className="flex flex-col">
+              <span className="text-xs text-muted-foreground">التاريخ</span>
+              <span className="font-bold">{dateStr}</span>
+            </div>
+            <div className="flex flex-col text-left">
+              <span className="text-xs text-muted-foreground">الوقت</span>
+              <span className="font-bold" dir="ltr">
+                {timeStr}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between border-b border-border pb-3">
+            <div className="flex flex-col">
+              <span className="text-xs text-muted-foreground">المدة</span>
+              <span className="font-bold">{durationText}</span>
+            </div>
+            <div className="flex flex-col text-left">
+              <span className="text-xs text-muted-foreground">حالة الحجز</span>
+              <span className="font-bold text-success">
+                {booking.status === "confirmed" ? "مؤكد" : booking.status}
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-muted p-4 rounded-xl space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">الإجمالي</span>
+              <span className="font-bold">{price} ج.م</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">المدفوع (عربون)</span>
+              <span className="font-bold text-primary">{deposit} ج.م</span>
+            </div>
+            <div className="flex justify-between text-sm pt-2 border-t border-border">
+              <span className="font-bold text-destructive">يُدفع في الملعب</span>
+              <span className="font-bold text-destructive text-lg">{remaining} ج.م</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // =========================================
@@ -413,13 +623,22 @@ function MyBookingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [rawRole, setRawRole] = useState("customer");
+  // +++ إضافة حالة المستخدم الحالي +++
+  const [currentUser, setCurrentUser] = useState<{ _id: string; role: string } | null>(null);
 
   const [uploadModalPaymentId, setUploadModalPaymentId] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [cancelModalBookingId, setCancelModalBookingId] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
 
-  const loadBookings = async () => {
+  // +++ حالات النوافذ المنبثقة للتقييم والتذكرة +++
+  const [ticketBooking, setTicketBooking] = useState<BookingType | null>(null);
+  const [reviewVenueId, setReviewVenueId] = useState<string | null>(null);
+  const [reviewVenueName, setReviewVenueName] = useState<string>("");
+  const [reviewedVenues, setReviewedVenues] = useState<string[]>([]);
+
+  // +++ تم تغليف دالة loadBookings بـ useCallback لحل مشكلة الاعتمادات +++
+  const loadBookings = useCallback(async () => {
     try {
       setLoading(true);
       const data = await fetchMyBookings();
@@ -429,7 +648,7 @@ function MyBookingsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadBookings();
@@ -438,11 +657,51 @@ function MyBookingsPage() {
       try {
         const user = JSON.parse(userData);
         setRawRole(user.role || "customer");
+        // تعيين المستخدم الحالي بمعرف موحد
+        setCurrentUser({ ...user, _id: user._id || user.id });
       } catch (e) {
         console.error(e);
       }
     }
-  }, []);
+  }, [loadBookings]);
+
+  // +++ جلب تقييمات المستخدم الحقيقية من الخادم لإخفاء زر التقييم للملاعب التي قيمها مسبقاً +++
+  useEffect(() => {
+    const fetchUserReviews = async () => {
+      if (!currentUser || bookings.length === 0) return;
+
+      // استخراج معرفات الملاعب الفريدة من حجوزات المستخدم المؤكدة
+      const uniqueVenueIds = Array.from(
+        new Set(
+          bookings
+            .filter((b) => b.status === "confirmed" && b.venue)
+            .map((b) => (typeof b.venue === "object" ? b.venue._id : b.venue) as string),
+        ),
+      );
+
+      const userReviewedVenues: string[] = [];
+
+      // فحص كل ملعب لمعرفة ما إذا كان المستخدم قد قيمه باستخدام الواجهة الصحيحة
+      for (const vId of uniqueVenueIds) {
+        try {
+          if (!vId) continue;
+          const venueReviews = await fetchVenueReviews(vId);
+          const hasReviewed = venueReviews.some(
+            (r: FetchedReview) => r.user._id === currentUser._id,
+          );
+          if (hasReviewed) {
+            userReviewedVenues.push(vId);
+          }
+        } catch (error) {
+          console.error(`خطأ في فحص تقييمات الملعب ${vId}`, error);
+        }
+      }
+
+      setReviewedVenues(userReviewedVenues);
+    };
+
+    fetchUserReviews();
+  }, [currentUser, bookings]);
 
   const handleConfirmCancel = async () => {
     if (!cancelModalBookingId) return;
@@ -456,6 +715,12 @@ function MyBookingsPage() {
       toast.error(err as string);
     } finally {
       setIsCancelling(false);
+    }
+  };
+
+  const handleReviewSuccess = () => {
+    if (reviewVenueId) {
+      setReviewedVenues((prev) => [...prev, reviewVenueId]);
     }
   };
 
@@ -625,15 +890,22 @@ function MyBookingsPage() {
               else if (durationMinutes === 90) durationText = "ساعة ونصف";
               else if (durationMinutes === 120) durationText = "ساعتين";
 
-              // +++ حساب وعرض العربون والمتبقي بشكل واضح للعميل +++
               const price = b.totalPrice || 0;
-              const deposit = b.deposit || price; // إذا لم يوجد حقل عربون للقدامى، اعتبر الإجمالي
+              const deposit = b.deposit || price;
               const remaining = Math.max(price - deposit, 0);
+
+              const venueName = typeof b.venue === "object" ? b.venue?.name : "المكان غير محدد";
+              const venueIdStr = typeof b.venue === "object" ? b.venue?._id : b.venue;
 
               return (
                 <article
                   key={b._id}
-                  className="card-surface flex flex-col gap-3 p-4 transition-all hover:shadow-md sm:flex-row sm:items-center sm:justify-between"
+                  className="card-surface flex flex-col gap-3 p-4 transition-all hover:shadow-md sm:flex-row sm:items-center sm:justify-between cursor-pointer"
+                  onClick={() => {
+                    if (b.status === "confirmed") {
+                      setTicketBooking(b);
+                    }
+                  }}
                 >
                   <div className="flex items-start gap-3">
                     <span className="gradient-primary flex size-12 shrink-0 items-center justify-center rounded-xl text-primary-foreground">
@@ -642,8 +914,7 @@ function MyBookingsPage() {
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-sm font-bold sm:text-base">
-                          {b.venue?.name || "المكان غير محدد"} -{" "}
-                          {b.court?.name || "الملعب غير محدد"}
+                          {venueName} - {b.court?.name || "الملعب غير محدد"}
                         </h2>
                         {getStatusBadge(
                           b.status,
@@ -666,7 +937,6 @@ function MyBookingsPage() {
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3 sm:border-0 sm:pt-0">
-                    {/* +++ التعديل هنا: تفصيل العربون والمتبقي +++ */}
                     <div className="flex flex-col gap-1 items-start sm:items-end">
                       <span className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground line-through opacity-70">
                         إجمالي الحجز: {price} ج.م
@@ -690,14 +960,16 @@ function MyBookingsPage() {
                         </span>
                       )}
                     </div>
-                    {/* +++++++++++++++++++++++++++++++++++++++++++ */}
 
                     <div className="flex items-center gap-2">
                       {b.paymentId &&
                         b.status === "pending_payment" &&
                         b.actualPaymentStatus === "pending" && (
                           <button
-                            onClick={() => setUploadModalPaymentId(b.paymentId!)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setUploadModalPaymentId(b.paymentId!);
+                            }}
                             className="flex items-center gap-1 rounded-xl bg-primary/10 px-3 py-1.5 text-[11px] font-bold text-primary transition hover:bg-primary/20"
                           >
                             <UploadCloud className="size-3.5" /> إرفاق إيصال الدفع
@@ -705,12 +977,32 @@ function MyBookingsPage() {
                         )}
                       {tab === "upcoming" && !isCancelledOrExpired && !isExpired && (
                         <button
-                          onClick={() => setCancelModalBookingId(b._id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCancelModalBookingId(b._id);
+                          }}
                           className="rounded-xl border border-destructive/30 px-3 py-1.5 text-[11px] font-bold text-destructive transition hover:bg-destructive/10"
                         >
                           إلغاء الحجز
                         </button>
                       )}
+
+                      {/* +++ التحقق الصحيح من الملاعب المقيّمة مسبقاً باستخدام الواجهة +++ */}
+                      {tab === "past" &&
+                        b.status === "confirmed" &&
+                        venueIdStr &&
+                        !reviewedVenues.includes(venueIdStr) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setReviewVenueId(venueIdStr);
+                              setReviewVenueName(venueName || "");
+                            }}
+                            className="flex items-center gap-1 rounded-xl bg-warning/10 px-3 py-1.5 text-[11px] font-bold text-warning border border-warning/20 transition hover:bg-warning hover:text-white"
+                          >
+                            <Star className="size-3.5" /> قيّم تجربتك
+                          </button>
+                        )}
                     </div>
                   </div>
                 </article>
@@ -734,6 +1026,21 @@ function MyBookingsPage() {
         onClose={() => setCancelModalBookingId(null)}
         onConfirm={handleConfirmCancel}
       />
+
+      <ReviewModal
+        isOpen={!!reviewVenueId}
+        venueId={reviewVenueId!}
+        venueName={reviewVenueName}
+        onClose={() => setReviewVenueId(null)}
+        onSuccess={handleReviewSuccess}
+      />
+
+      <BookingTicketModal
+        isOpen={!!ticketBooking}
+        booking={ticketBooking}
+        onClose={() => setTicketBooking(null)}
+      />
+
       <Toaster position="top-center" />
     </div>
   );

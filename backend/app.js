@@ -8,6 +8,7 @@ const rateLimit = require("express-rate-limit");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const cookieParser = require("cookie-parser");
+const Sentry = require("@sentry/node");
 
 // utils
 const AppError = require("./utils/appError");
@@ -21,9 +22,11 @@ const dashboardRouter = require("./routes/dashboardRoutes");
 const notificationRouter = require("./routes/notificationRoutes");
 const paymentRouter = require("./routes/paymentRoutes");
 const adminRouter = require("./routes/adminRoutes");
+const reviewRoutes = require("./routes/reviewRoutes");
 
 const app = express();
 
+// مهم: خليها 1 بس لو فيه Nginx/Cloudflare قدام Node.
 app.set("trust proxy", 1);
 
 // Security Middlewares
@@ -33,14 +36,19 @@ app.use(
   }),
 );
 
-// 2. CORS Configuration for Web and Mobile (Capacitor)
+// CORS for Web and Mobile (Capacitor)
+// قايمة واحدة بتتشارك مع socket.io في server.js
+const allowedOrigins = [
+  process.env.FRONTEND_URL?.replace(/\/$/, ""),
+  "http://localhost:8081",
+  "http://localhost",
+  "https://localhost", // Capacitor الحديث على أندرويد
+  "capacitor://localhost",
+].filter(Boolean);
+app.set("allowedOrigins", allowedOrigins);
+
 const corsOptions = {
-  origin: [
-    process.env.FRONTEND_URL,
-    "http://localhost:8081",
-    "http://localhost",
-    "capacitor://localhost",
-  ],
+  origin: allowedOrigins,
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
@@ -49,19 +57,46 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
 
+// ---------- Rate limiting ----------
+const limitMessage = (message) => ({ status: "fail", message });
+
+// عام: أوسع شوية عشان شبكات الموبايل بتشارك IP بين ناس كتير
 const limiter = rateLimit({
-  max: 1000,
-  windowMs: 60 * 60 * 1000,
-  message: "Too many requests from this IP, please try again in an hour!",
+  max: 500,
+  windowMs: 15 * 60 * 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: limitMessage("طلبات كثيرة جداً، يرجى المحاولة بعد قليل"),
 });
 app.use("/api", limiter);
 
+// تسجيل الدخول: بنعدّ المحاولات الفاشلة بس، عشان الناجحين مايتقفلوش على بعض
 const loginLimiter = rateLimit({
   max: 10,
   windowMs: 15 * 60 * 1000,
-  message: "محاولات تسجيل دخول كثيرة جداً، يرجى المحاولة بعد 15 دقيقة",
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: limitMessage(
+    "محاولات تسجيل دخول كثيرة جداً، يرجى المحاولة بعد 15 دقيقة",
+  ),
 });
 app.use("/api/v1/users/login", loginLimiter);
+
+// التسجيل / OTP / نسيت الباسورد / إعادة التعيين: بيبعتوا إيميلات وبيتخمّن فيهم
+// بنطابق على اسم المسار عشان يشتغل مهما كانت تسمية الـ routes عندك
+const sensitiveLimiter = rateLimit({
+  max: 20,
+  windowMs: 15 * 60 * 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: limitMessage("محاولات كثيرة جداً، يرجى المحاولة بعد 15 دقيقة"),
+});
+const sensitivePath =
+  /(signup|register|otp|verify|forget|forgot|reset|resend)/i;
+app.use("/api/v1/users", (req, res, next) =>
+  sensitivePath.test(req.path) ? sensitiveLimiter(req, res, next) : next(),
+);
 
 // Dev Logging
 if (process.env.NODE_ENV === "development") {
@@ -88,7 +123,7 @@ app.use(
 // Body Parser
 app.use(express.json({ limit: "10kb" }));
 
-//app.use(mongoSanitize());
+// NoSQL injection sanitization (متوافق مع Express 5؛ لا تستخدم app.use(mongoSanitize()) العادية)
 app.use((req, res, next) => {
   if (req.body) mongoSanitize.sanitize(req.body, { replaceWith: "_" });
   if (req.params) mongoSanitize.sanitize(req.params, { replaceWith: "_" });
@@ -101,7 +136,7 @@ app.use(hpp());
 // cookie parser
 app.use(cookieParser(process.env.JWT_COOKIE_SECRET));
 
-// Static files
+// Static files (تأكد إن مفيش أي ملف حساس جوه فولدر public)
 app.use(express.static(path.join(__dirname, "public")));
 
 // Routes
@@ -117,6 +152,7 @@ app.use("/api/v1/dashboard", dashboardRouter);
 app.use("/api/v1/notifications", notificationRouter);
 app.use("/api/v1/payments", paymentRouter);
 app.use("/api/v1/admin", adminRouter);
+app.use("/api/v1/review", reviewRoutes);
 
 // Undefined Routes
 app.all(/(.*)/, (req, res, next) => {

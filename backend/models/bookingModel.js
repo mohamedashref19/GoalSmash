@@ -71,7 +71,9 @@ const bookingSchema = new mongoose.Schema(
     },
     paymentStatus: {
       type: String,
-      enum: ["unpaid", "partial", "paid"],
+      // pending_verification: بيتحط من paymentController لما العميل يرفع إثبات الدفع.
+      // من غيره أي booking.save() بعدها (إلغاء/تعديل) بيفشل بـ ValidationError
+      enum: ["unpaid", "partial", "paid", "pending_verification"],
       default: "unpaid",
     },
     paymentMethod: {
@@ -101,6 +103,10 @@ bookingSchema.index({
   endTime: 1,
   status: 1,
 });
+
+// حجوزات العميل ولوحات الملاك (بدونها كل قائمة بتعمل scan للكولكشن كله)
+bookingSchema.index({ user: 1, status: 1, createdAt: -1 });
+bookingSchema.index({ venue: 1, startTime: 1 });
 
 bookingSchema.pre(/^find/, function () {
   this.populate({

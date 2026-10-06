@@ -10,6 +10,7 @@ import { PaymentsView } from "@/components/venue/PaymentsView";
 import { FinancialReportsView } from "@/components/venue/FinancialReportsView";
 import { SettingsView } from "@/components/venue/SettingsView";
 import { QuickBookingModal, type BookingFormData } from "@/components/venue/QuickBookingModal";
+import { ReviewsView } from "@/components/venue/ReviewsView";
 import {
   MapPin,
   LayoutDashboard,
@@ -18,7 +19,8 @@ import {
   Wallet,
   FileText,
   Loader2,
-} from "lucide-react"; // +++ إضافة Loader2
+  Star,
+} from "lucide-react";
 
 // @ts-expect-error: API lacks TypeScript definitions
 import { fetchAllVenues } from "@/api/venueApi";
@@ -35,12 +37,15 @@ const titles: Record<ViewKey, string> = {
   schedule: "الجدول",
   payments: "المدفوعات",
   reports: "التقارير",
+  reviews: "تقييمات العملاء",
   settings: "الإعدادات",
 };
 
+// +++ إضافة حقل owner للواجهة لمعرفة مالك الملعب +++
 interface VenueData {
   _id: string;
   name: string;
+  owner?: string | { _id: string };
 }
 
 const localNavItems = [
@@ -48,15 +53,14 @@ const localNavItems = [
   { key: "schedule" as ViewKey, label: "الجدول", icon: CalendarDays },
   { key: "payments" as ViewKey, label: "المدفوعات", icon: Wallet },
   { key: "reports" as ViewKey, label: "التقارير", icon: FileText },
+  { key: "reviews" as ViewKey, label: "التقييمات", icon: Star },
   { key: "settings" as ViewKey, label: "الإعدادات", icon: Settings },
 ];
 
 function Dashboard() {
   const [activeView, setActiveView] = useState<ViewKey>("overview");
-  // +++ إضافة حالة التحقق من تسجيل الدخول لمنع الجلتش +++
   const [isAuthChecking, setIsAuthChecking] = useState(true);
 
-  // +++ قراءة التاب المحفوظ بعد تحميل الصفحة لتجنب خطأ الخادم (Hydration Error) +++
   useEffect(() => {
     if (typeof window !== "undefined") {
       const savedTab = localStorage.getItem("ownerActiveTab") as ViewKey;
@@ -76,7 +80,6 @@ function Dashboard() {
   useEffect(() => {
     const userData = localStorage.getItem("userData") || sessionStorage.getItem("userData");
 
-    // +++ التوجيه الفوري لمنع الجلتش في حالة عدم وجود بيانات +++
     if (!userData) {
       window.location.replace("/login");
       return;
@@ -84,6 +87,9 @@ function Dashboard() {
 
     try {
       const user = JSON.parse(userData);
+      // توحيد معرف المستخدم الحالي
+      const currentUserId = user._id || user.id;
+
       if (user.role === "admin") {
         window.location.replace("/admin-dashboard");
         return;
@@ -91,19 +97,26 @@ function Dashboard() {
         window.location.replace("/explore");
         return;
       } else {
-        // +++ جلب بيانات المالك فقط لو هو فعلاً المالك +++
         fetchAllVenues()
           .then((data: VenueData[]) => {
             if (data) {
-              setVenues(data);
-              if (data.length > 0 && data[0]?._id) {
-                setSelectedVenueId(data[0]._id);
+              // +++ الفلترة: عرض الملاعب التي يمتلكها المستخدم الحالي فقط +++
+              const myVenues = data.filter((v) => {
+                const ownerId =
+                  typeof v.owner === "object" && v.owner !== null ? v.owner._id : v.owner;
+                return ownerId === currentUserId;
+              });
+
+              setVenues(myVenues);
+
+              if (myVenues.length > 0 && myVenues[0]?._id) {
+                setSelectedVenueId(myVenues[0]._id);
               }
             }
-            setIsAuthChecking(false); // +++ إنهاء شاشة التحميل بعد جلب البيانات +++
+            setIsAuthChecking(false);
           })
           .catch(() => {
-            setIsAuthChecking(false); // +++ إنهاء التحميل حتى في حالة الخطأ +++
+            setIsAuthChecking(false);
           });
       }
     } catch (e) {
@@ -113,7 +126,7 @@ function Dashboard() {
 
   const navigate = (view: ViewKey) => {
     setActiveView(view);
-    localStorage.setItem("ownerActiveTab", view); // تحديث التاب المحفوظ باستمرار
+    localStorage.setItem("ownerActiveTab", view);
     setIsMobileMenuOpen(false);
   };
 
@@ -121,20 +134,18 @@ function Dashboard() {
     setIsBookingModalOpen(false);
   };
 
-  // +++ عرض شاشة تحميل أثناء التحقق من الصلاحيات (دي اللي بتمنع الجلتش) +++
   if (isAuthChecking) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4 text-primary">
           <Loader2 className="h-10 w-10 animate-spin" />
-          <p className="text-sm font-bold animate-pulse">جاري التحمبل...</p>
+          <p className="text-sm font-bold animate-pulse">جاري التحميل...</p>
         </div>
       </div>
     );
   }
 
   return (
-    // +++ التعديل الأول: h-screen بدلاً من min-h-screen لضبط حجم الشاشة ومنع التمرير الخارجي +++
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
       <MobileSidebar
         open={isMobileMenuOpen}
@@ -144,11 +155,11 @@ function Dashboard() {
         onClose={() => setIsMobileMenuOpen(false)}
       />
 
-      {/* +++ التعديل الثاني: إضافة overflow-y-auto هنا عشان المحتوى هو بس اللي يعمل Scroll +++ */}
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
         <Header title={titles[activeView]} onMenu={() => setIsMobileMenuOpen(true)} />
 
-        {venues.length > 0 && (
+        {/* عرض القائمة المنسدلة فقط إذا كان يمتلك ملاعب */}
+        {venues.length > 0 ? (
           <div className="px-4 pt-4 sm:px-6">
             <div className="flex w-full items-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5 shadow-sm sm:w-72">
               <MapPin className="h-4 w-4 shrink-0 text-primary" />
@@ -165,10 +176,16 @@ function Dashboard() {
               </select>
             </div>
           </div>
+        ) : (
+          <div className="px-4 pt-4 sm:px-6">
+            <div className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm font-bold text-warning">
+              لا توجد ملاعب مسجلة باسمك حتى الآن.
+            </div>
+          </div>
         )}
 
         <main className="min-w-0 flex-1 p-4 sm:p-6">
-          <nav className="mb-4 flex gap-2 overflow-x-auto lg:hidden">
+          <nav className="mb-4 flex gap-2 overflow-x-auto lg:hidden scrollbar-hide">
             {localNavItems.map(({ key, label }) => (
               <button
                 key={key}
@@ -199,6 +216,7 @@ function Dashboard() {
           {activeView === "reports" && selectedVenueId && (
             <FinancialReportsView venueId={selectedVenueId} />
           )}
+          {activeView === "reviews" && selectedVenueId && <ReviewsView venueId={selectedVenueId} />}
           {activeView === "settings" && selectedVenueId && (
             <SettingsView venueId={selectedVenueId} />
           )}

@@ -4,9 +4,11 @@ const config: CapacitorConfig = {
   appId: "com.tigihagz.app",
   appName: "Tigi Hagz",
   webDir: ".output/public",
+  // إنتاج: HTTPS فقط. cleartext + scheme "http" كانوا للتطوير على الشبكة المحلية،
+  // وبيسمحوا بنقل التوكن بدون تشفير. ملحوظة: تغيير الـ scheme بيغيّر origin الـ WebView
+  // (https://localhost) فالمستخدمين الحاليين هيسجلوا دخول مرة واحدة.
   server: {
-    cleartext: true,
-    androidScheme: "http",
+    androidScheme: "https",
   },
   plugins: {
     SplashScreen: {

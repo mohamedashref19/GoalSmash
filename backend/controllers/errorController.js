@@ -10,7 +10,8 @@ const handleErrorCastDB = (err) => {
 };
 
 const handleDuplicateDB = (err) => {
-  const field = Object.keys(err.keyValue)[0];
+  // keyValue ممكن تكون ناقصة في بعض الإصدارات: بدون الحماية دي الـ handler نفسه بيقع
+  const field = Object.keys(err.keyValue || {})[0];
   let message = "البيانات المدخلة مسجلة مسبقاً، يرجى استخدام قيمة أخرى.";
 
   if (field === "email") {
@@ -35,6 +36,21 @@ const handleJWTError = () =>
 
 const handleExpiredError = () =>
   new AppError("انتهت صلاحية الجلسة! يرجى تسجيل الدخول مرة أخرى.", 401);
+
+// أخطاء رفع الملفات (حجم كبير، حقول زيادة...) كانت بتطلع 500
+const handleMulterError = (err) => {
+  const message =
+    err.code === "LIMIT_FILE_SIZE"
+      ? "حجم الصورة كبير جداً (الحد الأقصى 5 ميجا)"
+      : "تعذر رفع الملف، تأكد من الصورة وحاول مرة أخرى";
+  return new AppError(message, 400);
+};
+
+// JSON مكسور أو body كبير: ده خطأ من العميل (4xx) مش خطأ سيرفر
+const handleBodyParserError = (err) =>
+  err.type === "entity.too.large"
+    ? new AppError("حجم البيانات المرسلة كبير جداً", 413)
+    : new AppError("البيانات المرسلة غير صالحة", 400);
 
 const sendErrDev = (err, req, res) => {
   return res.status(err.statusCode).json({
@@ -62,23 +78,36 @@ const sendErrProd = (err, req, res) => {
 };
 
 module.exports = (err, req, res, next) => {
+  // لو الرد اتبعت خلاص (زي forgetPassword)، نسيب Express يقفل الاتصال
+  if (res.headersSent) return next(err);
+
   err.statusCode = err.statusCode || 500;
   err.status = err.status || "error";
 
-  let error = Object.assign(err);
-  error.message = err.message;
-  error.name = err.name;
+  let error = err;
 
   if (error.name === "CastError") error = handleErrorCastDB(error);
   if (error.code === 11000) error = handleDuplicateDB(error);
   if (error.name === "ValidationError") error = handleValidatorErrorDB(error);
   if (error.name === "JsonWebTokenError") error = handleJWTError();
   if (error.name === "TokenExpiredError") error = handleExpiredError();
-  Sentry.captureException(err);
+  if (error.name === "MulterError") error = handleMulterError(error);
+  if (
+    error.type === "entity.parse.failed" ||
+    error.type === "entity.too.large"
+  ) {
+    error = handleBodyParserError(error);
+  }
 
-  const env = process.env.NODE_ENV
-    ? process.env.NODE_ENV.trim()
-    : "development";
+  // Sentry: أخطاء السيرفر والأخطاء غير المتوقعة بس.
+  // أخطاء العميل المتوقعة (401/404/validation) كانت بتملا الـ quota وتخفي الأخطاء الحقيقية.
+  if (!error.isOperational || error.statusCode >= 500) {
+    Sentry.captureException(err);
+  }
+
+  // لو NODE_ENV مش متضبط نفترض production (الافتراضي القديم "development" كان
+  // بيكشف stack trace وتفاصيل الداتابيز للمستخدمين لو نسيت تضبطه على السيرفر)
+  const env = process.env.NODE_ENV ? process.env.NODE_ENV.trim() : "production";
 
   if (env === "development") {
     sendErrDev(error, req, res);
