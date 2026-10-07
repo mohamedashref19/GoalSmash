@@ -90,7 +90,7 @@ export function PaymentModal({
     onCloseRef.current = onClose;
   }, [onSuccess, onClose]);
 
-  // +++ التعديل الحاسم: ضبط السوكيت ليستمع لحدث التأكيد ويغلق الشاشة فوراً +++
+  // +++ التعديل الحاسم: ضبط السوكيت ليستمع لحدث التأكيد ويغلق الشاشة فوراً مع استخدام Polling +++
   useEffect(() => {
     if (!open) return;
 
@@ -104,7 +104,8 @@ export function PaymentModal({
       if (!userId) return;
 
       const socket = io(SOCKET_URL, {
-        transports: ["websocket", "polling"],
+        // تم إجبار السوكيت هنا على استخدام polling لتخطي مشكلة حظر Nginx لبروتوكول websocket
+        transports: ["polling"],
         withCredentials: true,
       });
 
