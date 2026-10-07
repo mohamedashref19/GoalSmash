@@ -90,30 +90,42 @@ export function PaymentModal({
     onCloseRef.current = onClose;
   }, [onSuccess, onClose]);
 
-  // 3. اتصال السوكت النظيف (بدون console.log)
+  // +++ التعديل الحاسم: ضبط السوكيت ليستمع لحدث التأكيد ويغلق الشاشة فوراً +++
   useEffect(() => {
     if (!open) return;
 
     const userDataStr = localStorage.getItem("userData") || sessionStorage.getItem("userData");
     if (!userDataStr) return;
 
-    const user = JSON.parse(userDataStr);
-    const userId = user._id || user.id;
+    try {
+      const user = JSON.parse(userDataStr);
+      const userId = user._id || user.id;
 
-    const socket = io(SOCKET_URL, {
-      transports: ["websocket", "polling"],
-      withCredentials: true,
-    });
+      if (!userId) return;
 
-    socket.on(`booking-confirmed-${userId}`, () => {
-      toast.success("تم تأكيد دفعك وحجزك بنجاح! 🎉");
-      onSuccessRef.current();
-      onCloseRef.current();
-    });
+      const socket = io(SOCKET_URL, {
+        transports: ["websocket", "polling"],
+        withCredentials: true,
+      });
 
-    return () => {
-      socket.disconnect();
-    };
+      const eventName = `booking-confirmed-${userId}`;
+
+      // الاستماع لحدث التأكيد
+      socket.on(eventName, () => {
+        toast.success("تم تأكيد دفعك وحجزك بنجاح! 🎉");
+        // استدعاء الدوال لإغلاق الشاشة وإعادة التوجيه
+        if (onSuccessRef.current) onSuccessRef.current();
+        if (onCloseRef.current) onCloseRef.current();
+      });
+
+      return () => {
+        socket.off(eventName);
+        socket.disconnect();
+      };
+    } catch (e) {
+      console.error("خطأ في قراءة بيانات المستخدم للسوكت", e);
+      return undefined;
+    }
   }, [open]);
 
   const handleCopy = (text: string) => {

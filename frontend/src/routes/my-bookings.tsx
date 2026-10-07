@@ -726,12 +726,26 @@ function MyBookingsPage() {
 
   const filteredBookings = useMemo(() => {
     const now = new Date();
-    return bookings.filter((b) => {
+    const filtered = bookings.filter((b) => {
       if (!b || !b.endTime) return false;
       const isCancelledOrExpired =
         b.status === "cancelled" || b.status === "expired" || b.paymentStatus === "expired";
       const isUpcoming = new Date(b.endTime) >= now && !isCancelledOrExpired;
       return tab === "upcoming" ? isUpcoming : !isUpcoming;
+    });
+
+    // +++ ترتيب الحجوزات بناءً على التبويب +++
+    return filtered.sort((a, b) => {
+      const dateA = new Date(a.startTime).getTime();
+      const dateB = new Date(b.startTime).getTime();
+
+      if (tab === "upcoming") {
+        // القادمة: من الأقرب إلى الأبعد (تصاعدي)
+        return dateA - dateB;
+      } else {
+        // السابقة: من الأحدث إلى الأقدم (تنازلي)
+        return dateB - dateA;
+      }
     });
   }, [bookings, tab]);
 

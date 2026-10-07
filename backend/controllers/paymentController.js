@@ -249,21 +249,25 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
             ? updatedBooking.user._id.toString()
             : updatedBooking.user.toString();
 
-        const customerMsg = `تم تأكيد الدفع آلياً لحجزك في ${updatedBooking.venue.name} يوم ${bDate} الساعة ${bTime}.`;
+        // +++ تم التعديل: إزالة كلمة 'آلياً' لتوحيد الرسالة وتجنب كشف طريقة المعالجة +++
+        const customerMsg = `تم تأكيد الدفع وتأكيد حجزك في ${updatedBooking.venue.name} يوم ${bDate} الساعة ${bTime}.`;
         const customerNotif = await Notification.create({
-          recipient: userId, // استخدام المتغير المستخرج
+          recipient: userId,
           title: "تم تأكيد الدفع بنجاح ✅",
           message: customerMsg,
           type: "booking",
           relatedId: updatedBooking._id,
         });
-        io.emit(`notification-${userId}`, customerNotif); // استخدام المتغير المستخرج
+
+        io.emit(`notification-${userId}`, customerNotif);
+
+        // +++ هذا هو سطر إغلاق الشاشة الآلي +++
         io.emit(`booking-confirmed-${userId}`, {
-          // استخدام المتغير المستخرج
           booking: updatedBooking,
           paymentStatus: "paid",
           status: "confirmed",
         });
+        // +++++++++++++++++++++++++++++++++++++++
       }
 
       // إشعار المالك
@@ -598,7 +602,6 @@ exports.manuallyVerifyPayment = catchAsync(async (req, res, next) => {
       );
 
       // إشعار للعميل
-      // إشعار للعميل
       if (updatedBooking.user) {
         // +++ ضمان استخراج معرف المستخدم كنص صحيح +++
         const userId =
@@ -608,18 +611,22 @@ exports.manuallyVerifyPayment = catchAsync(async (req, res, next) => {
 
         const customerMsg = `تم تأكيد الدفع وتأكيد حجزك في ${updatedBooking.venue.name} يوم ${bDate} الساعة ${bTime}.`;
         const customerNotif = await Notification.create({
-          recipient: userId, // استخدام المتغير المستخرج
+          recipient: userId,
           title: "تم تأكيد الدفع ✅",
           message: customerMsg,
           type: "booking",
           relatedId: updatedBooking._id,
         });
+
         io.emit(`notification-${userId}`, customerNotif);
+
+        // +++ هذا هو سطر إغلاق الشاشة الآلي +++
         io.emit(`booking-confirmed-${userId}`, {
           booking: updatedBooking,
           paymentStatus: "paid",
           status: "confirmed",
         });
+        // +++++++++++++++++++++++++++++++++++++++
       }
 
       // +++ إضافة: إشعار لصاحب الملعب (لو شخص آخر غير اللي داس على الزرار هو اللي أكد) +++
