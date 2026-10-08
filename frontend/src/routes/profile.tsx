@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   Trash2, // +++ أيقونة الحذف +++
   ShieldAlert, // +++ أيقونة الحماية +++
+  FileLock2, // +++ أيقونة سياسة الخصوصية +++
 } from "lucide-react";
 import { Header } from "@/components/venue/Header";
 import { Toaster } from "@/components/ui/sonner";
@@ -505,30 +506,40 @@ function ProfilePage() {
           </div>
         </div>
 
-        {/* +++ قسم إدارة الحساب (تسجيل خروج / حذف) +++ */}
-        <div className="card-surface p-5 sm:p-6 space-y-4 border border-destructive/20">
-          <h3 className="flex items-center gap-2 font-display text-base font-extrabold text-destructive">
-            <ShieldAlert className="h-5 w-5" /> إدارة الحساب
+        {/* +++ قسم إدارة الحساب (تسجيل خروج / حذف / سياسة الخصوصية) +++ */}
+        <div className="card-surface p-5 sm:p-6 space-y-4 border border-border/50">
+          <h3 className="flex items-center gap-2 font-display text-base font-extrabold text-foreground">
+            <ShieldAlert className="h-5 w-5 text-primary" /> إدارة الحساب
           </h3>
           <p className="text-xs text-muted-foreground mb-1">
-            يمكنك تسجيل الخروج من جهازك الحالي، أو حذف حسابك نهائياً من النظام.
+            إعدادات الأمان الخاصة بحسابك وسياسات الاستخدام.
           </p>
-          <div className="flex flex-col sm:flex-row gap-3 mt-4">
-            <button
-              onClick={() => {
-                logoutUser();
-                navigate({ to: "/login" });
-              }}
-              className="flex-1 flex items-center justify-center gap-2 bg-muted text-foreground hover:bg-muted/80 py-2.5 rounded-xl text-sm font-bold transition"
+          <div className="flex flex-col gap-3 mt-4">
+            {/* +++ زر سياسة الخصوصية +++ */}
+            <Link
+              to="/privacy-policy"
+              className="flex items-center gap-3 bg-muted/50 text-foreground hover:bg-muted py-3 px-4 rounded-xl text-sm font-bold transition border border-border"
             >
-              <LogOut className="size-4" /> تسجيل الخروج
-            </button>
-            <button
-              onClick={() => setShowDeleteModal(true)}
-              className="flex-1 flex items-center justify-center gap-2 bg-destructive/10 border border-destructive/20 text-destructive hover:bg-destructive/20 py-2.5 rounded-xl text-sm font-bold transition"
-            >
-              <Trash2 className="size-4" /> حذف الحساب نهائياً
-            </button>
+              <FileLock2 className="size-4 text-primary" /> سياسة الخصوصية
+            </Link>
+
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              <button
+                onClick={() => {
+                  logoutUser();
+                  navigate({ to: "/login" });
+                }}
+                className="flex-1 flex items-center justify-center gap-2 bg-muted text-foreground hover:bg-muted/80 py-2.5 rounded-xl text-sm font-bold transition"
+              >
+                <LogOut className="size-4" /> تسجيل الخروج
+              </button>
+              <button
+                onClick={() => setShowDeleteModal(true)}
+                className="flex-1 flex items-center justify-center gap-2 bg-destructive/10 border border-destructive/20 text-destructive hover:bg-destructive/20 py-2.5 rounded-xl text-sm font-bold transition"
+              >
+                <Trash2 className="size-4" /> حذف الحساب نهائياً
+              </button>
+            </div>
           </div>
         </div>
       </main>

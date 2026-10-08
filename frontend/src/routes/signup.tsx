@@ -215,10 +215,19 @@ function SignUpPage() {
               )}
             </label>
 
+            {/* +++ نص الموافقة على سياسة الخصوصية +++ */}
+            <p className="text-[11px] text-center text-muted-foreground mt-2 leading-relaxed">
+              بالضغط على "إنشاء الحساب"، فإنك توافق على{" "}
+              <Link to="/privacy-policy" className="font-bold text-primary hover:underline">
+                سياسة الخصوصية
+              </Link>{" "}
+              الخاصة بنا.
+            </p>
+
             <button
               type="submit"
               disabled={loading}
-              className="gradient-primary mt-1 flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+              className="gradient-primary flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
             >
               {loading ? "جارٍ الإنشاء..." : "إنشاء الحساب"}
             </button>
