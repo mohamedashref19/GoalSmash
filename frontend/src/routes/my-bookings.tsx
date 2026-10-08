@@ -44,7 +44,6 @@ export const Route = createFileRoute("/my-bookings")({
 
 type Tab = "upcoming" | "past";
 
-// +++ إضافة واجهة لتقييمات الملعب العائدة من API لحل خطأ type any +++
 interface FetchedReview {
   user: {
     _id: string;
@@ -59,15 +58,12 @@ interface BookingType {
   paymentStatus?: string;
   totalPrice: number;
   deposit?: number;
-  venue?: { _id?: string; name: string } | string; // تم التعديل لدعم الـ String ID
+  venue?: { _id?: string; name: string } | string;
   court?: { name: string };
   paymentId?: string;
   actualPaymentStatus?: string;
 }
 
-// =========================================
-// +++ مكون نافذة التقييم (Review Modal) +++
-// =========================================
 function ReviewModal({
   venueId,
   venueName,
@@ -162,9 +158,6 @@ function ReviewModal({
   );
 }
 
-// =========================================
-// +++ مكون تذكرة الحجز (Booking Ticket Modal) +++
-// =========================================
 function BookingTicketModal({
   booking,
   isOpen,
@@ -264,9 +257,6 @@ function BookingTicketModal({
   );
 }
 
-// =========================================
-// +++ مكون قائمة الإدارة المركزية (Admins) +++
-// =========================================
 function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate();
   return (
@@ -359,9 +349,6 @@ function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void
   );
 }
 
-// =========================================
-// +++ مكون قائمة العميل (Customers) +++
-// =========================================
 function CustomerMobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate();
   return (
@@ -623,7 +610,6 @@ function MyBookingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [rawRole, setRawRole] = useState("customer");
-  // +++ إضافة حالة المستخدم الحالي +++
   const [currentUser, setCurrentUser] = useState<{ _id: string; role: string } | null>(null);
 
   const [uploadModalPaymentId, setUploadModalPaymentId] = useState<string | null>(null);
@@ -631,13 +617,11 @@ function MyBookingsPage() {
   const [cancelModalBookingId, setCancelModalBookingId] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
 
-  // +++ حالات النوافذ المنبثقة للتقييم والتذكرة +++
   const [ticketBooking, setTicketBooking] = useState<BookingType | null>(null);
   const [reviewVenueId, setReviewVenueId] = useState<string | null>(null);
   const [reviewVenueName, setReviewVenueName] = useState<string>("");
   const [reviewedVenues, setReviewedVenues] = useState<string[]>([]);
 
-  // +++ تم تغليف دالة loadBookings بـ useCallback لحل مشكلة الاعتمادات +++
   const loadBookings = useCallback(async () => {
     try {
       setLoading(true);
@@ -657,7 +641,6 @@ function MyBookingsPage() {
       try {
         const user = JSON.parse(userData);
         setRawRole(user.role || "customer");
-        // تعيين المستخدم الحالي بمعرف موحد
         setCurrentUser({ ...user, _id: user._id || user.id });
       } catch (e) {
         console.error(e);
@@ -665,12 +648,10 @@ function MyBookingsPage() {
     }
   }, [loadBookings]);
 
-  // +++ جلب تقييمات المستخدم الحقيقية من الخادم لإخفاء زر التقييم للملاعب التي قيمها مسبقاً +++
   useEffect(() => {
     const fetchUserReviews = async () => {
       if (!currentUser || bookings.length === 0) return;
 
-      // استخراج معرفات الملاعب الفريدة من حجوزات المستخدم المؤكدة
       const uniqueVenueIds = Array.from(
         new Set(
           bookings
@@ -681,7 +662,6 @@ function MyBookingsPage() {
 
       const userReviewedVenues: string[] = [];
 
-      // فحص كل ملعب لمعرفة ما إذا كان المستخدم قد قيمه باستخدام الواجهة الصحيحة
       for (const vId of uniqueVenueIds) {
         try {
           if (!vId) continue;
@@ -734,16 +714,13 @@ function MyBookingsPage() {
       return tab === "upcoming" ? isUpcoming : !isUpcoming;
     });
 
-    // +++ ترتيب الحجوزات بناءً على التبويب +++
     return filtered.sort((a, b) => {
       const dateA = new Date(a.startTime).getTime();
       const dateB = new Date(b.startTime).getTime();
 
       if (tab === "upcoming") {
-        // القادمة: من الأقرب إلى الأبعد (تصاعدي)
         return dateA - dateB;
       } else {
-        // السابقة: من الأحدث إلى الأقدم (تنازلي)
         return dateB - dateA;
       }
     });
@@ -951,17 +928,32 @@ function MyBookingsPage() {
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3 sm:border-0 sm:pt-0">
+                    {/* +++ التعديل هنا: تفصيل العربون والمتبقي بناءً على حالة الحجز +++ */}
                     <div className="flex flex-col gap-1 items-start sm:items-end">
                       <span className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground line-through opacity-70">
                         إجمالي الحجز: {price} ج.م
                       </span>
 
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-bold text-muted-foreground bg-muted border border-border px-2 py-0.5 rounded-md">
-                          المدفوع {remaining > 0 ? "(عربون)" : "(كامل)"}
+                      {/* إظهار العربون فقط إذا لم يكن الحجز منتهياً بسبب الوقت، أو إذا كان الحجز الملغي قد دُفع بالفعل */}
+                      {b.status !== "expired" &&
+                        b.paymentStatus !== "expired" &&
+                        b.actualPaymentStatus !== "expired" && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-bold text-muted-foreground bg-muted border border-border px-2 py-0.5 rounded-md">
+                              المدفوع {remaining > 0 ? "(عربون)" : "(كامل)"}
+                            </span>
+                            <span className="text-sm font-black text-primary">{deposit} ج.م</span>
+                          </div>
+                        )}
+
+                      {/* إظهار رسالة واضحة للحجوزات التي انتهى وقتها دون دفع */}
+                      {(b.status === "expired" ||
+                        b.paymentStatus === "expired" ||
+                        b.actualPaymentStatus === "expired") && (
+                        <span className="text-[10px] font-bold text-destructive bg-destructive/10 border border-destructive/20 px-2 py-0.5 rounded-md mt-1">
+                          لم يتم الدفع
                         </span>
-                        <span className="text-sm font-black text-primary">{deposit} ج.م</span>
-                      </div>
+                      )}
 
                       {!isCancelledOrExpired && remaining > 0 && (
                         <span className="text-[10px] font-bold text-destructive flex items-center gap-1 bg-destructive/10 px-2 py-0.5 rounded-sm border border-destructive/20 mt-1">
@@ -974,6 +966,7 @@ function MyBookingsPage() {
                         </span>
                       )}
                     </div>
+                    {/* +++++++++++++++++++++++++++++++++++++++++++ */}
 
                     <div className="flex items-center gap-2">
                       {b.paymentId &&
@@ -1001,7 +994,6 @@ function MyBookingsPage() {
                         </button>
                       )}
 
-                      {/* +++ التحقق الصحيح من الملاعب المقيّمة مسبقاً باستخدام الواجهة +++ */}
                       {tab === "past" &&
                         b.status === "confirmed" &&
                         venueIdStr &&
