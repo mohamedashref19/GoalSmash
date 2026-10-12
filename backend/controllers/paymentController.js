@@ -350,7 +350,26 @@ exports.getAllPayments = catchAsync(async (req, res, next) => {
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(req.query.date);
     endOfDay.setHours(23, 59, 59, 999);
-    filter.createdAt = { $gte: startOfDay, $lte: endOfDay };
+
+    // 1. نبحث عن كل عمليات الدفع اللي تمت في اليوم ده عشان نجمع أرقام حجوزاتها
+    const paymentsInDate = await Payment.find({
+      createdAt: { $gte: startOfDay, $lte: endOfDay },
+    }).select("booking");
+
+    // 2. نستخرج الـ IDs الخاصة بالحجوزات دي
+    const bookingIds = paymentsInDate.map((p) => p.booking).filter(Boolean);
+
+    if (bookingIds.length > 0) {
+      // 3. لو في حجوزات، نرجع "كل" الدفعات الخاصة بيها (العربون القديم + الكاش الجديد)
+      // أو نرجع الدفعات المستقلة اللي تمت النهاردة
+      filter.$or = [
+        { booking: { $in: bookingIds } },
+        { createdAt: { $gte: startOfDay, $lte: endOfDay } },
+      ];
+    } else {
+      // لو مفيش أي حركة تمت، بنفلتر باليوم عادي عشان الداتا ترجع فاضية
+      filter.createdAt = { $gte: startOfDay, $lte: endOfDay };
+    }
   }
 
   // +++ التعديل الهندسي: فلترة الملاعب برمجياً في الداتابيز بدلاً من الجافاسكربت +++

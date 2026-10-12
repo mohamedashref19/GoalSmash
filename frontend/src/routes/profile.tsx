@@ -177,7 +177,16 @@ function CustomerMobileMenu({ open, onClose }: { open: boolean; onClose: () => v
     </div>
   );
 }
-
+const TiktokIcon = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 448 512"
+    className={className}
+    fill="currentColor"
+  >
+    <path d="M448 209.91a210.06 210.06 0 0 1-122.77-39.25V349.38A162.55 162.55 0 1 1 185 188.31V278.2a74.62 74.62 0 1 0 52.23 71.18V0l88 0a121.18 121.18 0 0 0 1.86 22.17h0A122.18 122.18 0 0 0 381 102.39a121.43 121.43 0 0 0 67 20.14Z" />
+  </svg>
+);
 // =========================================
 // +++ مكون التحذير لحذف الحساب +++
 // =========================================
@@ -475,33 +484,43 @@ function ProfilePage() {
           <p className="text-xs text-muted-foreground mb-1">
             لديك استفسار أو واجهت مشكلة؟ نحن هنا لمساعدتك.
           </p>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <a
-              href="https://wa.me/201000000000"
+              href="https://wa.me/201035336792"
               target="_blank"
               rel="noreferrer"
-              className="flex-1 flex flex-col items-center justify-center gap-1.5 bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 py-3 rounded-xl transition"
+              className="flex-1 flex flex-col items-center justify-center gap-1.5 bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 py-3 rounded-xl transition min-w-[70px]"
             >
               <MessageCircle className="size-5" />
               <span className="text-[11px] font-bold">واتساب</span>
             </a>
             <a
-              href="https://facebook.com/YourPageHere"
+              href="https://www.facebook.com/tigihagz"
               target="_blank"
               rel="noreferrer"
-              className="flex-1 flex flex-col items-center justify-center gap-1.5 bg-[#1877F2]/10 text-[#1877F2] hover:bg-[#1877F2]/20 py-3 rounded-xl transition"
+              className="flex-1 flex flex-col items-center justify-center gap-1.5 bg-[#1877F2]/10 text-[#1877F2] hover:bg-[#1877F2]/20 py-3 rounded-xl transition min-w-[70px]"
             >
               <Facebook className="size-5" />
               <span className="text-[11px] font-bold">فيسبوك</span>
             </a>
             <a
-              href="https://instagram.com/YourPageHere"
+              href="https://www.instagram.com/tigihagz"
               target="_blank"
               rel="noreferrer"
-              className="flex-1 flex flex-col items-center justify-center gap-1.5 bg-[#E1306C]/10 text-[#E1306C] hover:bg-[#E1306C]/20 py-3 rounded-xl transition"
+              className="flex-1 flex flex-col items-center justify-center gap-1.5 bg-[#E1306C]/10 text-[#E1306C] hover:bg-[#E1306C]/20 py-3 rounded-xl transition min-w-[70px]"
             >
               <Instagram className="size-5" />
               <span className="text-[11px] font-bold">إنستجرام</span>
+            </a>
+            {/* +++ رابط التيك توك الجديد بالأيقونة الرسمية +++ */}
+            <a
+              href="https://www.tiktok.com/@tigihagz"
+              target="_blank"
+              rel="noreferrer"
+              className="flex-1 flex flex-col items-center justify-center gap-1.5 bg-black/10 text-black dark:bg-white/10 dark:text-white hover:bg-black/20 dark:hover:bg-white/20 py-3 rounded-xl transition min-w-[70px]"
+            >
+              <TiktokIcon className="size-5" />
+              <span className="text-[11px] font-bold">تيك توك</span>
             </a>
           </div>
         </div>

@@ -120,30 +120,47 @@ export function AdminPaymentsView() {
   const summary = useMemo(() => {
     const validPayments = payments.filter((p) => p.booking?.status !== "cancelled");
 
-    const totalOnlineConfirmed = validPayments
+    // +++ التعديل هنا: تحديد تاريخ اليوم المختار وفلترة الدفعات بناءً عليه +++
+    const selectedDateString = formatDateForInput(selectedDate);
+
+    const paymentsForSelectedDate = validPayments.filter((p) => {
+      if (!p.createdAt) return false;
+      const paymentDateString = formatDateForInput(new Date(p.createdAt));
+      return paymentDateString === selectedDateString;
+    });
+
+    // +++ حساب الإيرادات من الدفعات الخاصة باليوم المختار فقط +++
+    const totalOnlineConfirmed = paymentsForSelectedDate
       .filter((p) => p.status === "verified" && p.method !== "cash")
       .reduce((sum, p) => sum + (p.amountReceived || p.expectedAmount), 0);
 
-    const totalCashConfirmed = validPayments
+    const totalCashConfirmed = paymentsForSelectedDate
       .filter((p) => p.status === "verified" && p.method === "cash")
       .reduce((sum, p) => sum + (p.amountReceived || p.expectedAmount), 0);
 
-    const totalPending = validPayments
+    const totalPending = paymentsForSelectedDate
       .filter((p) => p.status === "pending" || p.status === "pending_verification")
       .reduce((sum, p) => sum + p.expectedAmount, 0);
 
-    const totalUnmatched = unmatched
+    // +++ الأموال المعلقة بنسيبها زي ما هي أو بنفلترها برضه حسب التاريخ لو حابب +++
+    // هنا بفلترها حسب تاريخ استلامها الفعلي عشان تكون دقيقة مع اليوم المختار
+    const unmatchedForSelectedDate = unmatched.filter((u) => {
+      if (!u.receivedAt) return false;
+      const unmatchedDateString = formatDateForInput(new Date(u.receivedAt));
+      return unmatchedDateString === selectedDateString;
+    });
+
+    const totalUnmatched = unmatchedForSelectedDate
       .filter((u) => !u.processed)
       .reduce((sum, u) => sum + u.amount, 0);
 
-    // +++ تم إضافة التقريب لرقمين عشريين هنا +++
     return {
       totalOnlineConfirmed: Number(totalOnlineConfirmed.toFixed(2)),
       totalCashConfirmed: Number(totalCashConfirmed.toFixed(2)),
       totalPending: Number(totalPending.toFixed(2)),
       totalUnmatched: Number(totalUnmatched.toFixed(2)),
     };
-  }, [payments, unmatched]);
+  }, [payments, unmatched, selectedDate]); // +++ selectedDate ضرورية هنا عشان الأرقام تتحدث فوراً +++
 
   const handleVerify = async (id: string, isExpired: boolean = false) => {
     const msg = isExpired

@@ -109,11 +109,22 @@ export function PaymentsView({ venueId }: { venueId: string }) {
   };
 
   const summary = useMemo(() => {
-    const totalConfirmed = payments
+    // 1. تحديد تاريخ اليوم المختار
+    const selectedDateString = formatDateForInput(selectedDate);
+
+    // 2. فلترة الدفعات اللي تمت في "اليوم المختار" فقط
+    const paymentsForSelectedDate = payments.filter((p) => {
+      if (!p.createdAt) return false;
+      const paymentDateString = formatDateForInput(new Date(p.createdAt));
+      return paymentDateString === selectedDateString;
+    });
+
+    // 3. حساب الإيرادات بناءً على دفعات اليوم فقط
+    const totalConfirmed = paymentsForSelectedDate
       .filter((p) => p.status === "verified" && p.method !== "cash")
       .reduce((sum, p) => sum + getDisplayAmount(p), 0);
 
-    const totalCash = payments
+    const totalCash = paymentsForSelectedDate
       .filter((p) => p.method === "cash")
       .reduce((sum, p) => sum + getDisplayAmount(p), 0);
 
@@ -124,7 +135,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
       totalCash: Number(totalCash.toFixed(2)),
       totalOverall: Number(totalOverall.toFixed(2)),
     };
-  }, [payments]);
+  }, [payments, selectedDate]); // +++ ضفنا selectedDate هنا عشان تتحدث لما تغير اليوم +++
 
   const handleVerify = async (id: string, isExpired: boolean = false) => {
     const msg = isExpired

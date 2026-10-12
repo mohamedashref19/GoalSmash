@@ -775,8 +775,13 @@ exports.updatePayment = catchAsync(async (req, res, next) => {
     return next(new AppError("لا يمكن تعديل دفع حجز ملغي أو منتهي", 400));
   }
 
-  // منع تكرار الدفع (Double Click)
-  if (booking.paymentStatus === "paid") {
+  // +++ التعديل: السماح بتأكيد الدفع المتبقي حتى لو كانت الحالة paid، بشرط أن يكون العربون أقل من الإجمالي +++
+  const currentDeposit = booking.deposit || 0;
+
+  if (
+    booking.paymentStatus === "paid" &&
+    currentDeposit >= booking.totalPrice
+  ) {
     return next(
       new AppError(
         "تم تأكيد دفع هذا الحجز واستلام المبلغ بالكامل مسبقاً.",
@@ -794,25 +799,30 @@ exports.updatePayment = catchAsync(async (req, res, next) => {
     return next(new AppError("ليس لديك صلاحية لتعديل دفع هذا الحجز", 403));
   }
 
-  // العربون ماينفعش يعدّي السعر الإجمالي (كان بيسمح بتضخيم الإيراد النقدي في التقارير)
+  // العربون ماينفعش يعدّي السعر الإجمالي
   if (deposit !== undefined && deposit > booking.totalPrice) {
-    return next(new AppError("العربون لا يمكن أن يتجاوز السعر الإجمالي", 400));
+    return next(
+      new AppError(
+        "المبلغ المدفوع لا يمكن أن يتجاوز السعر الإجمالي للحجز",
+        400,
+      ),
+    );
   }
-
-  // حفظ العربون القديم قبل التحديث لمعرفة الفارق
-  const oldDeposit = booking.deposit || 0;
 
   const update = {};
   if (paymentStatus) update.paymentStatus = paymentStatus;
   if (paymentMethod) update.paymentMethod = paymentMethod;
   if (deposit !== undefined) update.deposit = deposit;
 
-  // تحديث مشروط: لو ضغطتين متزامنتين (أو موظفين على نفس الحجز)، واحدة بس بتعدّي
-  // وبالتالي فاتورة الكاش مابتتكررش.
+  // إذا تم دفع المبلغ بالكامل، نتأكد من تغيير الحالة إلى paid
+  if (deposit !== undefined && deposit === booking.totalPrice) {
+    update.paymentStatus = "paid";
+  }
+
+  // +++ التعديل: إزالة شرط { paymentStatus: { $ne: "paid" } } للسماح بتحديث العربون للحجوزات الأونلاين +++
   const updatedBooking = await Booking.findOneAndUpdate(
     {
       _id: booking._id,
-      paymentStatus: { $ne: "paid" },
       updatedAt: booking.updatedAt,
     },
     { $set: update },
@@ -826,8 +836,8 @@ exports.updatePayment = catchAsync(async (req, res, next) => {
   }
 
   // إنشاء فاتورة كاش جديدة بالمبلغ المتبقي بدلاً من تغيير القديمة
-  if (deposit !== undefined && deposit > oldDeposit) {
-    const difference = deposit - oldDeposit; // قيمة المبلغ الذي دُفع في الملعب (الكاش)
+  if (deposit !== undefined && deposit > currentDeposit) {
+    const difference = deposit - currentDeposit;
 
     await Payment.create({
       booking: booking._id,
@@ -840,7 +850,7 @@ exports.updatePayment = catchAsync(async (req, res, next) => {
       verifiedAt: new Date(),
       verificationMethod: "admin",
       verificationNotes: "تحصيل باقي المبلغ كاش في الملعب",
-      expiresAt: new Date(), // عملية منتهية ومؤكدة فوراً
+      expiresAt: new Date(),
     });
   }
 
