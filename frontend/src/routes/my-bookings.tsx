@@ -23,6 +23,7 @@ import {
   Star,
   QrCode,
 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { Header } from "@/components/venue/Header";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -204,7 +205,8 @@ function BookingTicketModal({
             <X size={18} />
           </button>
           <div className="mx-auto bg-white p-3 rounded-xl w-fit mb-3">
-            <QrCode className="size-16 text-primary" />
+            {/* +++ استخدام الـ QR Code الحقيقي وربطه برقم الحجز +++ */}
+            <QRCodeSVG value={booking._id} size={150} level="M" includeMargin={false} />
           </div>
           <h3 className="font-bold text-xl">{venueName}</h3>
           <p className="text-sm opacity-90">{booking.court?.name || "ملعب غير محدد"}</p>

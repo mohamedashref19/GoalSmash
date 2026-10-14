@@ -1069,3 +1069,84 @@ exports.deleteBlockSeries = catchAsync(async (req, res, next) => {
     data: null,
   });
 });
+// دالة لتأكيد الحجز واستلام الكاش المتبقي عبر مسح الـ QR Code
+exports.confirmViaQRCode = catchAsync(async (req, res, next) => {
+  const { bookingId } = req.body;
+
+  if (!bookingId || !mongoose.isValidObjectId(bookingId)) {
+    return next(new AppError("يرجى توفير معرف حجز صالح", 400));
+  }
+
+  const booking = await Booking.findById(bookingId).populate("venue");
+
+  if (!booking) {
+    return next(new AppError("لا يوجد حجز بهذا المعرف", 404));
+  }
+
+  // التأكد من الصلاحيات (أن الشخص الذي يمسح الكود هو صاحب الملعب أو موظف فيه)
+  if (
+    req.user.role === "owner" &&
+    booking.venue &&
+    booking.venue.owner &&
+    booking.venue.owner.toString() !== req.user.id
+  ) {
+    return next(new AppError("ليس لديك صلاحية لتأكيد مدفوعات هذا النادي", 403));
+  }
+
+  if (isOtherVenueEmployee(req.user, booking.venue)) {
+    return next(new AppError("ليس لديك صلاحية لتأكيد مدفوعات هذا النادي", 403));
+  }
+
+  // التأكد من حالة الحجز
+  if (["cancelled", "expired", "blocked"].includes(booking.status)) {
+    return next(
+      new AppError(`عذراً، لا يمكن تأكيد حجز حالته: ${booking.status}`, 400),
+    );
+  }
+
+  const currentDeposit = booking.deposit || 0;
+  const remaining = Math.max(booking.totalPrice - currentDeposit, 0);
+
+  // إذا كان الحجز مدفوع بالكامل بالفعل
+  if (
+    booking.paymentStatus === "paid" &&
+    currentDeposit >= booking.totalPrice
+  ) {
+    return res.status(200).json({
+      status: "success",
+      message: "هذا الحجز مؤكد ومدفوع بالكامل مسبقاً",
+      data: { booking },
+    });
+  }
+
+  // تحديث حالة الحجز ليكون مؤكد ومدفوع بالكامل
+  booking.status = "confirmed";
+  booking.paymentStatus = "paid";
+  booking.deposit = booking.totalPrice; // تم دفع الباقي كاش
+
+  // حفظ الحجز
+  await booking.save({ validateBeforeSave: false });
+
+  // إذا كان هناك مبلغ متبقي (لم يدفع أونلاين)، نقوم بإنشاء فاتورة كاش توثق استلامه يدوياً
+  if (remaining > 0) {
+    await Payment.create({
+      booking: booking._id,
+      paymentReference: `QR-CASH-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+      method: "cash",
+      baseAmount: remaining,
+      expectedAmount: remaining,
+      amountReceived: remaining,
+      status: "verified",
+      verifiedAt: new Date(),
+      verificationMethod: "admin",
+      verificationNotes: "تحصيل باقي المبلغ كاش عبر مسح الـ QR Code من الملعب",
+      expiresAt: new Date(),
+    });
+  }
+
+  res.status(200).json({
+    status: "success",
+    message: "تم مسح الكود، تأكيد الحجز، وتوثيق استلام الكاش بنجاح!",
+    data: { booking },
+  });
+});

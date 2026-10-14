@@ -188,4 +188,54 @@ module.exports = class Email {
     `;
     await this.send("رمز تفعيل حسابك في Tigi Hagz", body);
   }
+  async sendBookingTicket(bookingData) {
+    const bDate = new Date(bookingData.startTime).toLocaleDateString("ar-EG");
+    const bTime = new Date(bookingData.startTime).toLocaleTimeString("ar-EG", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    // إنشاء رابط للصورة الخاصة بالـ QR Code (باستخدام API مجاني بيطلع صورة QR)
+    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${bookingData._id}`;
+
+    const remaining = Math.max(
+      bookingData.totalPrice - (bookingData.deposit || 0),
+      0,
+    );
+    const paymentStatusText =
+      remaining > 0
+        ? `<span style="color:#d9534f; font-weight:bold;">متبقي: ${remaining} ج.م تُدفع في الملعب</span>`
+        : `<span style="color:#28a745; font-weight:bold;">تم الدفع بالكامل</span>`;
+
+    const body = `
+      <h2 style="color:#1f3d2b; font-size:20px; margin:0 0 12px; text-align:center;">تم تأكيد حجزك بنجاح! 🎉</h2>
+      <p style="color:#555; font-size:15px; line-height:1.8; margin:0 0 20px; text-align:center;">
+        أهلاً يا ${escapeHtml(this.firstName)}، حجزك في <strong>${escapeHtml(bookingData.venue.name)}</strong> تم تأكيده وتقدر تستمتع بوقتك.
+      </p>
+      
+      <!-- تذكرة الحجز -->
+      <div style="background:#fff; border:1px solid #ddd; border-radius:16px; padding:20px; margin:0 auto 20px; max-width:350px; text-align:center; box-shadow:0 4px 10px rgba(0,0,0,0.05);">
+        <img src="${qrCodeUrl}" alt="QR Code" style="width:150px; height:150px; margin-bottom:15px; border:4px solid #f4f6f5; border-radius:12px;" />
+        <p style="color:#888; font-size:12px; margin-bottom:15px;">رقم الحجز: ${bookingData._id}</p>
+        
+        <div style="background:#f9f9f9; border-radius:12px; padding:15px; text-align:right;">
+          <p style="margin:0 0 8px; font-size:14px; border-bottom:1px solid #eee; padding-bottom:8px;">
+            <strong style="color:#333;">الملعب:</strong> ${escapeHtml(bookingData.court.name)}
+          </p>
+          <p style="margin:0 0 8px; font-size:14px; border-bottom:1px solid #eee; padding-bottom:8px;">
+            <strong style="color:#333;">التاريخ:</strong> ${bDate} - ${bTime}
+          </p>
+          <p style="margin:0 0 8px; font-size:14px; border-bottom:1px solid #eee; padding-bottom:8px;">
+            <strong style="color:#333;">الإجمالي:</strong> ${bookingData.totalPrice} ج.م
+          </p>
+          <p style="margin:0; font-size:14px;">
+            ${paymentStatusText}
+          </p>
+        </div>
+      </div>
+      
+      <p style="color:#999; font-size:13px; margin:0; text-align:center;">لما توصل الملعب، افتح الإيميل ده وورّي الـ QR Code لاداره عشان يعملّه Scan.</p>
+    `;
+    await this.send("تذكرة حجزك في Tigi Hagz 🎟️", body);
+  }
 };

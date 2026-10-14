@@ -4,7 +4,7 @@ import axios from "axios";
 //export const BACKEND_URL = "http://192.168.1.4:3000";
 //export const BACKEND_URL = "http://127.0.0.1:3000";
 //export const BACKEND_URL = "https://goalsmash-api.onrender.com";
-export const BACKEND_URL = "https://mla3balexandria-api.online";
+export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "https://mla3balexandria-api.online";
 
 // 2. رابط الـ API
 const baseURL = `${BACKEND_URL}/api/v1`;

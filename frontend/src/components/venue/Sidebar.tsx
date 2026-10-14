@@ -8,6 +8,7 @@ import {
   Wallet,
   FileText,
   Star, // +++ تمت إضافة أيقونة النجمة +++
+  ScanLine,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -15,11 +16,13 @@ import { cn } from "@/lib/utils";
 import { fetchTodayStats } from "@/api/dashboardApi";
 
 // +++ تمت إضافة reviews للأنواع المسموحة +++
-export type ViewKey = "overview" | "schedule" | "payments" | "reports" | "reviews" | "settings";
+export type ViewKey =
+  "overview" | "schedule" | "payments" | "reports" | "reviews" | "scanner" | "settings";
 
 const navItems = [
   { key: "overview" as ViewKey, label: "نظرة عامة", icon: LayoutDashboard },
   { key: "schedule" as ViewKey, label: "الجدول", icon: CalendarDays },
+  { key: "scanner" as ViewKey, label: "مسح تذكرة (QR)", icon: ScanLine },
   { key: "payments" as ViewKey, label: "المدفوعات", icon: Wallet },
   { key: "reports" as ViewKey, label: "التقارير", icon: FileText },
   { key: "reviews" as ViewKey, label: "التقييمات", icon: Star }, // +++ التاب الجديد +++

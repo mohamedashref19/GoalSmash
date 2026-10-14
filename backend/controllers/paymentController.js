@@ -211,7 +211,7 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
       paymentMethod: payment.method,
     },
     { new: true },
-  ).populate([{ path: "user", select: "name" }, "court", "venue"]);
+  ).populate([{ path: "user", select: "name email phone" }, "court", "venue"]);
 
   if (!updatedBooking) {
     // الفلوس وصلت لكن الحجز مش منتظر دفع: نسجلها للأدمن بدل ما تضيع
@@ -268,6 +268,18 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
           status: "confirmed",
         });
         // +++++++++++++++++++++++++++++++++++++++
+        if (updatedBooking.user && updatedBooking.user.email) {
+          try {
+            const Email = require("../utils/email");
+            const customerEmail = new Email(
+              updatedBooking.user,
+              process.env.FRONTEND_URL,
+            );
+            await customerEmail.sendBookingTicket(updatedBooking);
+          } catch (emailErr) {
+            console.error("خطأ في إرسال تذكرة الإيميل للعميل:", emailErr);
+          }
+        }
       }
 
       // إشعار المالك
@@ -496,7 +508,6 @@ exports.processUnmatchedPayment = catchAsync(async (req, res, next) => {
   });
 });
 
-// 1. تعديل دالة التأكيد اليدوي (عشان لو الأدمن أكد، المالك يجيله إشعار)
 exports.manuallyVerifyPayment = catchAsync(async (req, res, next) => {
   const payment = await Payment.findById(req.params.id).populate({
     path: "booking",
@@ -607,7 +618,7 @@ exports.manuallyVerifyPayment = catchAsync(async (req, res, next) => {
       paymentMethod: payment.method,
     },
     { new: true },
-  ).populate([{ path: "user", select: "name" }, "court", "venue"]);
+  ).populate([{ path: "user", select: "name email phone" }, "court", "venue"]);
 
   try {
     const io = req.app.get("io");
@@ -646,6 +657,18 @@ exports.manuallyVerifyPayment = catchAsync(async (req, res, next) => {
           status: "confirmed",
         });
         // +++++++++++++++++++++++++++++++++++++++
+        if (updatedBooking.user && updatedBooking.user.email) {
+          try {
+            const Email = require("../utils/email"); // تأكد من مسار ملف email.js
+            const customerEmail = new Email(
+              updatedBooking.user,
+              process.env.FRONTEND_URL,
+            );
+            await customerEmail.sendBookingTicket(updatedBooking);
+          } catch (emailErr) {
+            console.error("خطأ في إرسال تذكرة الإيميل للعميل:", emailErr);
+          }
+        }
       }
 
       // +++ إضافة: إشعار لصاحب الملعب (لو شخص آخر غير اللي داس على الزرار هو اللي أكد) +++

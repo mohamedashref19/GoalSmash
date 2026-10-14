@@ -114,7 +114,7 @@ bookingSchema.pre(/^find/, function () {
     select: "name sportType pricePerHour",
   }).populate({
     path: "user",
-    select: "name phone",
+    select: "name phone email",
   });
 });
 

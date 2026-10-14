@@ -15,6 +15,12 @@ router
   .route("/block-slots")
   .get(authController.restrictTo("admin"), bookingController.getAllBlocks)
   .post(authController.restrictTo("admin"), bookingController.blockCourtSlots);
+
+router.post(
+  "/confirm-qr",
+  authController.restrictTo("admin", "owner"),
+  bookingController.confirmViaQRCode,
+);
 router.delete(
   "/block-slots/:id",
   authController.restrictTo("admin"),

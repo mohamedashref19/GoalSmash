@@ -13,6 +13,7 @@ const mongoose = require("mongoose");
 const http = require("http");
 
 const startExpirationJob = require("./services/expirationService");
+const startCronJobs = require("./utils/cronJobs");
 //const startKeepAliveJob = require("./services/keepAliveService");
 
 const app = require("./app");
@@ -35,6 +36,7 @@ mongoose
   .then(() => {
     console.log("DB connection successful!");
     startExpirationJob();
+    startCronJobs();
   })
   .catch((err) => {
     // السيرفر من غير داتابيز مالوش لازمة: نطلع وPM2 يعيد التشغيل

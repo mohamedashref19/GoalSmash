@@ -11,6 +11,7 @@ import { FinancialReportsView } from "@/components/venue/FinancialReportsView";
 import { SettingsView } from "@/components/venue/SettingsView";
 import { QuickBookingModal, type BookingFormData } from "@/components/venue/QuickBookingModal";
 import { ReviewsView } from "@/components/venue/ReviewsView";
+import { ScannerView } from "@/components/venue/ScannerView";
 import {
   MapPin,
   LayoutDashboard,
@@ -20,6 +21,7 @@ import {
   FileText,
   Loader2,
   Star,
+  ScanLine,
 } from "lucide-react";
 
 // @ts-expect-error: API lacks TypeScript definitions
@@ -35,6 +37,7 @@ export const Route = createFileRoute("/")({
 const titles: Record<ViewKey, string> = {
   overview: "نظرة عامة",
   schedule: "الجدول",
+  scanner: "مسح تذكرة (QR)",
   payments: "المدفوعات",
   reports: "التقارير",
   reviews: "تقييمات العملاء",
@@ -51,6 +54,7 @@ interface VenueData {
 const localNavItems = [
   { key: "overview" as ViewKey, label: "نظرة عامة", icon: LayoutDashboard },
   { key: "schedule" as ViewKey, label: "الجدول", icon: CalendarDays },
+  { key: "scanner" as ViewKey, label: "مسح تذكرة", icon: ScanLine },
   { key: "payments" as ViewKey, label: "المدفوعات", icon: Wallet },
   { key: "reports" as ViewKey, label: "التقارير", icon: FileText },
   { key: "reviews" as ViewKey, label: "التقييمات", icon: Star },
@@ -210,6 +214,7 @@ function Dashboard() {
           {activeView === "schedule" && selectedVenueId && (
             <ScheduleView venueId={selectedVenueId} />
           )}
+          {activeView === "scanner" && selectedVenueId && <ScannerView />}
           {activeView === "payments" && selectedVenueId && (
             <PaymentsView venueId={selectedVenueId} />
           )}

@@ -15,8 +15,8 @@ export const Route = createFileRoute("/privacy-policy")({
   component: PrivacyPolicyPage,
 });
 
-const LAST_UPDATED = "8 أكتوبر 2026";
-const SUPPORT_EMAIL = "support@tigi-hagz.com";
+const LAST_UPDATED = "14 أكتوبر 2026";
+const SUPPORT_EMAIL = "support@mla3balexandria-api.online";
 const DELETE_MAILTO = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("طلب حذف الحساب والبيانات")}`;
 
 function BulletList({ children }: { children: ReactNode }) {
@@ -83,10 +83,18 @@ const sections: PolicySection[] = [
             <strong>التخزين على جهازك:</strong> رمز تسجيل الدخول (Token) يُحفظ على جهازك لإبقائك
             مسجلاً للدخول، ويُحذف عند تسجيل الخروج.
           </li>
+          {/* +++ البند الجديد الخاص بالكاميرا +++ */}
+          <li>
+            <strong>الكاميرا والصور:</strong> نطلب إذن الوصول إلى الكاميرا من أصحاب الملاعب أو
+            الموظفين فقط لمسح رموز الاستجابة السريعة (QR Codes) الخاصة بتذاكر العملاء لتأكيد
+            الحجوزات. الصور ومقاطع الفيديو{" "}
+            <strong>لا تُسجل ولا تُحفظ ولا تُرسل لخوادمنا نهائياً</strong>؛ بل تتم معالجة الكود
+            لاستخراج رقم الحجز آنياً (Ephemeral Processing) داخل جهازك.
+          </li>
         </BulletList>
         <P>
-          لا نصل إلى موقعك الجغرافي أو جهات اتصالك. ولا نصل إلى صورك إلا التي تختارها بنفسك لرفع
-          إثبات الدفع.
+          لا نصل إلى موقعك الجغرافي أو جهات اتصالك. ولا نصل إلى معرض صورك إلا في حدود الصورة التي
+          تختارها بنفسك لرفع إثبات الدفع.
         </P>
       </>
     ),

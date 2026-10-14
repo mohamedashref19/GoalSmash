@@ -66,5 +66,7 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>نحتاج للوصول إلى الكاميرا لمسح رموز QR الخاصة بتذاكر العملاء لتأكيد الحجوزات.</string>
 </dict>
 </plist>

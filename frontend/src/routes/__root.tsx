@@ -165,14 +165,14 @@ function RootComponent() {
 
   useEffect(() => {
     const checkForUpdates = async () => {
-      try {
-        let currentVersionCode = 1;
+      // +++ التحقق أولاً: لا تقم بأي شيء إذا لم يكن التطبيق native (موبايل) +++
+      if (!Capacitor.isNativePlatform()) {
+        return; // خروج من الدالة فوراً إذا كان المستخدم على متصفح ويب
+      }
 
-        // +++ تم إزالة التكرار الخاطئ من هنا +++
-        if (Capacitor.isNativePlatform()) {
-          const appInfo = await App.getInfo();
-          currentVersionCode = parseInt(appInfo.build || "1", 10);
-        }
+      try {
+        const appInfo = await App.getInfo();
+        const currentVersionCode = parseInt(appInfo.build || "1", 10);
 
         const response = await axios.get(`${BACKEND_URL}/version.json`);
         const data = response.data;
