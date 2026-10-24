@@ -5,7 +5,7 @@ const authController = require("../controllers/authControllers");
 const router = express.Router();
 
 router.use(authController.protect);
-router.use(authController.restrictTo("owner", "admin"));
+router.use(authController.restrictTo("owner", "admin", "employee"));
 
 router.get("/today-stats", dashboardController.getTodayStats);
 router.get("/top-customers", dashboardController.getTopCustomers);

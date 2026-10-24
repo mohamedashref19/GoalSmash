@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Trophy, Phone, Lock, Eye, EyeOff, ArrowRight } from "lucide-react";
+import { Trophy, Phone, Lock, Eye, EyeOff } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 // @ts-expect-error authApi is a JavaScript module without TypeScript declarations.
@@ -20,7 +20,10 @@ export const Route = createFileRoute("/login")({
 });
 
 const field =
-  "mt-1.5 w-full rounded-xl border border-input bg-background py-2.5 pr-11 pl-3 text-sm outline-none transition-shadow focus:border-primary focus:ring-2 focus:ring-ring/40";
+  "w-full rounded-xl border border-input bg-background py-2.5 pr-11 pl-3 text-sm outline-none transition-shadow focus:border-primary focus:ring-2 focus:ring-ring/40";
+
+const passwordField =
+  "w-full rounded-xl border border-input bg-background py-2.5 pr-11 pl-11 text-sm outline-none transition-shadow focus:border-primary focus:ring-2 focus:ring-ring/40";
 
 function LoginPage() {
   const navigate = useNavigate();
@@ -28,7 +31,7 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true); // حالة تذكرني
+  const [rememberMe, setRememberMe] = useState(true);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -43,17 +46,14 @@ function LoginPage() {
 
     setLoading(true);
     try {
-      // استدعاء دالة الدخول الحقيقية
       const response = await loginUser(phone, password);
 
-      // حفظ التوكن وبيانات المستخدم بناءً على اختيار تذكرني
       const storage = rememberMe ? localStorage : sessionStorage;
       storage.setItem("token", response.token);
       storage.setItem("userData", JSON.stringify(response.data.user));
 
       toast.success("تم تسجيل الدخول بنجاح");
 
-      // التوجيه الذكي: العميل يذهب لتصفح الملاعب، والمالك للوحة التحكم
       const userRole = response.data.user.role;
       if (userRole === "admin") {
         window.location.href = "/admin-dashboard";
@@ -77,13 +77,11 @@ function LoginPage() {
               }
             ).response?.data
           : undefined;
-      // التوجيه الذكي إذا كان الحساب غير مفعل
       if (errorData?.actionRequired === "VERIFY_OTP") {
         toast.info("حسابك يحتاج للتفعيل، جاري إرسال كود جديد وتوجيهك...");
         const userEmail = errorData.email ?? "";
         sessionStorage.setItem("verifyEmail", userEmail);
 
-        // +++ طلب كود تفعيل جديد أوتوماتيكياً +++
         try {
           await resendUserOTP(userEmail);
         } catch (resendError) {
@@ -92,7 +90,6 @@ function LoginPage() {
 
         navigate({ to: "/verify-otp" });
       } else {
-        // عرض رسالة الخطأ العادية (مثل خطأ في كلمة المرور)
         toast.error(
           errorData?.message ||
             (error instanceof Error ? error.message : undefined) ||
@@ -125,11 +122,14 @@ function LoginPage() {
 
         <div className="card-surface p-6 sm:p-7">
           <form className="flex flex-col gap-4" onSubmit={onSubmit} noValidate>
-            <label className="block text-sm font-semibold">
-              رقم الهاتف
+            <div>
+              <label htmlFor="login-phone" className="mb-1.5 block text-sm font-semibold">
+                رقم الهاتف
+              </label>
               <div className="relative">
                 <Phone className="pointer-events-none absolute right-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
                 <input
+                  id="login-phone"
                   className={field}
                   value={phone}
                   required
@@ -139,14 +139,17 @@ function LoginPage() {
                   onChange={(e) => setPhone(e.target.value)}
                 />
               </div>
-            </label>
+            </div>
 
-            <label className="block text-sm font-semibold">
-              كلمة المرور
+            <div>
+              <label htmlFor="login-password" className="mb-1.5 block text-sm font-semibold">
+                كلمة المرور
+              </label>
               <div className="relative">
                 <Lock className="pointer-events-none absolute right-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
                 <input
-                  className={field}
+                  id="login-password"
+                  className={passwordField}
                   type={showPassword ? "text" : "password"}
                   value={password}
                   required
@@ -157,7 +160,8 @@ function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword((s) => !s)}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                  aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 >
                   {showPassword ? (
                     <EyeOff className="h-[18px] w-[18px]" />
@@ -166,10 +170,10 @@ function LoginPage() {
                   )}
                 </button>
               </div>
-            </label>
+            </div>
 
             <div className="flex items-center justify-between text-sm">
-              <label className="flex items-center gap-2 text-muted-foreground">
+              <label className="flex cursor-pointer items-center gap-2 text-muted-foreground">
                 <input
                   type="checkbox"
                   checked={rememberMe}

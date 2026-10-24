@@ -5,6 +5,9 @@ import {
   Phone,
   Mail,
   KeyRound,
+  Lock,
+  Eye,
+  EyeOff,
   Facebook,
   Instagram,
   MessageCircle,
@@ -19,9 +22,9 @@ import {
   Settings,
   XCircle,
   AlertTriangle,
-  Trash2, // +++ أيقونة الحذف +++
-  ShieldAlert, // +++ أيقونة الحماية +++
-  FileLock2, // +++ أيقونة سياسة الخصوصية +++
+  Trash2,
+  ShieldAlert,
+  FileLock2,
 } from "lucide-react";
 import { Header } from "@/components/venue/Header";
 import { Toaster } from "@/components/ui/sonner";
@@ -30,7 +33,7 @@ import { cn } from "@/lib/utils";
 // @ts-expect-error: authApi is a JavaScript module without TypeScript declarations
 import { updateUserData, updateUserPassword, logoutUser, deleteUserAccount } from "@/api/authApi";
 // @ts-expect-error: apiClient is a JavaScript module without TypeScript declarations
-import apiClient from "@/api/axiosConfig"; // +++ لجلب الـ endpoint الخاص بالحذف +++
+import apiClient from "@/api/axiosConfig";
 import { MobileSidebar } from "@/components/venue/Sidebar";
 
 export const Route = createFileRoute("/profile")({
@@ -41,7 +44,10 @@ export const Route = createFileRoute("/profile")({
 });
 
 const field =
-  "mt-1.5 w-full rounded-xl border border-input bg-background py-2.5 pr-11 pl-3 text-sm outline-none transition-shadow focus:border-primary focus:ring-2 focus:ring-ring/40";
+  "mt-1.5 w-full rounded-xl border border-input bg-background py-2.5 pr-4 pl-3 text-sm outline-none transition-shadow focus:border-primary focus:ring-2 focus:ring-ring/40";
+
+const passwordField =
+  "w-full rounded-xl border border-input bg-background py-2.5 pr-11 pl-11 text-sm outline-none transition-shadow focus:border-primary focus:ring-2 focus:ring-ring/40";
 
 // =========================================
 // +++ مكونات القوائم الجانبية (لم تتغير) +++
@@ -177,6 +183,7 @@ function CustomerMobileMenu({ open, onClose }: { open: boolean; onClose: () => v
     </div>
   );
 }
+
 const TiktokIcon = ({ className }: { className?: string }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -187,6 +194,7 @@ const TiktokIcon = ({ className }: { className?: string }) => (
     <path d="M448 209.91a210.06 210.06 0 0 1-122.77-39.25V349.38A162.55 162.55 0 1 1 185 188.31V278.2a74.62 74.62 0 1 0 52.23 71.18V0l88 0a121.18 121.18 0 0 0 1.86 22.17h0A122.18 122.18 0 0 0 381 102.39a121.43 121.43 0 0 0 67 20.14Z" />
   </svg>
 );
+
 // =========================================
 // +++ مكون التحذير لحذف الحساب +++
 // =========================================
@@ -277,7 +285,11 @@ function ProfilePage() {
         setEmail(user.email || "");
         setRawRole(user.role || "customer");
         setRoleLabel(
-          user.role === "customer" ? "عميل" : user.role === "owner" ? "مالك/مدير" : "إدارة مركزية",
+          user.role === "customer"
+            ? "عميل"
+            : user.role === "owner" || user.role === "employee"
+              ? "مالك/مدير"
+              : "إدارة مركزية",
         );
       } catch (e) {
         console.error("Error parsing user data:", e);
@@ -325,12 +337,10 @@ function ProfilePage() {
     }
   };
 
-  // +++ دالة حذف الحساب +++
-  // +++ دالة حذف الحساب باستخدام الدالة الجديدة +++
   const handleDeleteAccount = async () => {
     setIsDeleting(true);
     try {
-      await deleteUserAccount(); // استدعاء دالة الحذف من API
+      await deleteUserAccount();
       toast.success("تم حذف حسابك نهائياً.");
       navigate({ to: "/login" });
     } catch (err) {
@@ -341,7 +351,7 @@ function ProfilePage() {
   };
 
   const isAdmin = rawRole === "admin" || rawRole === "super_admin";
-  const isOwner = rawRole === "owner";
+  const isOwner = rawRole === "owner" || rawRole === "employee";
 
   return (
     <div
@@ -434,39 +444,110 @@ function ProfilePage() {
             <KeyRound className="h-5 w-5 text-primary" /> تغيير كلمة المرور
           </h3>
           <form className="grid gap-4 sm:grid-cols-2" onSubmit={onChangePassword}>
-            <label className="block text-sm font-semibold sm:col-span-2">
-              كلمة المرور الحالية
-              <input
-                className={field}
-                type={showPassword ? "text" : "password"}
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                required
-                dir="ltr"
-              />
-            </label>
-            <label className="block text-sm font-semibold">
-              الجديدة
-              <input
-                className={field}
-                type={showPassword ? "text" : "password"}
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                required
-                dir="ltr"
-              />
-            </label>
-            <label className="block text-sm font-semibold">
-              تأكيد الجديدة
-              <input
-                className={field}
-                type={showPassword ? "text" : "password"}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                dir="ltr"
-              />
-            </label>
+            <div className="sm:col-span-2">
+              <label
+                htmlFor="profile-current-password"
+                className="mb-1.5 block text-sm font-semibold"
+              >
+                كلمة المرور الحالية
+              </label>
+              <div className="relative">
+                <Lock className="pointer-events-none absolute right-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
+                <input
+                  id="profile-current-password"
+                  className={passwordField}
+                  type={showPassword ? "text" : "password"}
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  required
+                  dir="ltr"
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((s) => !s)}
+                  aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-[18px] w-[18px]" />
+                  ) : (
+                    <Eye className="h-[18px] w-[18px]" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="profile-new-password" className="mb-1.5 block text-sm font-semibold">
+                الجديدة
+              </label>
+              <div className="relative">
+                <Lock className="pointer-events-none absolute right-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
+                <input
+                  id="profile-new-password"
+                  className={passwordField}
+                  type={showPassword ? "text" : "password"}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                  dir="ltr"
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((s) => !s)}
+                  aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-[18px] w-[18px]" />
+                  ) : (
+                    <Eye className="h-[18px] w-[18px]" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label
+                htmlFor="profile-confirm-password"
+                className="mb-1.5 block text-sm font-semibold"
+              >
+                تأكيد الجديدة
+              </label>
+              <div className="relative">
+                <Lock className="pointer-events-none absolute right-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
+                <input
+                  id="profile-confirm-password"
+                  className={`${passwordField} ${confirmPassword && confirmPassword !== newPassword ? "border-destructive focus:border-destructive focus:ring-destructive/40" : ""}`}
+                  type={showPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  dir="ltr"
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((s) => !s)}
+                  aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-[18px] w-[18px]" />
+                  ) : (
+                    <Eye className="h-[18px] w-[18px]" />
+                  )}
+                </button>
+              </div>
+              {confirmPassword && confirmPassword !== newPassword && (
+                <span className="mt-1 block text-xs font-semibold text-destructive">
+                  كلمتا المرور غير متطابقتين
+                </span>
+              )}
+            </div>
+
             <button
               type="submit"
               disabled={savingPassword}
@@ -512,7 +593,6 @@ function ProfilePage() {
               <Instagram className="size-5" />
               <span className="text-[11px] font-bold">إنستجرام</span>
             </a>
-            {/* +++ رابط التيك توك الجديد بالأيقونة الرسمية +++ */}
             <a
               href="https://www.tiktok.com/@tigihagz"
               target="_blank"
@@ -534,7 +614,6 @@ function ProfilePage() {
             إعدادات الأمان الخاصة بحسابك وسياسات الاستخدام.
           </p>
           <div className="flex flex-col gap-3 mt-4">
-            {/* +++ زر سياسة الخصوصية +++ */}
             <Link
               to="/privacy-policy"
               className="flex items-center gap-3 bg-muted/50 text-foreground hover:bg-muted py-3 px-4 rounded-xl text-sm font-bold transition border border-border"
@@ -563,7 +642,6 @@ function ProfilePage() {
         </div>
       </main>
 
-      {/* استدعاء نافذة الحذف */}
       <DeleteAccountModal
         isOpen={showDeleteModal}
         isDeleting={isDeleting}

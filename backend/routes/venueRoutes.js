@@ -13,8 +13,10 @@ const router = express.Router();
 router.use("/:venueId/reviews", reviewRouter);
 
 // المسارات الحالية التي يجب أن تظل مفتوحة للجميع (مثلاً في تطبيق العميل)
-router.route("/").get(venueController.getAllVenues);
-router.route("/:id").get(venueController.getVenue);
+router
+  .route("/")
+  .get(authController.optionalAuth, venueController.getAllVenues);
+router.route("/:id").get(authController.optionalAuth, venueController.getVenue);
 
 router.use(authController.protect);
 router.use(authController.restrictTo("owner", "admin"));
@@ -24,6 +26,11 @@ router
   .post(uploadVenueImage, processAndUploadImage, venueController.createVenue);
 router
   .route("/:id")
-  .patch(uploadVenueImage, processAndUploadImage, venueController.updateVenue);
+  .patch(
+    authController.restrictTo("owner", "admin", "employee"),
+    uploadVenueImage,
+    processAndUploadImage,
+    venueController.updateVenue,
+  );
 
 module.exports = router;

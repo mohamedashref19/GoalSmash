@@ -13,8 +13,8 @@ export const Route = createFileRoute("/reset-password")({
   component: ResetPasswordPage,
 });
 
-const field =
-  "mt-1.5 w-full rounded-xl border border-input bg-background py-2.5 pr-11 pl-3 text-sm outline-none transition-shadow focus:border-primary focus:ring-2 focus:ring-ring/40";
+const passwordField =
+  "w-full rounded-xl border border-input bg-background py-2.5 pr-11 pl-11 text-sm outline-none transition-shadow focus:border-primary focus:ring-2 focus:ring-ring/40";
 
 function ResetPasswordPage() {
   const navigate = useNavigate();
@@ -91,12 +91,15 @@ function ResetPasswordPage() {
 
         <div className="card-surface p-6 sm:p-7">
           <form className="flex flex-col gap-4" onSubmit={onSubmit} noValidate>
-            <label className="block text-sm font-semibold">
-              كلمة المرور الجديدة
+            <div>
+              <label htmlFor="reset-password" className="mb-1.5 block text-sm font-semibold">
+                كلمة المرور الجديدة
+              </label>
               <div className="relative">
                 <Lock className="pointer-events-none absolute right-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
                 <input
-                  className={field}
+                  id="reset-password"
+                  className={passwordField}
                   type={showPassword ? "text" : "password"}
                   value={password}
                   required
@@ -108,7 +111,7 @@ function ResetPasswordPage() {
                   type="button"
                   onClick={() => setShowPassword((s) => !s)}
                   aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 >
                   {showPassword ? (
                     <EyeOff className="h-[18px] w-[18px]" />
@@ -130,14 +133,17 @@ function ResetPasswordPage() {
                   </span>
                 </div>
               )}
-            </label>
+            </div>
 
-            <label className="block text-sm font-semibold">
-              تأكيد كلمة المرور الجديدة
+            <div>
+              <label htmlFor="reset-confirm" className="mb-1.5 block text-sm font-semibold">
+                تأكيد كلمة المرور الجديدة
+              </label>
               <div className="relative">
                 <Lock className="pointer-events-none absolute right-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
                 <input
-                  className={`${field} ${confirm && confirm !== password ? "border-destructive focus:border-destructive focus:ring-destructive/40" : ""}`}
+                  id="reset-confirm"
+                  className={`${passwordField} ${confirm && confirm !== password ? "border-destructive focus:border-destructive focus:ring-destructive/40" : ""}`}
                   type={showPassword ? "text" : "password"}
                   value={confirm}
                   required
@@ -145,13 +151,25 @@ function ResetPasswordPage() {
                   placeholder="••••••••"
                   onChange={(e) => setConfirm(e.target.value)}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((s) => !s)}
+                  aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-[18px] w-[18px]" />
+                  ) : (
+                    <Eye className="h-[18px] w-[18px]" />
+                  )}
+                </button>
               </div>
               {confirm && confirm !== password && (
                 <span className="mt-1 block text-xs font-semibold text-destructive">
                   كلمتا المرور غير متطابقتين
                 </span>
               )}
-            </label>
+            </div>
 
             <button
               type="submit"

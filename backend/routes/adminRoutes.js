@@ -12,8 +12,11 @@ router.get("/venues-performance", adminController.getVenuesPerformance);
 
 router.post("/owners", adminController.createOwner);
 router.get("/owners", adminController.getAllOwners);
+router.post("/employees", adminController.createEmployee);
+router.get("/employees", adminController.getAllEmployees);
 router.get("/customers", adminController.getAllCustomers);
 router.get("/daily-closing", adminController.getDailyClosing);
 router.post("/daily-closing/settle", adminController.toggleDailySettlement);
+router.delete("/employees/:id", adminController.deleteEmployee);
 
 module.exports = router;

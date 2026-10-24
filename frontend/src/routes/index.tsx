@@ -104,11 +104,16 @@ function Dashboard() {
         fetchAllVenues()
           .then((data: VenueData[]) => {
             if (data) {
-              // +++ الفلترة: عرض الملاعب التي يمتلكها المستخدم الحالي فقط +++
+              const userVenueId =
+                typeof user.venue === "object" && user.venue !== null ? user.venue._id : user.venue;
+
+              // +++ عرض الملاعب التي يمتلكها المالك أو المرتبط بها الموظف +++
               const myVenues = data.filter((v) => {
                 const ownerId =
                   typeof v.owner === "object" && v.owner !== null ? v.owner._id : v.owner;
-                return ownerId === currentUserId;
+                return (
+                  ownerId === currentUserId || (user.role === "employee" && v._id === userVenueId)
+                );
               });
 
               setVenues(myVenues);

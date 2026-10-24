@@ -522,3 +522,68 @@ exports.toggleDailySettlement = catchAsync(async (req, res, next) => {
     data: { isSettled: settlement.isSettled },
   });
 });
+
+// +++ 7. إنشاء حساب موظف / مدير فرعي لنادي معين +++
+exports.createEmployee = catchAsync(async (req, res, next) => {
+  const { name, email, phone, password, passwordConfirm, venue } = req.body;
+
+  if (!venue || !mongoose.isValidObjectId(venue)) {
+    return next(new AppError("يرجى اختيار نادي صالح لربط الموظف به", 400));
+  }
+
+  const venueExists = await Venue.findById(venue);
+  if (!venueExists) {
+    return next(new AppError("النادي المختار غير موجود", 404));
+  }
+
+  const newEmployee = await User.create({
+    name,
+    email,
+    phone,
+    password,
+    passwordConfirm,
+    role: "employee",
+    venue,
+    verified: true, // مفعل تلقائياً لأنه مضاف من الإدارة
+  });
+
+  newEmployee.password = undefined;
+
+  res.status(201).json({
+    status: "success",
+    message: "تم إنشاء حساب الموظف وربطه بالنادي بنجاح!",
+    data: { user: newEmployee },
+  });
+});
+
+// +++ 8. جلب جميع الموظفين مع بيانات النادي التابعين له +++
+exports.getAllEmployees = catchAsync(async (req, res, next) => {
+  const employees = await User.find({ role: "employee" })
+    .populate({ path: "venue", select: "name address" })
+    .select("name phone email venue createdAt")
+    .sort("-createdAt");
+
+  res.status(200).json({
+    status: "success",
+    results: employees.length,
+    data: { employees },
+  });
+});
+
+// +++ 9. حذف حساب موظف +++
+exports.deleteEmployee = catchAsync(async (req, res, next) => {
+  const employee = await User.findOneAndDelete({
+    _id: req.params.id,
+    role: "employee",
+  });
+
+  if (!employee) {
+    return next(new AppError("لا يوجد موظف بهذا المعرف", 404));
+  }
+
+  res.status(200).json({
+    status: "success",
+    message: "تم حذف حساب الموظف بنجاح",
+    data: null,
+  });
+});

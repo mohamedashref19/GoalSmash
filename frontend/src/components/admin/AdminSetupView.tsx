@@ -39,6 +39,9 @@ import {
   togglePaymentAccount,
   updatePaymentAccount,
   deletePaymentAccount,
+  createEmployeeAccount,
+  fetchAllEmployees,
+  deleteEmployeeAccount,
   blockCourtSlots,
   fetchCourtBlocks,
   deleteCourtBlock,
@@ -72,7 +75,7 @@ interface Venue {
   openTime?: string;
   closeTime?: string;
   eveningStartTime?: string;
-  workingDays?: number[]; // +++ إضافة أيام العمل للواجهة +++
+  workingDays?: number[];
   address?: { area: string; city: string; details?: string };
   owner?: { _id: string; name: string; phone: string };
   courts?: Court[];
@@ -108,6 +111,7 @@ interface CourtBlock {
   notes: string;
   recurrenceId?: string;
 }
+
 interface GroupedCourtBlock {
   recurrenceId: string;
   venue: { _id: string; name: string };
@@ -121,7 +125,17 @@ interface GroupedCourtBlock {
   blocks: CourtBlock[];
 }
 
-type TabKey = "owner" | "venue" | "court" | "manage" | "block" | "customers" | "accounts";
+interface Employee {
+  _id: string;
+  name: string;
+  email: string;
+  phone: string;
+  venue?: { _id: string; name: string };
+  createdAt: string;
+}
+
+type TabKey =
+  "owner" | "employees" | "venue" | "court" | "manage" | "block" | "customers" | "accounts";
 
 const calculateHours = (open: string, close: string) => {
   if (!open || !close) return 24;
@@ -138,6 +152,7 @@ const WEEKDAYS = ["الأحد", "الإثنين", "الثلاثاء", "الأر�
 export function AdminSetupView() {
   const [activeTab, setActiveTab] = useState<TabKey>("owner");
   const [ownersList, setOwnersList] = useState<Owner[]>([]);
+  const [employeesList, setEmployeesList] = useState<Employee[]>([]);
   const [venuesList, setVenuesList] = useState<Venue[]>([]);
   const [customersList, setCustomersList] = useState<Customer[]>([]);
   const [accountsList, setAccountsList] = useState<PaymentAccount[]>([]);
@@ -167,6 +182,15 @@ export function AdminSetupView() {
     passwordConfirm: "",
   });
 
+  const [employeeData, setEmployeeData] = useState({
+    venue: "",
+    name: "",
+    email: "",
+    phone: "",
+    password: "",
+    passwordConfirm: "",
+  });
+
   const [venueData, setVenueData] = useState({
     name: "",
     phone: "",
@@ -176,7 +200,7 @@ export function AdminSetupView() {
     openTime: "08:00",
     closeTime: "02:00",
     eveningStartTime: "18:00",
-    workingDays: [0, 1, 2, 3, 4, 5, 6], // +++ افتراضي: طوال الأسبوع +++
+    workingDays: [0, 1, 2, 3, 4, 5, 6],
   });
   const [venueImage, setVenueImage] = useState<File | null>(null);
 
@@ -212,7 +236,7 @@ export function AdminSetupView() {
     openTime: "08:00",
     closeTime: "02:00",
     eveningStartTime: "18:00",
-    workingDays: [0, 1, 2, 3, 4, 5, 6], // +++ لتعديل الأيام +++
+    workingDays: [0, 1, 2, 3, 4, 5, 6],
   });
   const [editVenueImage, setEditVenueImage] = useState<File | null>(null);
 
@@ -238,6 +262,17 @@ export function AdminSetupView() {
       setOwnersList(await fetchAllOwners());
     } catch (err: unknown) {
       toast.error(err as string);
+    }
+  };
+
+  const loadEmployees = async () => {
+    setLoading(true);
+    try {
+      setEmployeesList(await fetchAllEmployees());
+    } catch (err: unknown) {
+      toast.error(err as string);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -267,10 +302,16 @@ export function AdminSetupView() {
     )
       loadOwners();
     if (
-      (activeTab === "court" || activeTab === "manage" || activeTab === "block") &&
+      (activeTab === "court" ||
+        activeTab === "manage" ||
+        activeTab === "block" ||
+        activeTab === "employees") &&
       venuesList.length === 0
     )
       loadVenues();
+    if (activeTab === "employees" && employeesList.length === 0) {
+      loadEmployees();
+    }
     if (activeTab === "block" && blocksList.length === 0) {
       loadBlocks();
     }
@@ -286,6 +327,7 @@ export function AdminSetupView() {
     activeTab,
     customersList.length,
     ownersList.length,
+    employeesList.length,
     venuesList.length,
     accountsList.length,
     blocksList.length,
@@ -320,6 +362,49 @@ export function AdminSetupView() {
     }
   };
 
+  const handleCreateEmployee = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault();
+    if (!employeeData.venue) {
+      toast.error("يرجى اختيار النادي التابع له الموظف");
+      return;
+    }
+    if (employeeData.password !== employeeData.passwordConfirm) {
+      toast.error("كلمتا المرور غير متطابقتين");
+      return;
+    }
+    setLoading(true);
+    try {
+      await createEmployeeAccount(employeeData);
+      toast.success("تم إنشاء حساب الموظف وربطه بالنادي بنجاح");
+      setEmployeeData({
+        venue: "",
+        name: "",
+        email: "",
+        phone: "",
+        password: "",
+        passwordConfirm: "",
+      });
+      loadEmployees();
+    } catch (err: unknown) {
+      toast.error(err as string);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteEmployee = async (id: string) => {
+    const isConfirmed = await confirm("هل أنت متأكد من حذف حساب هذا الموظف نهائياً؟");
+    if (isConfirmed) {
+      try {
+        await deleteEmployeeAccount(id);
+        toast.success("تم حذف الموظف بنجاح");
+        loadEmployees();
+      } catch (err: unknown) {
+        toast.error(err as string);
+      }
+    }
+  };
+
   const handleCreateVenue = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -338,7 +423,6 @@ export function AdminSetupView() {
       formData.append("eveningStartTime", venueData.eveningStartTime);
       formData.append("operatingHours", String(computedHours));
 
-      // +++ إرسال أيام العمل +++
       venueData.workingDays.forEach((day) => formData.append("workingDays[]", String(day)));
 
       if (venueImage) formData.append("image", venueImage);
@@ -491,7 +575,7 @@ export function AdminSetupView() {
       openTime: venue.openTime || "08:00",
       closeTime: venue.closeTime || "02:00",
       eveningStartTime: venue.eveningStartTime || "18:00",
-      workingDays: venue.workingDays || [0, 1, 2, 3, 4, 5, 6], // +++ سحب أيام العمل الحالية +++
+      workingDays: venue.workingDays || [0, 1, 2, 3, 4, 5, 6],
     });
   };
 
@@ -510,7 +594,6 @@ export function AdminSetupView() {
       formData.append("eveningStartTime", editVenueForm.eveningStartTime);
       formData.append("operatingHours", String(computedHours));
 
-      // +++ إرسال أيام العمل المعدلة +++
       editVenueForm.workingDays.forEach((day) => formData.append("workingDays[]", String(day)));
 
       if (editVenueForm.details) formData.append("address[details]", editVenueForm.details);
@@ -624,6 +707,7 @@ export function AdminSetupView() {
       <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide">
         {[
           { id: "owner", icon: UserPlus, label: "إضافة مالك" },
+          { id: "employees", icon: Users, label: "إضافة موظف / مدير" },
           { id: "venue", icon: Building2, label: "إنشاء نادي" },
           { id: "court", icon: Dribbble, label: "إضافة ملعب" },
           { id: "manage", icon: Edit, label: "إدارة الملاعب" },
@@ -707,6 +791,144 @@ export function AdminSetupView() {
             إنشاء الحساب
           </button>
         </form>
+      )}
+
+      {activeTab === "employees" && (
+        <div className="space-y-8 animate-in slide-in-from-bottom-2">
+          <form onSubmit={handleCreateEmployee} className="space-y-4 max-w-2xl mx-auto">
+            <select
+              required
+              value={employeeData.venue}
+              onChange={(e) => setEmployeeData({ ...employeeData, venue: e.target.value })}
+              className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none cursor-pointer font-bold"
+            >
+              <option value="">-- اختر النادي التابع له الموظف / المدير --</option>
+              {venuesList.map((venue) => (
+                <option key={venue._id} value={venue._id}>
+                  {venue.name}
+                </option>
+              ))}
+            </select>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <input
+                type="text"
+                placeholder="اسم الموظف / المدير بالكامل"
+                required
+                value={employeeData.name}
+                onChange={(e) => setEmployeeData({ ...employeeData, name: e.target.value })}
+                className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none"
+              />
+              <input
+                type="tel"
+                placeholder="رقم الهاتف (01xxxxxxxxx)"
+                required
+                value={employeeData.phone}
+                onChange={(e) => setEmployeeData({ ...employeeData, phone: e.target.value })}
+                className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none"
+                dir="ltr"
+              />
+            </div>
+
+            <input
+              type="email"
+              placeholder="البريد الإلكتروني"
+              required
+              value={employeeData.email}
+              onChange={(e) => setEmployeeData({ ...employeeData, email: e.target.value })}
+              className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none"
+            />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <input
+                type="password"
+                placeholder="كلمة المرور"
+                required
+                minLength={8}
+                value={employeeData.password}
+                onChange={(e) => setEmployeeData({ ...employeeData, password: e.target.value })}
+                className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none"
+              />
+              <input
+                type="password"
+                placeholder="تأكيد كلمة المرور"
+                required
+                minLength={8}
+                value={employeeData.passwordConfirm}
+                onChange={(e) =>
+                  setEmployeeData({ ...employeeData, passwordConfirm: e.target.value })
+                }
+                className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none"
+              />
+            </div>
+
+            <button
+              disabled={loading}
+              type="submit"
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 font-bold text-white transition disabled:opacity-50"
+            >
+              {loading ? (
+                <Loader2 className="size-5 animate-spin" />
+              ) : (
+                <UserPlus className="size-5" />
+              )}{" "}
+              إنشاء حساب الموظف وربطه بالنادي
+            </button>
+          </form>
+
+          {/* جدول عرض الموظفين الحاليين */}
+          <div className="overflow-x-auto rounded-xl border border-border">
+            <table className="w-full text-sm text-right">
+              <thead className="bg-muted/50 text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3 font-bold">اسم الموظف / المدير</th>
+                  <th className="px-4 py-3 font-bold">النادي المرتبط به</th>
+                  <th className="px-4 py-3 font-bold">الهاتف</th>
+                  <th className="px-4 py-3 font-bold">البريد الإلكتروني</th>
+                  <th className="px-4 py-3 font-bold text-center">إجراءات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {employeesList.map((emp) => (
+                  <tr
+                    key={emp._id}
+                    className="border-b border-border/50 last:border-0 hover:bg-muted/20"
+                  >
+                    <td className="px-4 py-3 font-bold text-foreground">{emp.name}</td>
+                    <td className="px-4 py-3">
+                      <span className="px-2.5 py-1 rounded-lg bg-primary/10 text-primary text-xs font-bold">
+                        {emp.venue?.name || "نادي غير محدد"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-muted-foreground" dir="ltr">
+                      {emp.phone}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs">{emp.email}</td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        onClick={() => handleDeleteEmployee(emp._id)}
+                        className="p-1.5 rounded-lg text-destructive hover:bg-destructive/10 transition inline-flex items-center gap-1 text-xs font-bold"
+                        title="حذف الموظف"
+                      >
+                        <Trash2 className="size-4" /> حذف
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {employeesList.length === 0 && !loading && (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-4 py-8 text-center text-muted-foreground font-bold"
+                    >
+                      لا يوجد موظفون مسجلون حتى الآن
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
 
       {activeTab === "venue" && (
@@ -796,7 +1018,6 @@ export function AdminSetupView() {
               />
             </div>
 
-            {/* +++ خيارات تحديد أيام العمل +++ */}
             <div className="col-span-1 sm:col-span-3 mt-1">
               <label className="text-[11px] font-bold text-muted-foreground mb-2 block">
                 أيام العمل المتاحة للحجز
@@ -1051,7 +1272,6 @@ export function AdminSetupView() {
                       </div>
                     </div>
 
-                    {/* +++ خيارات تعديل أيام العمل +++ */}
                     <div className="md:col-span-2 mt-1">
                       <label className="text-[10px] font-bold text-muted-foreground block mb-2">
                         أيام العمل المتاحة
@@ -1142,7 +1362,6 @@ export function AdminSetupView() {
                             | مسائي بدءاً من: {venue.eveningStartTime || "18:00"}
                           </span>
                         </p>
-                        {/* +++ عرض أيام العمل +++ */}
                         <p className="flex items-center gap-1.5">
                           <CalendarDays className="size-3" /> أيام العمل:{" "}
                           <span className="font-bold text-foreground">

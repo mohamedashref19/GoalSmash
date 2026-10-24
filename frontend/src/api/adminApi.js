@@ -258,3 +258,30 @@ export const deleteCourtBlockSeries = async (recurrenceId) => {
     throw error.response?.data?.message || "حدث خطأ أثناء إلغاء المجموعة.";
   }
 };
+// +++ دوال إدارة موظفي ومديري الأندية +++
+export const createEmployeeAccount = async (employeeData) => {
+  try {
+    const response = await apiClient.post("/admin/employees", employeeData);
+    return response.data.data.user;
+  } catch (error) {
+    throw error.response?.data?.message || "حدث خطأ أثناء إنشاء حساب الموظف";
+  }
+};
+
+export const fetchAllEmployees = async () => {
+  try {
+    const response = await apiClient.get("/admin/employees");
+    return response.data.data.employees;
+  } catch (error) {
+    throw error.response?.data?.message || "حدث خطأ أثناء جلب قائمة الموظفين";
+  }
+};
+
+export const deleteEmployeeAccount = async (id) => {
+  try {
+    await apiClient.delete(`/admin/employees/${id}`);
+    return true;
+  } catch (error) {
+    throw error.response?.data?.message || "حدث خطأ أثناء حذف حساب الموظف";
+  }
+};

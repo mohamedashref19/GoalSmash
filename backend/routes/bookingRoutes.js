@@ -18,7 +18,7 @@ router
 
 router.post(
   "/confirm-qr",
-  authController.restrictTo("admin", "owner"),
+  authController.restrictTo("admin", "owner", "employee"),
   bookingController.confirmViaQRCode,
 );
 router.delete(

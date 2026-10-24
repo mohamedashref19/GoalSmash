@@ -24,7 +24,7 @@ const idOf = (v) => ((v && v._id) || v)?.toString();
 
 // حماية داخل الكنترولر حتى لو الـ route مفيهوش restrictTo
 const ensureCanManage = (req, next) => {
-  if (!["owner", "admin"].includes(req.user?.role)) {
+  if (!["owner", "admin", "employee"].includes(req.user?.role)) {
     next(new AppError("ليس لديك الصلاحية للقيام بهذا الإجراء", 403));
     return false;
   }
@@ -32,7 +32,9 @@ const ensureCanManage = (req, next) => {
 };
 
 exports.createCourt = catchAsync(async (req, res, next) => {
-  if (!ensureCanManage(req, next)) return;
+  if (!["owner", "admin"].includes(req.user?.role)) {
+    return next(new AppError("ليس لديك الصلاحية لإضافة ملعب جديد", 403));
+  }
 
   const venueId = req.body.venue;
 
@@ -107,11 +109,19 @@ exports.updateCourt = catchAsync(async (req, res, next) => {
 
   const venue = await Venue.findById(idOf(court.venue));
 
-  // المالك لازم يكون صاحب النادي فعلاً. الشرط القديم (venue && ...) كان بيعدّي أي مالك
-  // لو النادي اتعطّل أو اتمسح.
   if (
     req.user.role === "owner" &&
     (!venue || venue.owner.toString() !== req.user.id)
+  ) {
+    return next(new AppError("ليس لديك صلاحية لتعديل بيانات هذا الملعب", 403));
+  }
+
+  // +++ التحقق من أن الموظف يتبع نفس النادي الخاص بالملعب +++
+  if (
+    req.user.role === "employee" &&
+    (!venue ||
+      !req.user.venue ||
+      req.user.venue.toString() !== venue._id.toString())
   ) {
     return next(new AppError("ليس لديك صلاحية لتعديل بيانات هذا الملعب", 403));
   }

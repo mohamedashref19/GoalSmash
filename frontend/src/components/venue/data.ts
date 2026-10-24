@@ -26,7 +26,7 @@ export const initialBookings: ScheduleBooking[] = [
     court: "بادل 1",
     start: 10,
     duration: 2,
-    title: "أحمد سمير",
+    title: "محمد اشرف ",
     kind: "app",
     amount: 600,
   },
@@ -110,7 +110,7 @@ export const upcomingMatches: Match[] = [
   },
   {
     id: "m2",
-    client: "أحمد سمير",
+    client: "محمد اشرف ",
     sport: "بادل",
     court: "بادل 1",
     date: "21 أغسطس",
@@ -166,7 +166,7 @@ export const sportsRevenue = [
 ];
 
 export const topCustomers = [
-  { id: "c1", name: "أحمد سمير", bookings: 42, initials: "أس" },
+  { id: "c1", name: "محمد اشرف ", bookings: 42, initials: "أس" },
   { id: "c2", name: "منى خالد", bookings: 37, initials: "مخ" },
   { id: "c3", name: "فريق النسر", bookings: 29, initials: "فن" },
   { id: "c4", name: "كريم عادل", bookings: 24, initials: "كع" },

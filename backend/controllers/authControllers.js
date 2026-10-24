@@ -66,6 +66,15 @@ const signToken = (id) =>
     expiresIn: process.env.JWT_EXPIRES_IN,
   });
 
+// تنظيف الإيميل من أي مسافات أو رموز مخفية ناتجة عن Copy/Paste
+const sanitizeEmail = (email) =>
+  typeof email === "string"
+    ? email.replace(/[\s\u200B-\u200D\uFEFF\u200E\u200F]/g, "").toLowerCase()
+    : "";
+
+const sanitizePhone = (phone) =>
+  typeof phone === "string" ? phone.replace(/\s+/g, "").trim() : "";
+
 const createAndSendToken = (user, statusCode, res) => {
   const token = signToken(user._id);
   const cookieOptions = {
@@ -97,9 +106,11 @@ exports.signup = catchAsync(async (req, res, next) => {
   ) {
     return next(new AppError("يرجى إدخال البريد الإلكتروني ورقم الهاتف", 400));
   }
+  const cleanEmail = sanitizeEmail(req.body.email);
+  const cleanPhone = sanitizePhone(req.body.phone);
 
   const existingUser = await User.findOne({
-    $or: [{ email: req.body.email }, { phone: req.body.phone }],
+    $or: [{ email: cleanEmail }, { phone: cleanPhone }],
   });
 
   if (existingUser) {
@@ -119,9 +130,9 @@ exports.signup = catchAsync(async (req, res, next) => {
     allowOwnerSignup && req.body.role === "owner" ? "owner" : "customer";
 
   const newUser = await User.create({
-    name: req.body.name,
-    email: req.body.email,
-    phone: req.body.phone,
+    name: req.body.name?.trim(),
+    email: cleanEmail,
+    phone: cleanPhone,
     password: req.body.password,
     passwordConfirm: req.body.passwordConfirm,
     role: userRole,
@@ -157,7 +168,7 @@ exports.signup = catchAsync(async (req, res, next) => {
 });
 
 exports.verifyOTP = catchAsync(async (req, res, next) => {
-  const { email } = req.body;
+  const email = sanitizeEmail(req.body.email);
   const otp = normalizeOtp(req.body.otp);
 
   if (typeof email !== "string" || typeof otp !== "string") {
@@ -203,7 +214,8 @@ exports.verifyOTP = catchAsync(async (req, res, next) => {
 });
 
 exports.login = catchAsync(async (req, res, next) => {
-  const { phone, password } = req.body;
+  const phone = sanitizePhone(req.body.phone);
+  const { password } = req.body;
 
   if (
     typeof phone !== "string" ||
@@ -233,7 +245,7 @@ exports.login = catchAsync(async (req, res, next) => {
 });
 
 exports.resendOTP = catchAsync(async (req, res, next) => {
-  const { email } = req.body;
+  const email = sanitizeEmail(req.body.email);
 
   if (!email || typeof email !== "string") {
     return next(new AppError("يرجى توفير البريد الإلكتروني", 400));
@@ -374,7 +386,7 @@ exports.updatePassword = catchAsync(async (req, res, next) => {
 });
 
 exports.forgetPassword = catchAsync(async (req, res, next) => {
-  const { email } = req.body;
+  const email = sanitizeEmail(req.body.email);
 
   if (!email || typeof email !== "string") {
     return next(new AppError("يرجى توفير البريد الإلكتروني", 400));
@@ -416,7 +428,8 @@ exports.forgetPassword = catchAsync(async (req, res, next) => {
 });
 
 exports.resetPassword = catchAsync(async (req, res, next) => {
-  const { email, password, passwordConfirm } = req.body;
+  const { password, passwordConfirm } = req.body;
+  const email = sanitizeEmail(req.body.email);
   const otp = normalizeOtp(req.body.otp);
 
   if (
@@ -499,8 +512,8 @@ exports.updateMe = catchAsync(async (req, res, next) => {
   }
 
   const filteredBody = {
-    name: req.body.name,
-    email: req.body.email,
+    name: req.body.name?.trim(),
+    email: req.body.email ? sanitizeEmail(req.body.email) : undefined,
     // phone: req.body.phone,
   };
 

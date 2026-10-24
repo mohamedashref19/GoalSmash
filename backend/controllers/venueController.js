@@ -2,8 +2,7 @@ const Venue = require("../models/venueModel");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
 
-// الحقول المسموح بتعديلها. قبل كده الـ req.body كان بيتبعت للداتابيز كما هو (mass assignment):
-// المالك كان يقدر يبعت owner لحساب تاني أو isActive.
+// الحقول المسموح بتعديلها
 const VENUE_FIELDS = [
   "name",
   "phone",
@@ -46,7 +45,6 @@ exports.createVenue = catchAsync(async (req, res, next) => {
 exports.getAllVenues = catchAsync(async (req, res, next) => {
   let filter = {};
 
-  // +++ تم التعديل: التأكد من وجود req.user قبل قراءة role لحماية المسارات العامة +++
   if (req.user && req.user.role === "owner") {
     filter = { owner: req.user.id };
   } else if (req.user && req.user.role === "employee") {
@@ -55,8 +53,6 @@ exports.getAllVenues = catchAsync(async (req, res, next) => {
 
   let query = Venue.find(filter).populate("courts");
 
-  // بيانات المالك (إيميل ورقم) للأدمن والمالك نفسه بس.
-  // قبل كده كل عميل كان بيشوف إيميل ورقم كل مالك في المنصة.
   if (req.user && ["admin", "owner"].includes(req.user.role)) {
     query = query.populate("owner", "name phone email");
   }
@@ -79,11 +75,18 @@ exports.getVenue = catchAsync(async (req, res, next) => {
     return next(new AppError("لا يوجد مكان بهذا المعرف", 404));
   }
 
-  // +++ تم التعديل: التأكد من وجود req.user +++
   if (
     req.user &&
     req.user.role === "owner" &&
     venue.owner.toString() !== req.user.id
+  ) {
+    return next(new AppError("ليس لديك صلاحية لعرض تفاصيل هذا المكان", 403));
+  }
+
+  if (
+    req.user &&
+    req.user.role === "employee" &&
+    (!req.user.venue || req.user.venue.toString() !== venue._id.toString())
   ) {
     return next(new AppError("ليس لديك صلاحية لعرض تفاصيل هذا المكان", 403));
   }
@@ -104,6 +107,14 @@ exports.updateVenue = catchAsync(async (req, res, next) => {
   }
 
   if (req.user.role === "owner" && venue.owner.toString() !== req.user.id) {
+    return next(new AppError("ليس لديك صلاحية لتعديل بيانات هذا المكان", 403));
+  }
+
+  // +++ السماح للموظف بتعديل ناديه فقط +++
+  if (
+    req.user.role === "employee" &&
+    (!req.user.venue || req.user.venue.toString() !== venue._id.toString())
+  ) {
     return next(new AppError("ليس لديك صلاحية لتعديل بيانات هذا المكان", 403));
   }
 

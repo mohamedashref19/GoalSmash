@@ -784,7 +784,7 @@ function MyBookingsPage() {
   };
 
   const isAdmin = rawRole === "admin" || rawRole === "super_admin";
-  const isOwner = rawRole === "owner";
+  const isOwner = rawRole === "owner" || rawRole === "employee";
 
   return (
     <div dir="rtl" className="flex min-h-screen flex-col bg-background text-foreground">

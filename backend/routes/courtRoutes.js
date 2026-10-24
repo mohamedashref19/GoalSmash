@@ -22,6 +22,7 @@ router.post(
 );
 router.patch(
   "/:id",
+  authController.restrictTo("owner", "admin", "employee"),
   uploadVenueImage,
   processAndUploadImage,
   courtController.updateCourt,
