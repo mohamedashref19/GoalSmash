@@ -9,6 +9,11 @@ const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
 const PaymentAccount = require("../models/paymentAccountModel");
 const CourtBlock = require("../models/courtBlockModel");
+const {
+  DEFAULT_OPEN_HOUR,
+  parseOpenHour,
+  parseCloseHour,
+} = require("../utils/accountingDay");
 
 const courtMutexes = new Map();
 
@@ -18,6 +23,37 @@ const isId = (v) => typeof v === "string" && mongoose.isValidObjectId(v);
 // يرجّع الـ id سواء الحقل populated أو لأ
 // (toString على document مش populated بيرجّع نص طويل مش الـ id)
 const idOf = (v) => ((v && v._id) || v)?.toString();
+
+// +++ قراءة اليوم والساعة بتوقيت مصر دائماً (مهما كان توقيت السيرفر) +++
+// بنستخدم Intl بدل toLocaleString + new Date عشان مفيش parsing لنص يعتمد على توقيت السيرفر
+const CAIRO_TZ = "Africa/Cairo";
+const WEEKDAY_INDEX = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+};
+const cairoPartsFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: CAIRO_TZ,
+  weekday: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+const getCairoDateParts = (dateObj) => {
+  const parts = {};
+  for (const p of cairoPartsFormatter.formatToParts(dateObj)) {
+    parts[p.type] = p.value;
+  }
+  return {
+    hour: Number(parts.hour) % 24,
+    minute: Number(parts.minute),
+    day: WEEKDAY_INDEX[parts.weekday], // 0 (الأحد) إلى 6 (السبت)
+  };
+};
 
 // الموظف مربوط بنادي واحد (userModel.venue): كل صلاحياته محصورة فيه.
 // موظف من غير نادي مربوط = مرفوض في كل حاجة.
@@ -120,8 +156,27 @@ exports.createBooking = catchAsync(async (req, res, next) => {
   if (durationInHours > 12) {
     return next(new AppError("لا يمكن إنشاء حجز تتجاوز مدته 12 ساعة.", 400));
   }
-  // +++ حماية جديدة: التأكد من أيام وساعات عمل النادي +++
-  const bookingDay = newStart.getDay(); // يرجع رقم من 0 (الأحد) إلى 6 (السبت)
+  // +++ حماية جديدة: التأكد من أيام وساعات عمل النادي (بتوقيت مصر) +++
+  const startParts = getCairoDateParts(newStart);
+  const endParts = getCairoDateParts(newEnd);
+
+  // +++ حساب المدة بناءً على "ساعة الحائط" لتجاهل قفزات التوقيت الصيفي/الشتوي +++
+  let wallDurationMinutes =
+    endParts.hour * 60 +
+    endParts.minute -
+    (startParts.hour * 60 + startParts.minute);
+  if (wallDurationMinutes <= 0) {
+    wallDurationMinutes += 24 * 60; // معالجة عبور منتصف الليل
+  }
+  const openHour = parseOpenHour(venueObj.openTime);
+  const closeHour = parseCloseHour(venueObj.closeTime);
+
+  // 1. أيام العمل: ساعات الفجر (قبل وقت الفتح) بتتبع سهرة اليوم السابق
+  let bookingDay = startParts.day;
+  if (closeHour <= openHour && startParts.hour < openHour) {
+    bookingDay = (bookingDay + 6) % 7; // اليوم السابق
+  }
+
   if (venueObj.workingDays && venueObj.workingDays.length > 0) {
     if (!venueObj.workingDays.includes(bookingDay)) {
       return next(
@@ -130,27 +185,28 @@ exports.createBooking = catchAsync(async (req, res, next) => {
     }
   }
 
-  // التأكد من أن وقت الحجز يقع ضمن ساعات العمل
-  const openHour = parseInt((venueObj.openTime || "08:00").split(":")[0], 10);
-  const closeHour = parseInt((venueObj.closeTime || "04:00").split(":")[0], 10);
-  const startHour = newStart.getHours();
-  const endHour =
-    newEnd.getHours() === 0 && newEnd.getMinutes() === 0
-      ? 24
-      : newEnd.getHours(); // معالجة منتصف الليل
+  // 2. التأكد من أن كل ساعة في الحجز تقع ضمن ساعات عمل النادي
+  const isHourWithinSchedule = (hr) => {
+    if (venueObj.operatingHours === 24 || openHour === closeHour) return true;
+    if (closeHour > openHour) {
+      // يفتح ويغلق في نفس اليوم (مثال: 8 صباحاً إلى 10 مساءً)
+      return hr >= openHour && hr < closeHour;
+    }
+    // يعمل متجاوزاً منتصف الليل (مثال: 8 صباحاً إلى 4 فجراً)
+    return hr >= openHour || hr < closeHour;
+  };
 
-  let isWithinWorkingHours = false;
-
-  if (closeHour > openHour) {
-    // النادي يفتح ويغلق في نفس اليوم (مثال: من 8 صباحاً إلى 10 مساءً)
-    isWithinWorkingHours = startHour >= openHour && endHour <= closeHour;
-  } else {
-    // النادي يعمل متجاوزاً منتصف الليل (مثال: من 8 صباحاً إلى 4 فجراً من اليوم التالي)
-    // الحجز مسموح إذا كان بعد وقت الفتح في نفس اليوم، أو قبل وقت الإغلاق في اليوم التالي
-    isWithinWorkingHours = startHour >= openHour || endHour <= closeHour;
+  let isWithinWorkingHours = true;
+  const totalHoursToCheck = Math.ceil(durationInHours);
+  for (let i = 0; i < totalHoursToCheck; i++) {
+    const checkHr = (startParts.hour + i) % 24;
+    if (!isHourWithinSchedule(checkHr)) {
+      isWithinWorkingHours = false;
+      break;
+    }
   }
 
-  if (!isWithinWorkingHours && venueObj.operatingHours !== 24) {
+  if (!isWithinWorkingHours) {
     return next(
       new AppError(
         `عذراً، مواعيد الحجز يجب أن تكون ضمن ساعات عمل النادي (من ${venueObj.openTime} إلى ${venueObj.closeTime}).`,
@@ -215,15 +271,11 @@ exports.createBooking = catchAsync(async (req, res, next) => {
     }
   }
 
-  const bookingHour = newStart.getHours();
   const eveningStartHour = parseInt(
     (venueObj.eveningStartTime || "18:00").split(":")[0],
     10,
   );
-  const morningStartHour = parseInt(
-    (venueObj.openTime || "08:00").split(":")[0],
-    10,
-  );
+  const morningStartHour = parseOpenHour(venueObj.openTime);
 
   const eveningPrice =
     courtExists.priceEvening !== undefined
@@ -242,7 +294,7 @@ exports.createBooking = catchAsync(async (req, res, next) => {
   let currentTempTime = new Date(newStart);
 
   for (let i = 0; i < durationBlocks; i++) {
-    const currentHour = currentTempTime.getHours();
+    const { hour: currentHour } = getCairoDateParts(currentTempTime);
     const isCurrentBlockEvening =
       currentHour >= eveningStartHour || currentHour < morningStartHour;
 
@@ -311,7 +363,7 @@ exports.createBooking = catchAsync(async (req, res, next) => {
         activePaymentAccount = await PaymentAccount.findOneAndUpdate(
           { type: paymentMethod, isActive: true },
           { lastUsedAt: new Date() },
-          { sort: { lastUsedAt: 1 }, new: true },
+          { sort: { lastUsedAt: 1 }, returnDocument: "after" },
         );
 
         if (!activePaymentAccount) {
@@ -522,12 +574,43 @@ exports.getAllBookings = catchAsync(async (req, res, next) => {
     if (Number.isNaN(new Date(req.query.date).getTime())) {
       return next(new AppError("صيغة التاريخ غير صحيحة", 400));
     }
-    startOfLogicalDay = new Date(req.query.date);
-    startOfLogicalDay.setHours(8, 0, 0, 0);
 
-    endOfLogicalDay = new Date(req.query.date);
+    // +++ تحديد بداية اليوم المحاسبي من ميعاد فتح النادي (أو الأندية) +++
+    let openHour = DEFAULT_OPEN_HOUR;
+
+    let venueIds = [];
+    if (filter.venue && filter.venue.$in) {
+      venueIds = filter.venue.$in;
+    } else if (filter.venue) {
+      venueIds = [filter.venue];
+    }
+    // لو الطلب بالملعب بس (من غير venue) نجيب النادي من الملعب نفسه
+    if (venueIds.length === 0 && req.query.court) {
+      const courtDoc = await Court.findById(req.query.court)
+        .select("venue")
+        .lean();
+      if (courtDoc && courtDoc.venue) {
+        // لو الـ venue جاي populated من hook في موديل Court ناخد الـ _id بتاعه
+        const courtVenueId = courtDoc.venue._id || courtDoc.venue;
+        venueIds = [courtVenueId.toString()];
+      }
+    }
+
+    if (venueIds.length > 0) {
+      const venueDocs = await Venue.find({ _id: { $in: venueIds } }).select(
+        "openTime",
+      );
+      const hours = new Set(venueDocs.map((v) => parseOpenHour(v.openTime)));
+      // لو كل الأندية ليها نفس ميعاد الفتح نستخدمه، غير كده نرجع للافتراضي
+      if (hours.size === 1) openHour = [...hours][0];
+    }
+
+    startOfLogicalDay = new Date(req.query.date);
+    startOfLogicalDay.setHours(openHour, 0, 0, 0);
+
+    endOfLogicalDay = new Date(startOfLogicalDay);
     endOfLogicalDay.setDate(endOfLogicalDay.getDate() + 1);
-    endOfLogicalDay.setHours(7, 59, 59, 999);
+    endOfLogicalDay.setTime(endOfLogicalDay.getTime() - 1);
 
     filter.startTime = { $gte: startOfLogicalDay, $lte: endOfLogicalDay };
   }
@@ -826,7 +909,7 @@ exports.updatePayment = catchAsync(async (req, res, next) => {
       updatedAt: booking.updatedAt,
     },
     { $set: update },
-    { new: true, runValidators: true },
+    { returnDocument: "after", runValidators: true },
   ).populate("venue");
 
   if (!updatedBooking) {
@@ -911,7 +994,8 @@ exports.blockCourtSlots = catchAsync(async (req, res, next) => {
       if (endTimeHour <= startTimeHour) {
         endDateTime.setDate(endDateTime.getDate() + 1);
       }
-      if (startTimeHour < 8) {
+      // الساعات قبل ميعاد فتح النادي (بعد منتصف الليل) تابعة لليوم التقويمي التالي
+      if (startTimeHour < parseOpenHour(venueObj.openTime)) {
         startDateTime.setDate(startDateTime.getDate() + 1);
         endDateTime.setDate(endDateTime.getDate() + 1);
       }

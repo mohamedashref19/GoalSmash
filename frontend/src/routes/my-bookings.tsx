@@ -21,7 +21,6 @@ import {
   Hourglass,
   CheckCircle2,
   Star,
-  QrCode,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Header } from "@/components/venue/Header";
@@ -88,7 +87,7 @@ function ReviewModal({
     setIsSubmitting(true);
     try {
       await submitReview(venueId, { review: reviewText, rating });
-      toast.success("شكراً لك! تم إضافة تقييمك بنجاح.");
+      toast.success("تسلم! تقييمك اتسجل بنجاح.");
       onSuccess();
       onClose();
     } catch (err) {
@@ -116,7 +115,9 @@ function ReviewModal({
 
         <div className="space-y-5">
           <div className="flex flex-col items-center gap-2">
-            <span className="text-sm font-bold text-muted-foreground">كيف كانت تجربتك؟</span>
+            <span className="text-sm font-bold text-muted-foreground">
+              إيه رأيك في الملعب والماتش؟
+            </span>
             <div className="flex items-center gap-1" dir="ltr">
               {[1, 2, 3, 4, 5].map((star) => (
                 <button
@@ -137,11 +138,11 @@ function ReviewModal({
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-bold text-foreground">التعليق (اختياري)</label>
+            <label className="text-sm font-bold text-foreground">اكتب تعليقك (اختياري)</label>
             <textarea
               value={reviewText}
               onChange={(e) => setReviewText(e.target.value)}
-              placeholder="شاركنا رأيك في أرضية الملعب، الإضاءة، والتعامل..."
+              placeholder="قولنا رأيك في النجيل، الإضاءة، والتعامل هناك..."
               className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm font-medium outline-none focus:border-primary transition min-h-24 resize-none"
             />
           </div>
@@ -151,7 +152,7 @@ function ReviewModal({
             disabled={isSubmitting}
             className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition disabled:opacity-50"
           >
-            {isSubmitting ? "جاري الحفظ..." : "حفظ التقييم"}
+            {isSubmitting ? "بيتحفظ..." : "إرسال التقييم"}
           </button>
         </div>
       </div>
@@ -182,7 +183,7 @@ function BookingTicketModal({
   const durationMinutes = Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60));
   let durationText = `${durationMinutes} دقيقة`;
   if (durationMinutes === 60) durationText = "ساعة";
-  else if (durationMinutes === 90) durationText = "ساعة ونصف";
+  else if (durationMinutes === 90) durationText = "ساعة ونص";
   else if (durationMinutes === 120) durationText = "ساعتين";
 
   const price = booking.totalPrice || 0;
@@ -205,11 +206,11 @@ function BookingTicketModal({
             <X size={18} />
           </button>
           <div className="mx-auto bg-white p-3 rounded-xl w-fit mb-3">
-            {/* +++ استخدام الـ QR Code الحقيقي وربطه برقم الحجز +++ */}
             <QRCodeSVG value={booking._id} size={150} level="M" includeMargin={false} />
           </div>
           <h3 className="font-bold text-xl">{venueName}</h3>
           <p className="text-sm opacity-90">{booking.court?.name || "ملعب غير محدد"}</p>
+          <p className="text-[11px] mt-1 opacity-80">ورّي الكود ده لمسؤول الملعب لما توصل</p>
         </div>
 
         <div className="p-6 space-y-4">
@@ -219,7 +220,7 @@ function BookingTicketModal({
               <span className="font-bold">{dateStr}</span>
             </div>
             <div className="flex flex-col text-left">
-              <span className="text-xs text-muted-foreground">الوقت</span>
+              <span className="text-xs text-muted-foreground">الميعاد</span>
               <span className="font-bold" dir="ltr">
                 {timeStr}
               </span>
@@ -249,7 +250,7 @@ function BookingTicketModal({
               <span className="font-bold text-primary">{deposit} ج.م</span>
             </div>
             <div className="flex justify-between text-sm pt-2 border-t border-border">
-              <span className="font-bold text-destructive">يُدفع في الملعب</span>
+              <span className="font-bold text-destructive">باقي في الملعب</span>
               <span className="font-bold text-destructive text-lg">{remaining} ج.م</span>
             </div>
           </div>
@@ -436,22 +437,22 @@ function UploadProofModal({
     e.preventDefault();
 
     if (!file) {
-      toast.error("يرجى إرفاق صورة إيصال التحويل");
+      toast.error("يا ريت ترفع صورة سكرين شوت التحويل الأول");
       return;
     }
     if (!transactionId) {
-      toast.error("يرجى إدخال رقم المعاملة");
+      toast.error("اكتب رقم العملية (الموجود في رسالة التحويل)");
       return;
     }
     if (!senderPhone || senderPhone.length < 11) {
-      toast.error("يرجى إدخال رقم هاتف المرسل بشكل صحيح");
+      toast.error("اكتب رقم الموبايل اللي حوّلت منه بشكل صحيح");
       return;
     }
 
     setIsSubmitting(true);
     try {
       await submitPaymentProof(paymentId, file, transactionId, senderPhone);
-      toast.success("تم رفع الإثبات بنجاح، جاري المراجعة");
+      toast.success("وصلت صورة التحويل! بنراجعها وهيتأكد حجزك فوراً");
       onSuccess();
       onClose();
     } catch (err) {
@@ -468,7 +469,7 @@ function UploadProofModal({
     >
       <div className="bg-card w-full max-w-md rounded-2xl border border-border shadow-lg p-5 animate-in fade-in zoom-in-95">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="font-bold text-lg">إرفاق إثبات الدفع</h3>
+          <h3 className="font-bold text-lg">رفع سكرين شوت التحويل</h3>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-muted text-muted-foreground">
             <X className="size-5" />
           </button>
@@ -476,7 +477,7 @@ function UploadProofModal({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-bold mb-1.5 text-muted-foreground">
-              رقم الهاتف المحول منه
+              الرقم اللي حوّلت منه
             </label>
             <input
               type="text"
@@ -495,14 +496,14 @@ function UploadProofModal({
               type="text"
               value={transactionId}
               onChange={(e) => setTransactionId(e.target.value)}
-              placeholder="اكتب الرقم المرجعي للتحويل"
+              placeholder="الرقم المرجعي للتحويل"
               className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm outline-none focus:border-primary"
               dir="ltr"
             />
           </div>
           <div>
             <label className="block text-xs font-bold mb-1.5 text-muted-foreground">
-              صورة الإيصال (سكرين شوت)
+              صورة التحويل (سكرين شوت)
             </label>
             <input
               type="file"
@@ -517,7 +518,7 @@ function UploadProofModal({
               className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-border rounded-xl p-4 text-sm font-bold text-muted-foreground hover:bg-muted transition"
             >
               <UploadCloud className="size-5" />
-              {file ? file.name : "اختر صورة من جهازك"}
+              {file ? file.name : "اختار صورة السكرين شوت من موبايلك"}
             </button>
           </div>
           <button
@@ -525,7 +526,7 @@ function UploadProofModal({
             disabled={isSubmitting}
             className="w-full gradient-primary text-primary-foreground font-bold py-2.5 rounded-xl transition hover:opacity-90 disabled:opacity-50"
           >
-            {isSubmitting ? "جاري الرفع..." : "تأكيد ورفع الإثبات"}
+            {isSubmitting ? "جاري الرفع..." : "تأكيد وإرسال الإيصال"}
           </button>
         </form>
       </div>
@@ -554,35 +555,32 @@ function CancelConfirmModal({
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive mb-4">
           <AlertTriangle className="h-6 w-6" />
         </div>
-        <h3 className="text-lg font-extrabold text-foreground mb-2">تنبيه قبل الإلغاء!</h3>
+        <h3 className="text-lg font-extrabold text-foreground mb-2">خلي بالك قبل الإلغاء!</h3>
         <p className="text-sm font-bold text-muted-foreground mb-4">
-          هل أنت متأكد من رغبتك في إلغاء هذا الحجز؟
+          متأكد إنك عايز تلغي الحجز ده؟
         </p>
         <div className="bg-muted/50 rounded-xl p-4 text-xs text-right space-y-3 border border-border mb-6">
           <p className="flex gap-2 items-start font-semibold text-muted-foreground">
             <span className="text-destructive font-black shrink-0 mt-0.5">•</span>
+            <span>الحجز بيتلغي تلقائياً لو مكملتش تحويل العربون خلال 10 دقايق من طلب الحجز.</span>
+          </p>
+          <p className="flex gap-2 items-start font-semibold text-muted-foreground">
+            <span className="text-destructive font-black shrink-0 mt-0.5">•</span>
             <span>
-              يتم إلغاء الحجز تلقائياً إذا لم يتم إتمام التحويل خلال 10 دقائق من طلب الحجز.
+              لو لغيت قبل ميعاد الحجز بـ <span className="text-foreground">24 ساعة أو أكتر</span>،
+              بيتخصم 50% من العربون المدفوع.
             </span>
           </p>
           <p className="flex gap-2 items-start font-semibold text-muted-foreground">
             <span className="text-destructive font-black shrink-0 mt-0.5">•</span>
             <span>
-              عند الإلغاء قبل موعد الحجز بـ <span className="text-foreground">24 ساعة فأكثر</span>،
-              يتم خصم 50% من المبلغ المدفوع.
-            </span>
-          </p>
-          <p className="flex gap-2 items-start font-semibold text-muted-foreground">
-            <span className="text-destructive font-black shrink-0 mt-0.5">•</span>
-            <span>
-              <strong className="text-destructive">لا يمكن استرداد أي مبلغ</strong> في حالة الإلغاء
-              قبل موعد الحجز بمدة أقل من 24 ساعة.
+              <strong className="text-destructive">العربون مبيرجعش</strong> في حالة الإلغاء قبل
+              ميعاد الحجز بأقل من 24 ساعة.
             </span>
           </p>
           <hr className="border-border my-2" />
           <p className="text-[10px] text-muted-foreground/80 leading-relaxed font-bold flex items-center gap-1.5 justify-center">
-            <Info className="size-3" /> لاسترداد الأموال (حسب الشروط أعلاه)، يرجى التواصل مع الدعم
-            الفني للمنصة.
+            <Info className="size-3" /> لاسترداد المبلغ (حسب الشروط)، تواصل مع دعم التطبيق.
           </p>
         </div>
         <div className="flex gap-3 w-full">
@@ -591,14 +589,14 @@ function CancelConfirmModal({
             disabled={isCancelling}
             className="flex-1 rounded-xl bg-muted px-4 py-2.5 text-sm font-bold text-foreground transition hover:bg-muted/80 disabled:opacity-50"
           >
-            تراجع
+            رجوع
           </button>
           <button
             onClick={onConfirm}
             disabled={isCancelling}
             className="flex-1 rounded-xl bg-destructive px-4 py-2.5 text-sm font-bold text-white transition hover:bg-destructive/90 disabled:opacity-50"
           >
-            {isCancelling ? "جاري الإلغاء..." : "نعم، أؤكد الإلغاء"}
+            {isCancelling ? "جاري الإلغاء..." : "أيوة، إلغاء الحجز"}
           </button>
         </div>
       </div>
@@ -690,7 +688,7 @@ function MyBookingsPage() {
     setIsCancelling(true);
     try {
       await cancelBooking(cancelModalBookingId);
-      toast.success("تم إلغاء الحجز بنجاح");
+      toast.success("تم إلغاء الحجز خلاص");
       setCancelModalBookingId(null);
       loadBookings();
     } catch (err) {
@@ -749,14 +747,14 @@ function MyBookingsPage() {
     if (endTime && new Date(endTime) < new Date()) {
       return (
         <span className="rounded-lg bg-muted px-2 py-0.5 text-[11px] font-bold text-muted-foreground border border-border">
-          منتهي
+          خلص
         </span>
       );
     }
     if (actualPaymentStatus === "pending_verification") {
       return (
         <span className="rounded-lg bg-info/15 px-2 py-0.5 text-[11px] font-bold text-info">
-          قيد المراجعة
+          بيتراجع
         </span>
       );
     }
@@ -771,7 +769,7 @@ function MyBookingsPage() {
       case "pending_payment":
         return (
           <span className="rounded-lg bg-warning/15 px-2 py-0.5 text-[11px] font-bold text-warning">
-            بانتظار الدفع
+            مستني الدفع
           </span>
         );
       default:
@@ -820,7 +818,7 @@ function MyBookingsPage() {
                 : "text-muted-foreground hover:bg-accent",
             )}
           >
-            الحجوزات القادمة
+            الماتشات الجاية
           </button>
           <button
             onClick={() => setTab("past")}
@@ -831,14 +829,14 @@ function MyBookingsPage() {
                 : "text-muted-foreground hover:bg-accent",
             )}
           >
-            السابقة
+            الحجوزات اللي فاتت
           </button>
         </div>
 
         {loading ? (
           <div className="grid place-items-center py-20 text-muted-foreground">
             <Clock className="h-8 w-8 animate-spin" />
-            <p className="mt-4 font-semibold">جارٍ تحميل حجوزاتك...</p>
+            <p className="mt-4 font-semibold">بنحمّل حجوزاتك...</p>
           </div>
         ) : error ? (
           <div className="grid place-items-center py-20 text-destructive">
@@ -848,9 +846,13 @@ function MyBookingsPage() {
         ) : filteredBookings.length === 0 ? (
           <div className="card-surface flex flex-col items-center gap-2 p-10 text-center">
             <CalendarDays className="size-12 text-muted-foreground opacity-20" />
-            <p className="text-sm font-bold">لا توجد حجوزات في هذه القائمة</p>
+            <p className="text-sm font-bold">
+              {tab === "upcoming"
+                ? "مفيش حجوزات جاية دلوقتي.. يلا نحجز ماتش؟"
+                : "مفيش حجوزات سابقة في القائمة دي"}
+            </p>
             <Link to="/explore" className="mt-2 font-bold text-primary hover:underline">
-              احجز ملعبك الآن
+              اختار ملعبك واحجز دلوقتي
             </Link>
           </div>
         ) : (
@@ -880,7 +882,7 @@ function MyBookingsPage() {
               );
               let durationText = `${durationMinutes} دقيقة`;
               if (durationMinutes === 60) durationText = "ساعة";
-              else if (durationMinutes === 90) durationText = "ساعة ونصف";
+              else if (durationMinutes === 90) durationText = "ساعة ونص";
               else if (durationMinutes === 120) durationText = "ساعتين";
 
               const price = b.totalPrice || 0;
@@ -924,19 +926,17 @@ function MyBookingsPage() {
                           <Clock className="size-3.5" /> {timeStr}
                         </span>
                         <span className="flex items-center gap-1.5 text-foreground/80 font-bold">
-                          <Hourglass className="size-3.5 text-primary" /> مدة الحجز: {durationText}
+                          <Hourglass className="size-3.5 text-primary" /> المدة: {durationText}
                         </span>
                       </div>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3 sm:border-0 sm:pt-0">
-                    {/* +++ التعديل هنا: تفصيل العربون والمتبقي بناءً على حالة الحجز +++ */}
                     <div className="flex flex-col gap-1 items-start sm:items-end">
                       <span className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground line-through opacity-70">
                         إجمالي الحجز: {price} ج.م
                       </span>
 
-                      {/* إظهار العربون فقط إذا لم يكن الحجز منتهياً بسبب الوقت، أو إذا كان الحجز الملغي قد دُفع بالفعل */}
                       {b.status !== "expired" &&
                         b.paymentStatus !== "expired" &&
                         b.actualPaymentStatus !== "expired" && (
@@ -948,27 +948,25 @@ function MyBookingsPage() {
                           </div>
                         )}
 
-                      {/* إظهار رسالة واضحة للحجوزات التي انتهى وقتها دون دفع */}
                       {(b.status === "expired" ||
                         b.paymentStatus === "expired" ||
                         b.actualPaymentStatus === "expired") && (
                         <span className="text-[10px] font-bold text-destructive bg-destructive/10 border border-destructive/20 px-2 py-0.5 rounded-md mt-1">
-                          لم يتم الدفع
+                          مدفعتش العربون في الوقت
                         </span>
                       )}
 
                       {!isCancelledOrExpired && remaining > 0 && (
                         <span className="text-[10px] font-bold text-destructive flex items-center gap-1 bg-destructive/10 px-2 py-0.5 rounded-sm border border-destructive/20 mt-1">
-                          يُدفع في الملعب: {remaining} ج.م
+                          باقي في الملعب: {remaining} ج.م
                         </span>
                       )}
                       {!isCancelledOrExpired && remaining === 0 && (
                         <span className="text-[10px] font-bold text-success flex items-center gap-1 bg-success/10 px-2 py-0.5 rounded-sm border border-success/20 mt-1">
-                          <CheckCircle2 className="size-3" /> مدفوع بالكامل
+                          <CheckCircle2 className="size-3" /> خالص بالكامل
                         </span>
                       )}
                     </div>
-                    {/* +++++++++++++++++++++++++++++++++++++++++++ */}
 
                     <div className="flex items-center gap-2">
                       {b.paymentId &&
@@ -981,7 +979,7 @@ function MyBookingsPage() {
                             }}
                             className="flex items-center gap-1 rounded-xl bg-primary/10 px-3 py-1.5 text-[11px] font-bold text-primary transition hover:bg-primary/20"
                           >
-                            <UploadCloud className="size-3.5" /> إرفاق إيصال الدفع
+                            <UploadCloud className="size-3.5" /> ارفع صورة التحويل
                           </button>
                         )}
                       {tab === "upcoming" && !isCancelledOrExpired && !isExpired && (
@@ -1008,7 +1006,7 @@ function MyBookingsPage() {
                             }}
                             className="flex items-center gap-1 rounded-xl bg-warning/10 px-3 py-1.5 text-[11px] font-bold text-warning border border-warning/20 transition hover:bg-warning hover:text-white"
                           >
-                            <Star className="size-3.5" /> قيّم تجربتك
+                            <Star className="size-3.5" /> قيّم الملعب
                           </button>
                         )}
                     </div>

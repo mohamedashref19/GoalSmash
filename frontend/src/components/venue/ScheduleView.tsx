@@ -53,9 +53,9 @@ interface BookingData {
 }
 
 const KIND_LABEL: Record<string, string> = {
-  app: "حجز من التطبيق",
+  app: "حجز تطبيق",
   manual: "حجز يدوي",
-  maintenance: "صيانة",
+  maintenance: "صيانة دورية",
 };
 
 const kindClass: Record<string, string> = {
@@ -99,6 +99,7 @@ function BookingDetailsDialog({
   const durationMinutes = Math.round((eDate.getTime() - bDate.getTime()) / (1000 * 60));
   let durationText = `${durationMinutes} دقيقة`;
   if (durationMinutes === 60) durationText = "ساعة";
+  else if (durationMinutes === 90) durationText = "ساعة ونص";
   else if (durationMinutes === 120) durationText = "ساعتين";
 
   return (
@@ -135,7 +136,7 @@ function BookingDetailsDialog({
                 <User size={18} />
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold text-muted-foreground">اسم العميل</p>
+                <p className="text-[11px] font-semibold text-muted-foreground">اسم الحاجز</p>
                 <p className="truncate font-bold text-foreground text-sm">{name}</p>
               </div>
             </div>
@@ -145,7 +146,7 @@ function BookingDetailsDialog({
                 <Phone size={18} />
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold text-muted-foreground">رقم الهاتف</p>
+                <p className="text-[11px] font-semibold text-muted-foreground">رقم الموبايل</p>
                 <p className="truncate font-bold text-foreground text-sm" dir="ltr">
                   {phone}
                 </p>
@@ -157,7 +158,7 @@ function BookingDetailsDialog({
                 <Clock size={18} />
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold text-muted-foreground">تاريخ ووقت الحجز</p>
+                <p className="text-[11px] font-semibold text-muted-foreground">ميعاد الحجز</p>
                 <p className="font-bold text-foreground text-sm">
                   {bDate.toLocaleDateString("ar-EG", {
                     weekday: "long",
@@ -167,6 +168,7 @@ function BookingDetailsDialog({
                   })}{" "}
                   <br />
                   <span className="text-primary">
+                    الساعة{" "}
                     {bDate.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" })}
                   </span>
                 </p>
@@ -178,7 +180,7 @@ function BookingDetailsDialog({
                 <Hourglass size={18} />
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold text-muted-foreground">مدة الحجز</p>
+                <p className="text-[11px] font-semibold text-muted-foreground">المدة</p>
                 <p className="truncate font-bold text-foreground text-sm">{durationText}</p>
               </div>
             </div>
@@ -186,7 +188,7 @@ function BookingDetailsDialog({
 
           <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
             <div className="mb-2 flex items-center justify-between text-sm">
-              <span className="font-semibold text-muted-foreground">سعر الحجز الإجمالي:</span>
+              <span className="font-semibold text-muted-foreground">إجمالي الحجز:</span>
               <span className="font-bold text-foreground">{price} ج.م</span>
             </div>
             <div className="mb-3 flex items-center justify-between text-sm">
@@ -196,7 +198,7 @@ function BookingDetailsDialog({
               <span className="font-bold text-success">{deposit} ج.م</span>
             </div>
             <div className="border-t border-dashed border-border pt-3 flex items-center justify-between">
-              <span className="font-extrabold text-foreground">المتبقي للتحصيل:</span>
+              <span className="font-extrabold text-foreground">باقي في الملعب:</span>
               <span
                 className={cn(
                   "text-lg font-black flex items-center gap-1",
@@ -207,7 +209,7 @@ function BookingDetailsDialog({
                   `${remaining} ج.م`
                 ) : (
                   <>
-                    <CheckCircle2 className="size-5" /> خالص
+                    <CheckCircle2 className="size-5" /> خالص بالكامل
                   </>
                 )}
               </span>
@@ -226,9 +228,7 @@ function BookingDetailsDialog({
                 ) : (
                   <CheckCircle size={16} />
                 )}
-                {isProcessingPayment
-                  ? "جاري التأكيد..."
-                  : `تأكيد استلام باقي المبلغ (${remaining} ج.م) في الملعب`}
+                {isProcessingPayment ? "ثواني..." : `استلمت الباقي كاش (${remaining} ج.م)`}
               </button>
             )}
 
@@ -238,7 +238,7 @@ function BookingDetailsDialog({
                 disabled={isProcessingPayment}
                 className="flex-1 rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-bold text-foreground hover:bg-muted transition disabled:opacity-50"
               >
-                إغلاق النافذة
+                قفل النافذة
               </button>
               {canCancel ? (
                 <button
@@ -253,7 +253,7 @@ function BookingDetailsDialog({
                 <button
                   disabled
                   className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-muted px-4 py-2.5 text-xs font-bold text-muted-foreground transition opacity-50 cursor-not-allowed"
-                  title="لا يمكن للمالك إلغاء حجز من التطبيق"
+                  title="لا يمكن إلغاء الحجز القادم من التطبيق من هنا"
                 >
                   <Trash2 size={16} />
                   إلغاء غير متاح
@@ -266,6 +266,7 @@ function BookingDetailsDialog({
     </div>
   );
 }
+
 const formatHour12Short = (h: number) => {
   const ampm = h >= 12 && h < 24 ? "م" : "ص";
   let hr12 = h % 12;
@@ -290,7 +291,6 @@ export function ScheduleView({ venueId }: { venueId: string }) {
   const [timeTab, setTimeTab] = useState<"morning" | "evening">("morning");
   const [viewBooking, setViewBooking] = useState<BookingData | null>(null);
 
-  // +++ حالات جديدة لحفظ مواعيد الفتح والإغلاق +++
   const [venueOpenHour, setVenueOpenHour] = useState(8);
   const [venueCloseHour, setVenueCloseHour] = useState(2);
   const [eveningStartHour, setEveningStartHour] = useState(18);
@@ -371,7 +371,7 @@ export function ScheduleView({ venueId }: { venueId: string }) {
 
         setBookings(uniqueBookings);
       } catch (err) {
-        toast.error("حدث خطأ في جلب بيانات الجدول");
+        toast.error("حصلت مشكلة في جلب جدول الحجوزات");
       } finally {
         setLoading(false);
       }
@@ -385,7 +385,6 @@ export function ScheduleView({ venueId }: { venueId: string }) {
     }
   }, [venueId, selectedDate, loadData]);
 
-  // +++ توليد الساعات المتاحة ديناميكياً بدلاً من المصفوفات الثابتة +++
   const activeHours = useMemo(() => {
     const hours = [];
     let current = timeTab === "morning" ? venueOpenHour : eveningStartHour;
@@ -410,7 +409,8 @@ export function ScheduleView({ venueId }: { venueId: string }) {
       const cellDateTime = new Date(selectedDate);
       cellDateTime.setHours(hour, 0, 0, 0);
 
-      if (hour < 8) {
+      // الساعات اللي قبل ميعاد فتح الملعب (بعد منتصف الليل) تابعة لنفس اليوم المنطقي
+      if (hour < venueOpenHour) {
         cellDateTime.setDate(cellDateTime.getDate() + 1);
       }
 
@@ -443,11 +443,22 @@ export function ScheduleView({ venueId }: { venueId: string }) {
     setIsModalOpen(true);
   };
 
+  // التاريخ التقويمي الفعلي للخانة المختارة (الساعات بعد منتصف الليل = اليوم التالي)
+  const slotRealDate = (() => {
+    const d = new Date(selectedDate);
+    if (slot && slot.hour < venueOpenHour) d.setDate(d.getDate() + 1);
+    return d;
+  })();
+
   const confirmManualBooking = async (data: BookingFormData) => {
     if (!slot || !venueId) return;
 
     const startDateTime = new Date(selectedDate);
     startDateTime.setHours(slot.hour, 0, 0, 0);
+    // نفس منطق العرض: الساعات بعد منتصف الليل بتتسجل في اليوم التقويمي التالي
+    if (slot.hour < venueOpenHour) {
+      startDateTime.setDate(startDateTime.getDate() + 1);
+    }
 
     const bookingDuration = (data as BookingFormData & { duration?: number }).duration || 60;
 
@@ -476,20 +487,20 @@ export function ScheduleView({ venueId }: { venueId: string }) {
   };
 
   const handleCancelBooking = async (id: string) => {
-    const isConfirmed = await confirm("هل أنت متأكد من إلغاء هذا الحجز؟");
+    const isConfirmed = await confirm("متأكد إنك عايز تلغي الحجز ده؟");
     if (!isConfirmed) return;
     try {
       await apiClient.patch(`/bookings/${id}/cancel`);
-      toast.success("تم إلغاء الحجز بنجاح");
+      toast.success("تم إلغاء الحجز خلاص");
       setViewBooking(null);
       loadData(venueId, selectedDate);
     } catch (err) {
-      toast.error("حدث خطأ أثناء الإلغاء");
+      toast.error("حصلت مشكلة أثناء إلغاء الحجز");
     }
   };
 
   const handleMarkAsPaid = async (id: string, fullPrice: number) => {
-    const isConfirmed = await confirm("هل تأكدت من استلام باقي المبلغ كاش؟");
+    const isConfirmed = await confirm("استلمت باقي المبلغ كاش خلاص؟");
     if (!isConfirmed) return;
 
     setIsProcessingPayment(true);
@@ -499,11 +510,11 @@ export function ScheduleView({ venueId }: { venueId: string }) {
         paymentStatus: "paid",
       });
 
-      toast.success("تم تأكيد استلام باقي المبلغ بنجاح");
+      toast.success("تمام! اتسجل إن المبلغ خالص بالكامل");
       setViewBooking(null);
       loadData(venueId, selectedDate);
     } catch (err) {
-      toast.error("حدث خطأ أثناء تحديث بيانات الدفع");
+      toast.error("حصلت مشكلة أثناء تحديث حالة الدفع");
     } finally {
       setIsProcessingPayment(false);
     }
@@ -514,7 +525,7 @@ export function ScheduleView({ venueId }: { venueId: string }) {
       <section className="card-surface p-5 relative">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 sm:flex sm:justify-between">
           <div className="min-w-0">
-            <h2 className="font-display text-lg font-extrabold">الجدول</h2>
+            <h2 className="font-display text-lg font-extrabold">جدول الحجوزات</h2>
 
             <div className="mt-3 flex items-center gap-1 rounded-xl bg-muted/50 p-1 w-fit">
               <button
@@ -583,8 +594,8 @@ export function ScheduleView({ venueId }: { venueId: string }) {
                 <div className="bg-primary/10 p-3 rounded-full">
                   <Loader2 className="size-8 animate-spin text-primary" />
                 </div>
-                <p className="text-sm font-bold text-foreground">جاري تحضير الجدول...</p>
-                <p className="text-xs text-muted-foreground">لحظات ونعرض أحدث المواعيد</p>
+                <p className="text-sm font-bold text-foreground">بنجهّز الجدول...</p>
+                <p className="text-xs text-muted-foreground">ثواني ونعرض المواعيد</p>
               </div>
             </div>
           )}
@@ -608,7 +619,7 @@ export function ScheduleView({ venueId }: { venueId: string }) {
 
               {courts.length === 0 && !loading ? (
                 <p className="py-20 text-center text-sm font-bold text-muted-foreground border border-dashed rounded-xl">
-                  لا توجد ملاعب نشطة في هذا المكان
+                  مفيش ملاعب شغالة في المكان ده حالياً
                 </p>
               ) : (
                 courts.map((court) => (
@@ -787,7 +798,7 @@ export function ScheduleView({ venueId }: { venueId: string }) {
         slotLabel={slot ? `${slot.courtName} · الساعة ${formatHour12Full(slot.hour)}` : undefined}
         slotPrice={slot?.price ?? 0}
         defaultSport={slot?.sportType}
-        selectedDateObj={selectedDate}
+        selectedDateObj={slotRealDate}
         onClose={() => setIsModalOpen(false)}
         onConfirm={confirmManualBooking}
       />

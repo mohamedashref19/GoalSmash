@@ -23,7 +23,7 @@ module.exports = class Email {
     this.firstName = user.name.split(" ")[0];
     this.url = url;
     this.fromEmail = process.env.EMAIL_FROM;
-    // +++ تغيير اسم المرسل ليظهر في الإشعارات +++
+    // اسم المرسل يظهر في الإشعارات
     this.fromName = "Tigi Hagz";
   }
 
@@ -33,7 +33,7 @@ module.exports = class Email {
       <div style="max-width:520px; margin:auto; background:#ffffff; border-radius:20px; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,0.08);">
         <div style="background:#1f3d2b; padding:28px 20px; text-align:center;">
           <img src="${LOGO_URL}" alt="Tigi Hagz" style="width:64px; height:64px; border-radius:16px; object-fit:cover;" />
-          <h1 style="color:#ffffff; font-size:20px; margin:12px 0 0; font-weight:800;">Tigi Hagz - تيجى حجز</h1>
+          <h1 style="color:#ffffff; font-size:20px; margin:12px 0 0; font-weight:800;">Tigi Hagz - تيجي حجز</h1>
         </div>
         <div style="padding:32px 28px; text-align:right; direction:rtl;">
           ${bodyContent}
@@ -145,51 +145,57 @@ module.exports = class Email {
     const body = `
       <h2 style="color:#1f3d2b; font-size:22px; margin:0 0 12px;">أهلاً بيك يا ${escapeHtml(this.firstName)} 👋</h2>
       <p style="color:#555; font-size:15px; line-height:1.8; margin:0 0 16px;">
-        اتسجلت معانا في <strong>Tigi Hagz</strong>، وده يبقى أول خطوة على طريق إنك تحجز ملعبك المفضل بكل سهولة وبدون أي تعقيد.
+        نورتنا في <strong>Tigi Hagz</strong>، دي أول خطوة ليك عشان تحجز ملعبك المفضل وتلم الشلة في ثواني.
       </p>
       <p style="color:#555; font-size:15px; line-height:1.8; margin:0 0 24px;">
-        هتلاقي عندنا أحسن ملاعب البادل والخماسي في المنطقة، وحجز في دقيقة واحدة بس.
+        عندنا أحسن ملاعب البادل والخماسي، وحجز الماتش مش هياخد منك دقيقة.
       </p>
       <div style="text-align:center; margin:28px 0;">
         <a href="${escapeHtml(this.url)}" style="background:#28a745; color:#fff; padding:13px 32px; text-decoration:none; border-radius:50px; font-weight:bold; font-size:15px; display:inline-block;">
-          يلا نبدأ ⚽
+          يلا نلعب ⚽
         </a>
       </div>
-      <p style="color:#999; font-size:13px; margin:0;">لو محتاج أي مساعدة، إحنا موجودين ليك في أي وقت.</p>
+      <p style="color:#999; font-size:13px; margin:0;">لو محتاج أي مساعدة، إحنا معاك وفي ضهرك طول الوقت.</p>
     `;
-    await this.send("أهلاً بيك في Tigi Hagz", body);
+    await this.send("نورتنا في Tigi Hagz ⚽", body);
   }
 
   async sendPasswordResetOTP(otpCode) {
     const body = `
-      <h2 style="color:#1f3d2b; font-size:20px; margin:0 0 12px;">استلمنا طلب تغيير الباسورد 🔐</h2>
+      <h2 style="color:#1f3d2b; font-size:20px; margin:0 0 12px;">طلب تغيير الباسورد 🔐</h2>
       <p style="color:#555; font-size:15px; line-height:1.8; margin:0 0 20px;">
-        محتاج تأكد إنك إنت اللي بتعمل كده؟ استخدم الكود ده عشان تكمل:
+        لقينا طلب لتغيير الباسورد بتاعك. لو ده إنت، استخدم الكود ده عشان تكمل:
       </p>
       <div style="background:#f4f6f5; border:2px dashed #28a745; border-radius:14px; padding:18px; text-align:center; margin:0 0 20px;">
         <span style="font-size:32px; font-weight:800; letter-spacing:8px; color:#28a745;">${otpCode}</span>
       </div>
-      <p style="color:#666; font-size:14px; margin:0 0 8px;">⏱ الكود ده هيفضل شغال لمدة <strong>10 دقايق</strong> بس.</p>
-      <p style="color:#999; font-size:13px; margin:0;">لو إنت مش اللي طلبت كده، تجاهل الإيميل ده وهيفضل حسابك آمن زي ما هو.</p>
+      <p style="color:#666; font-size:14px; margin:0 0 8px;">⏱ الكود ده شغال لمدة <strong>10 دقايق</strong> بس.</p>
+      <p style="color:#999; font-size:13px; margin:0;">لو مش إنت اللي طلبت كده، كبّر دماغك وحسابك في أمان.</p>
     `;
-    await this.send("كود إعادة تعيين كلمة المرور 🔐", body);
+    await this.send("كود إعادة تعيين الباسورد 🔐", body);
   }
 
   async sendOTP(otpCode) {
     const body = `
-      <h2 style="color:#1f3d2b; font-size:20px; margin:0 0 12px;">خطوة وحدة وخلصنا </h2>
+      <h2 style="color:#1f3d2b; font-size:20px; margin:0 0 12px;">خطوة واحدة وخلصنا 🚀</h2>
       <p style="color:#555; font-size:15px; line-height:1.8; margin:0 0 20px;">
-        استخدم الكود ده عشان تفعّل حسابك في Tigi Hagz:
+        خد الكود ده عشان تفعّل حسابك في Tigi Hagz:
       </p>
       <div style="background:#f4f6f5; border-radius:14px; padding:22px; text-align:center; margin:0 0 20px;">
         <span style="font-size:36px; font-weight:800; letter-spacing:10px; color:#28a745;">${otpCode}</span>
       </div>
-      <p style="color:#666; font-size:14px; margin:0 0 8px;">⏱ الكود صالح لمدة <strong>10 دقايق</strong> بس، فسرّع شوية 😄</p>
+      <p style="color:#666; font-size:14px; margin:0 0 8px;">⏱ الكود شغال لمدة <strong>10 دقايق</strong> بس، فسرّع إيدك شوية 😄</p>
     `;
-    await this.send("رمز تفعيل حسابك في Tigi Hagz", body);
+    await this.send("كود تفعيل حسابك في Tigi Hagz", body);
   }
+
   async sendBookingTicket(bookingData) {
-    const bDate = new Date(bookingData.startTime).toLocaleDateString("ar-EG");
+    const bDate = new Date(bookingData.startTime).toLocaleDateString("ar-EG", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
     const bTime = new Date(bookingData.startTime).toLocaleTimeString("ar-EG", {
       hour: "2-digit",
       minute: "2-digit",
@@ -204,13 +210,13 @@ module.exports = class Email {
     );
     const paymentStatusText =
       remaining > 0
-        ? `<span style="color:#d9534f; font-weight:bold;">متبقي: ${remaining} ج.م تُدفع في الملعب</span>`
-        : `<span style="color:#28a745; font-weight:bold;">تم الدفع بالكامل</span>`;
+        ? `<span style="color:#d9534f; font-weight:bold;">باقي: ${remaining} ج.م (تدفعهم في الملعب)</span>`
+        : `<span style="color:#28a745; font-weight:bold;">خالص بالكامل</span>`;
 
     const body = `
-      <h2 style="color:#1f3d2b; font-size:20px; margin:0 0 12px; text-align:center;">تم تأكيد حجزك بنجاح! 🎉</h2>
+      <h2 style="color:#1f3d2b; font-size:20px; margin:0 0 12px; text-align:center;">حجزك اتأكد يا بطل! 🎉</h2>
       <p style="color:#555; font-size:15px; line-height:1.8; margin:0 0 20px; text-align:center;">
-        أهلاً يا ${escapeHtml(this.firstName)}، حجزك في <strong>${escapeHtml(bookingData.venue.name)}</strong> تم تأكيده وتقدر تستمتع بوقتك.
+        أهلاً يا ${escapeHtml(this.firstName)}، حجزك في <strong>${escapeHtml(bookingData.venue.name)}</strong> اتأكد معانا.. جهّز فريقك!
       </p>
       
       <!-- تذكرة الحجز -->
@@ -223,10 +229,10 @@ module.exports = class Email {
             <strong style="color:#333;">الملعب:</strong> ${escapeHtml(bookingData.court.name)}
           </p>
           <p style="margin:0 0 8px; font-size:14px; border-bottom:1px solid #eee; padding-bottom:8px;">
-            <strong style="color:#333;">التاريخ:</strong> ${bDate} - ${bTime}
+            <strong style="color:#333;">الميعاد:</strong> ${bDate}، الساعة ${bTime}
           </p>
           <p style="margin:0 0 8px; font-size:14px; border-bottom:1px solid #eee; padding-bottom:8px;">
-            <strong style="color:#333;">الإجمالي:</strong> ${bookingData.totalPrice} ج.م
+            <strong style="color:#333;">حساب الماتش:</strong> ${bookingData.totalPrice} ج.م
           </p>
           <p style="margin:0; font-size:14px;">
             ${paymentStatusText}
@@ -234,7 +240,7 @@ module.exports = class Email {
         </div>
       </div>
       
-      <p style="color:#999; font-size:13px; margin:0; text-align:center;">لما توصل الملعب، افتح الإيميل ده وورّي الـ QR Code لاداره عشان يعملّه Scan.</p>
+      <p style="color:#999; font-size:13px; margin:0; text-align:center;">لما توصل الملعب إن شاء الله، افتح الإيميل ده وورّي الكود (QR) للكابتن عشان يأكد وصولك.</p>
     `;
     await this.send("تذكرة حجزك في Tigi Hagz 🎟️", body);
   }

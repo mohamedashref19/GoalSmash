@@ -72,7 +72,7 @@ exports.updateReview = catchAsync(async (req, res, next) => {
     req.params.id,
     { review: req.body.review, rating: req.body.rating },
     {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
     },
   );

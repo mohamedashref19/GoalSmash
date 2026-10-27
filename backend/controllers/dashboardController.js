@@ -1,34 +1,43 @@
 const mongoose = require("mongoose");
 const Booking = require("../models/bookingModel");
 const Court = require("../models/courtModel");
-const Venue = require("../models/venueModel"); // +++ استدعاء موديل المكان +++
+const Venue = require("../models/venueModel");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
+const { parseOpenHour } = require("../utils/accountingDay");
 
-// الأدوار المسموح لها بالداشبورد (حماية داخل الكنترولر حتى لو الـ route مفيهوش restrictTo)
 const DASHBOARD_ROLES = ["owner", "admin", "employee"];
 
-// الموظف يشوف ناديه بس (userModel.venue)
 const employeeNotAllowed = (user, venueId) =>
   user.role === "employee" &&
   (!user.venue || user.venue.toString() !== venueId.toString());
 
+// قراءة اليوم والساعة بتوقيت مصر دائماً
+const CAIRO_TZ = "Africa/Cairo";
+const cairoPartsFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: CAIRO_TZ,
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+const getCairoHour = (dateObj) => {
+  const parts = {};
+  for (const p of cairoPartsFormatter.formatToParts(dateObj)) {
+    parts[p.type] = p.value;
+  }
+  return Number(parts.hour) % 24;
+};
+
 exports.getTodayStats = catchAsync(async (req, res, next) => {
   const venueId = req.query.venue;
-  if (!venueId) {
-    return next(new AppError("يرجى تحديد المكان (venue)", 400));
-  }
-  if (typeof venueId !== "string" || !mongoose.isValidObjectId(venueId)) {
+  if (!venueId) return next(new AppError("يرجى تحديد المكان (venue)", 400));
+  if (!mongoose.isValidObjectId(venueId))
     return next(new AppError("معرف المكان غير صالح", 400));
-  }
-  if (!DASHBOARD_ROLES.includes(req.user?.role)) {
+  if (!DASHBOARD_ROLES.includes(req.user?.role))
     return next(new AppError("ليس لديك صلاحية لعرض الإحصائيات", 403));
-  }
 
   const venueDoc = await Venue.findById(venueId);
-  if (!venueDoc) {
-    return next(new AppError("هذا الملعب غير موجود", 404));
-  }
+  if (!venueDoc) return next(new AppError("هذا الملعب غير موجود", 404));
 
   if (
     req.user &&
@@ -37,39 +46,34 @@ exports.getTodayStats = catchAsync(async (req, res, next) => {
   ) {
     return next(new AppError("غير مصرح لك بالوصول لإحصائيات هذا الملعب!", 403));
   }
-
   if (employeeNotAllowed(req.user, venueDoc._id)) {
     return next(new AppError("غير مصرح لك بالوصول لإحصائيات هذا الملعب!", 403));
   }
 
+  // +++ حساب اليوم المنطقي للملعب +++
   const now = new Date();
-  const cairoTime = new Date(
-    now.toLocaleString("en-US", { timeZone: "Africa/Cairo" }),
-  );
-  const utcTime = new Date(now.toLocaleString("en-US", { timeZone: "UTC" }));
-  const dynamicEgyptOffset = (cairoTime - utcTime) / (1000 * 60 * 60);
+  const openHour = parseOpenHour(venueDoc.openTime);
+  const currentCairoHour = getCairoHour(now);
 
-  // اليوم بتوقيت القاهرة (مش بتوقيت UTC): بين 12 والـ 3 صباحاً تاريخ UTC لسه اليوم اللي فات
-  const startOfDay = new Date(
-    Date.UTC(
-      cairoTime.getFullYear(),
-      cairoTime.getMonth(),
-      cairoTime.getDate(),
-      0,
-      0,
-      0,
-      0,
-    ) -
-      dynamicEgyptOffset * 60 * 60 * 1000,
-  );
-  const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000 - 1);
+  const logicalToday = new Date(now);
+  if (currentCairoHour < openHour) {
+    // لو إحنا دلوقتي الفجر قبل ميعاد الفتح، يبقى إحنا لسه في حسابات "امبارح"
+    logicalToday.setDate(logicalToday.getDate() - 1);
+  }
+
+  const startOfDay = new Date(logicalToday);
+  startOfDay.setHours(openHour, 0, 0, 0);
+
+  const endOfDay = new Date(logicalToday);
+  endOfDay.setDate(endOfDay.getDate() + 1);
+  endOfDay.setHours(openHour, 0, 0, 0);
 
   const todayStats = await Booking.aggregate([
     {
       $match: {
         venue: new mongoose.Types.ObjectId(venueId),
-        startTime: { $gte: startOfDay, $lte: endOfDay },
-        status: "confirmed", // احتساب المؤكد فقط
+        startTime: { $gte: startOfDay, $lt: endOfDay },
+        status: "confirmed",
       },
     },
     {
@@ -94,13 +98,10 @@ exports.getTodayStats = catchAsync(async (req, res, next) => {
     bookingsCount: 0,
     totalBookedHours: 0,
   };
-
   const activeCourtsCount = await Court.countDocuments({
     venue: venueId,
     status: "active",
   });
-
-  // +++ الحسبة الديناميكية لنسبة الإشغال +++
   const dailyOperatingHours = venueDoc.operatingHours || 24;
   const totalAvailableHours = activeCourtsCount * dailyOperatingHours;
 
@@ -122,13 +123,10 @@ exports.getTodayStats = catchAsync(async (req, res, next) => {
 
 exports.getTopCustomers = catchAsync(async (req, res, next) => {
   const venueId = req.query.venue;
-  if (!venueId) {
-    return next(new AppError("يرجى تحديد المكان (venue)", 400));
-  }
-  if (typeof venueId !== "string" || !mongoose.isValidObjectId(venueId)) {
+  if (!venueId) return next(new AppError("يرجى تحديد المكان (venue)", 400));
+  if (!mongoose.isValidObjectId(venueId))
     return next(new AppError("معرف المكان غير صالح", 400));
-  }
-  // بيانات العملاء (أسماء وأرقام وإنفاق): للمالك والأدمن وموظف النادي نفسه فقط
+
   if (!DASHBOARD_ROLES.includes(req.user?.role)) {
     return next(new AppError("ليس لديك صلاحية لعرض هذه البيانات", 403));
   }
@@ -141,16 +139,14 @@ exports.getTopCustomers = catchAsync(async (req, res, next) => {
       _id: venueId,
       owner: req.user.id,
     });
-    if (!venueCheck) {
+    if (!venueCheck)
       return next(new AppError("غير مصرح لك بالوصول لبيانات هذا الملعب!", 403));
-    }
   }
 
   const topCustomers = await Booking.aggregate([
     {
       $match: {
         venue: new mongoose.Types.ObjectId(venueId),
-        // +++ تعديل: جلب الحجوزات المؤكدة فقط لضمان دقة إجمالي الإنفاق للعميل +++
         status: "confirmed",
       },
     },
@@ -162,12 +158,7 @@ exports.getTopCustomers = catchAsync(async (req, res, next) => {
         as: "userData",
       },
     },
-    {
-      $unwind: {
-        path: "$userData",
-        preserveNullAndEmptyArrays: true,
-      },
-    },
+    { $unwind: { path: "$userData", preserveNullAndEmptyArrays: true } },
     {
       $project: {
         totalPrice: 1,
@@ -184,19 +175,13 @@ exports.getTopCustomers = catchAsync(async (req, res, next) => {
         totalSpent: { $sum: "$totalPrice" },
       },
     },
-    {
-      $sort: { totalBookings: -1 },
-    },
-    {
-      $limit: 10,
-    },
+    { $sort: { totalBookings: -1 } },
+    { $limit: 10 },
   ]);
 
   res.status(200).json({
     status: "success",
     results: topCustomers.length,
-    data: {
-      topCustomers,
-    },
+    data: { topCustomers },
   });
 });

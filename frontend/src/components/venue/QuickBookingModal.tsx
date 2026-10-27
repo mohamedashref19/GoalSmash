@@ -7,7 +7,7 @@ export type BookingFormData = {
   phone: string;
   sport: "خماسي" | "بادل";
   deposit: string | number;
-  duration: 60 | 120; // +++ إضافة المدة +++
+  duration: 60 | 120;
 };
 
 type Props = {
@@ -15,7 +15,7 @@ type Props = {
   slotLabel?: string | undefined;
   slotPrice: number;
   defaultSport?: string | undefined;
-  selectedDateObj?: Date; // +++ إضافة التاريخ كـ Prop +++
+  selectedDateObj?: Date;
   onClose: () => void;
   onConfirm: (data: BookingFormData) => Promise<void> | void;
 };
@@ -54,7 +54,6 @@ export function QuickBookingModal({
 
   if (!open) return null;
 
-  // +++ حساب السعر النهائي بناءً على المدة +++
   const finalPrice = form.duration === 120 ? slotPrice * 2 : slotPrice;
   const remaining = Math.max(finalPrice - (Number(form.deposit) || 0), 0);
 
@@ -94,7 +93,9 @@ export function QuickBookingModal({
       <div className="relative z-10 max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-card p-5 shadow-2xl duration-200 animate-in slide-in-from-bottom-4 sm:max-w-md sm:rounded-3xl">
         <div className="flex items-start justify-between gap-3 border-b border-border pb-3 mb-4">
           <div className="min-w-0">
-            <h2 className="font-display text-lg font-extrabold text-primary">حجز يدوي سريع</h2>
+            <h2 className="font-display text-lg font-extrabold text-primary">
+              تسجيل حجز يدوي سريع
+            </h2>
             {courtNameMatch && (
               <p className="mt-0.5 font-bold text-muted-foreground">{courtNameMatch}</p>
             )}
@@ -109,7 +110,6 @@ export function QuickBookingModal({
           </button>
         </div>
 
-        {/* +++ ملخص الموعد كزيادة تأكيد +++ */}
         <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 flex items-center justify-around mb-4">
           <div className="flex flex-col items-center gap-1">
             <CalendarDays className="size-4 text-primary" />
@@ -119,7 +119,7 @@ export function QuickBookingModal({
           <div className="w-px h-8 bg-primary/20"></div>
           <div className="flex flex-col items-center gap-1">
             <Clock className="size-4 text-primary" />
-            <span className="text-xs font-bold">الساعة</span>
+            <span className="text-xs font-bold">الميعاد</span>
             <span className="text-xs font-bold" dir="ltr">
               {slotHour}
             </span>
@@ -127,10 +127,9 @@ export function QuickBookingModal({
         </div>
 
         <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-          {/* +++ أزرار اختيار المدة +++ */}
           <div>
             <label className="block text-sm font-semibold mb-2 flex items-center gap-1">
-              <Hourglass className="size-4 text-primary" /> مدة الحجز
+              <Hourglass className="size-4 text-primary" /> مدة اللعب
             </label>
             <div className="flex gap-2">
               <button
@@ -161,7 +160,7 @@ export function QuickBookingModal({
           </div>
 
           <label className="block text-sm font-semibold">
-            اسم العميل
+            اسم الحاجز / الكابتن
             <input
               className={field}
               value={form.name}
@@ -172,7 +171,7 @@ export function QuickBookingModal({
             />
           </label>
           <label className="block text-sm font-semibold">
-            رقم الهاتف
+            رقم الموبايل
             <input
               className={field}
               value={form.phone}
@@ -187,30 +186,31 @@ export function QuickBookingModal({
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="block text-sm font-semibold">
-              العربون (EGP)
+              المدفوع دلوقتي (ج.م)
               <input
                 type="number"
                 min={0}
                 max={finalPrice}
                 disabled={isLoading}
                 className={field}
+                placeholder="0"
                 value={form.deposit}
                 onChange={(e) => setForm({ ...form, deposit: e.target.value })}
                 dir="ltr"
               />
             </label>
             <label className="block text-sm font-semibold">
-              المبلغ المتبقي (EGP)
+              الباقي في الملعب (ج.م)
               <input
                 readOnly
-                className={`${field} bg-muted text-muted-foreground`}
+                className={`${field} bg-muted text-muted-foreground font-bold`}
                 value={remaining}
                 dir="ltr"
               />
             </label>
           </div>
           <p className="rounded-xl bg-surface px-3 py-2 text-xs text-muted-foreground">
-            إجمالي سعر الحجز: <span className="font-bold text-foreground">{finalPrice} جنيه</span>
+            إجمالي حساب الماتش: <span className="font-bold text-foreground">{finalPrice} ج.م</span>
           </p>
 
           <div className="mt-1 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -230,10 +230,10 @@ export function QuickBookingModal({
               {isLoading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  جارٍ التأكيد...
+                  بيتحفظ...
                 </>
               ) : (
-                "تأكيد الحجز"
+                "تسجيل وتأكيد الحجز"
               )}
             </button>
           </div>

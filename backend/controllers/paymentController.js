@@ -176,7 +176,7 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
         verificationNotes: "تم التأكيد آلياً عبر رسائل البنك",
       },
     },
-    { new: true }, // لضمان إرجاع الداتا بعد التحديث مباشرة
+    { returnDocument: "after" }, // لضمان إرجاع الداتا بعد التحديث مباشرة
   );
   // +++ تحديث إحصائيات حساب الدفع الفعلي (إضافة المبلغ وتاريخ آخر استلام) +++
   if (payment && payment.paymentAccount) {
@@ -210,7 +210,7 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
       paymentStatus: "paid",
       paymentMethod: payment.method,
     },
-    { new: true },
+    { returnDocument: "after" },
   ).populate([{ path: "user", select: "name email phone" }, "court", "venue"]);
 
   if (!updatedBooking) {
@@ -496,7 +496,7 @@ exports.processUnmatchedPayment = catchAsync(async (req, res, next) => {
   const unmatched = await UnmatchedPayment.findByIdAndUpdate(
     req.params.id,
     { processed: true, adminNote: adminNote || "تمت المعالجة بدون ملاحظات" },
-    { new: true },
+    { returnDocument: "after" },
   );
 
   if (!unmatched) return next(new AppError("التحويل غير موجود", 404));
@@ -593,7 +593,7 @@ exports.manuallyVerifyPayment = catchAsync(async (req, res, next) => {
         verificationNotes,
       },
     },
-    { new: true },
+    { returnDocument: "after" },
   );
   if (!claimed) return next(new AppError("هذا الدفع مؤكد مسبقاً", 400));
 
@@ -617,7 +617,7 @@ exports.manuallyVerifyPayment = catchAsync(async (req, res, next) => {
       paymentStatus: "paid",
       paymentMethod: payment.method,
     },
-    { new: true },
+    { returnDocument: "after" },
   ).populate([{ path: "user", select: "name email phone" }, "court", "venue"]);
 
   try {

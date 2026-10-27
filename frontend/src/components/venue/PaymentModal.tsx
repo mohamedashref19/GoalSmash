@@ -41,6 +41,8 @@ interface PaymentModalProps {
   open: boolean;
   paymentData: PaymentData | null;
   bookingDetails?: BookingDetails | null;
+  // ساعة فتح النادي: أي ساعة قبلها تعتبر بعد منتصف الليل (الافتراضي 8)
+  openHour?: number;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -49,6 +51,7 @@ export function PaymentModal({
   open,
   paymentData,
   bookingDetails,
+  openHour = 8,
   onClose,
   onSuccess,
 }: PaymentModalProps) {
@@ -90,7 +93,6 @@ export function PaymentModal({
     onCloseRef.current = onClose;
   }, [onSuccess, onClose]);
 
-  // +++ التعديل الحاسم: ضبط السوكيت ليستمع لحدث التأكيد ويغلق الشاشة فوراً مع استخدام Polling +++
   useEffect(() => {
     if (!open) return;
 
@@ -104,17 +106,14 @@ export function PaymentModal({
       if (!userId) return;
 
       const socket = io(SOCKET_URL, {
-        // تم إجبار السوكيت هنا على استخدام polling لتخطي مشكلة حظر Nginx لبروتوكول websocket
         transports: ["polling"],
         withCredentials: true,
       });
 
       const eventName = `booking-confirmed-${userId}`;
 
-      // الاستماع لحدث التأكيد
       socket.on(eventName, () => {
-        toast.success("تم تأكيد دفعك وحجزك بنجاح! 🎉");
-        // استدعاء الدوال لإغلاق الشاشة وإعادة التوجيه
+        toast.success("مبروك! حجزك اتأكد.. جهّز فريقك 🎉");
         if (onSuccessRef.current) onSuccessRef.current();
         if (onCloseRef.current) onCloseRef.current();
       });
@@ -132,13 +131,13 @@ export function PaymentModal({
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopied(true);
-    toast.success("تم النسخ بنجاح");
+    toast.success("اتنسخ خلاص!");
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleUploadProof = async () => {
     if (!paymentData || !manualTrxId || !proofFile) {
-      toast.error("يرجى إدخال رقم المعاملة وإرفاق صورة الإثبات");
+      toast.error("اكتب رقم العملية وارفع صورة السكرين شوت الأول");
       return;
     }
     setIsUploading(true);
@@ -148,7 +147,7 @@ export function PaymentModal({
 
     try {
       await uploadPaymentProof(paymentData.id, formData);
-      toast.success("تم إرسال الإثبات للإدارة بنجاح!");
+      toast.success("وصلت صورة التحويل للإدارة وهيتأكد حجزك فوراً!");
       onSuccess();
     } catch (err) {
       toast.error(err as string);
@@ -172,7 +171,9 @@ export function PaymentModal({
 
       <div className="relative z-10 w-full max-w-md overflow-hidden rounded-3xl bg-card shadow-2xl border border-border animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto scrollbar-hide">
         <div className="flex items-center justify-between border-b border-border bg-muted/50 px-5 py-4 sticky top-0 z-20">
-          <h3 className="font-display text-lg font-extrabold text-foreground">إتمام الدفع</h3>
+          <h3 className="font-display text-lg font-extrabold text-foreground">
+            دفع العربون وتأكيد الحجز
+          </h3>
           {isExpired && (
             <button
               onClick={onClose}
@@ -196,7 +197,7 @@ export function PaymentModal({
             </div>
             {!isExpired && (
               <p className="text-[11px] font-semibold text-muted-foreground">
-                يرجى إتمام التحويل قبل انتهاء الوقت لتجنب إلغاء الحجز
+                حوّل العربون قبل ما الوقت يخلص عشان الحجز ميتلغيش
               </p>
             )}
           </div>
@@ -211,7 +212,7 @@ export function PaymentModal({
                         <CalendarDays className="size-4" />
                       </div>
                       <div>
-                        <p className="text-[10px] font-bold text-muted-foreground">تاريخ الحجز</p>
+                        <p className="text-[10px] font-bold text-muted-foreground">يوم الماتش</p>
                         <p className="text-xs font-bold text-foreground">
                           {new Date(bookingDetails.startTime).toLocaleDateString("ar-EG", {
                             weekday: "long",
@@ -227,7 +228,7 @@ export function PaymentModal({
                         <Clock className="size-4" />
                       </div>
                       <div>
-                        <p className="text-[10px] font-bold text-muted-foreground">التوقيت</p>
+                        <p className="text-[10px] font-bold text-muted-foreground">الميعاد</p>
                         <p className="text-xs font-bold text-foreground" dir="ltr">
                           {new Date(bookingDetails.startTime).toLocaleTimeString("ar-EG", {
                             hour: "2-digit",
@@ -247,10 +248,14 @@ export function PaymentModal({
                     const startDate = new Date(bookingDetails.startTime);
                     const endDate = new Date(bookingDetails.endTime);
                     const startHour = startDate.getHours();
-                    const endHour = endDate.getHours();
 
-                    const isAfterMidnight = startHour >= 0 && startHour < 6;
-                    const crossesMidnight = startHour > endHour;
+                    // بعد منتصف الليل = أي ساعة قبل ميعاد فتح النادي
+                    const isAfterMidnight = startHour < openHour;
+
+                    // الحجز بيعدّي منتصف الليل لو آخر دقيقة فيه في يوم تاني غير يوم البداية
+                    // (23:00 -> 00:00 مش بيعدّي، لأنه بيخلص عند منتصف الليل بالظبط)
+                    const lastMinute = new Date(endDate.getTime() - 60 * 1000);
+                    const crossesMidnight = lastMinute.toDateString() !== startDate.toDateString();
 
                     if (isAfterMidnight || crossesMidnight) {
                       if (isAfterMidnight) {
@@ -262,19 +267,18 @@ export function PaymentModal({
                             <AlertTriangle className="size-5 text-warning shrink-0 mt-0.5" />
                             <div className="space-y-1">
                               <p className="text-xs font-bold text-foreground">
-                                تنبيه: هذا الموعد يقع بعد منتصف الليل
+                                خلي بالك: الميعاد ده بعد نص الليل
                               </p>
                               <p className="text-[11px] font-semibold text-muted-foreground leading-relaxed">
-                                لقد قمت باختيار سهرة يوم{" "}
+                                إنت اخترت سهرة يوم{" "}
                                 <strong className="text-foreground">
                                   {displayDate.toLocaleDateString("ar-EG", { weekday: "long" })}
                                 </strong>
-                                . وبما أن الموعد يقع بعد منتصف الليل، فإن التاريخ الفعلي للحجز يقع
-                                ضمن يوم{" "}
+                                ، وعشان الساعات دي بعد الساعه 12 بالليل فبتكون تبع فجر يوم{" "}
                                 <strong className="text-foreground">
                                   {startDate.toLocaleDateString("ar-EG", { weekday: "long" })}
-                                </strong>{" "}
-                                فجراً. يرجى التأكد من الموعد بدقة.
+                                </strong>
+                                . اتأكد إن ده الميعاد الصح قبل ما تحوّل.
                               </p>
                             </div>
                           </div>
@@ -287,18 +291,18 @@ export function PaymentModal({
                             <AlertTriangle className="size-5 text-warning shrink-0 mt-0.5" />
                             <div className="space-y-1">
                               <p className="text-xs font-bold text-foreground">
-                                تنبيه: هذا الموعد يمتد لما بعد منتصف الليل
+                                خلي بالك: الحجز مكمل لبعد نص الليل
                               </p>
                               <p className="text-[11px] font-semibold text-muted-foreground leading-relaxed">
-                                سيبدأ الحجز يوم{" "}
+                                الحجز هيبدأ يوم{" "}
                                 <strong className="text-foreground">
                                   {startDate.toLocaleDateString("ar-EG", { weekday: "long" })}
                                 </strong>{" "}
-                                ليلاً، وينتهي فجر يوم{" "}
+                                بالليل، وهيخلص فجر يوم{" "}
                                 <strong className="text-foreground">
                                   {endDate.toLocaleDateString("ar-EG", { weekday: "long" })}
                                 </strong>
-                                . يرجى التأكد من الموعد بدقة قبل إتمام الدفع.
+                                . اتأكد من الميعاد قبل ما تحوّل.
                               </p>
                             </div>
                           </div>
@@ -312,10 +316,10 @@ export function PaymentModal({
 
               <div className="rounded-2xl border-2 border-primary/20 bg-primary/5 p-5 text-center space-y-2 relative overflow-hidden">
                 <div className="absolute top-0 right-0 bg-primary text-primary-foreground px-3 py-0.5 rounded-bl-xl text-[10px] font-bold">
-                  هام جداً
+                  مهم جداً
                 </div>
                 <p className="text-sm font-bold text-foreground mt-2">
-                  المبلغ المطلوب تحويله (بالكسور)
+                  حوّل المبلغ ده بالظبط (بالقروش)
                 </p>
                 <div
                   className="flex items-center justify-center gap-1 font-display text-4xl font-black text-primary"
@@ -326,21 +330,21 @@ export function PaymentModal({
                 </div>
                 <p className="text-xs text-muted-foreground font-semibold flex items-center justify-center gap-1.5 mt-2">
                   <AlertTriangle className="size-3.5 text-warning" />
-                  يجب تحويل المبلغ بالكسور لضمان التأكيد الآلي للحجز
+                  لازم تحوّل المبلغ بالقروش زي ما هو مكتوب عشان الحجز يتأكد تلقائياً في ثواني
                 </p>
               </div>
 
               <div className="space-y-3">
                 <p className="text-sm font-bold flex items-center gap-1.5">
-                  طريقة الدفع المختارة:
+                  هتحوّل عن طريق:
                   <span className="text-primary bg-primary/10 px-2 py-0.5 rounded-md">
-                    {isInstapay ? "إنستا باي" : "المحفظة"}
+                    {isInstapay ? "إنستا باي" : "محفظة إلكترونية"}
                   </span>
                 </p>
                 <div className="flex items-center justify-between rounded-xl border border-border bg-surface p-3 transition hover:border-primary/30">
                   <div className="flex flex-col">
                     <span className="text-[11px] text-muted-foreground font-semibold">
-                      {isInstapay ? "رقم الحساب لتحويل" : "رقم المحفظة للتحويل"}
+                      {isInstapay ? "عنوان / رقم إنستا باي للتحويل" : "رقم المحفظة للتحويل"}
                     </span>
                     <span className="font-bold text-lg" dir="ltr">
                       {targetAddress}
@@ -361,27 +365,27 @@ export function PaymentModal({
                     ) : (
                       <Copy size={16} />
                     )}
-                    {copied ? "تم النسخ" : "نسخ"}
+                    {copied ? "اتنسخ" : "نسخ الرقم"}
                   </button>
                 </div>
               </div>
 
               <div className="bg-muted/50 border border-border rounded-xl p-4 space-y-2">
                 <h4 className="text-xs font-extrabold flex items-center gap-1.5 text-foreground">
-                  <Info className="size-4 text-primary" /> تعليمات الحجز وسياسة الإلغاء:
+                  <Info className="size-4 text-primary" /> نظام الحجز والإلغاء:
                 </h4>
                 <ul className="text-[11px] text-muted-foreground space-y-1.5 list-disc list-inside font-semibold leading-relaxed">
                   <li>
-                    يتم إلغاء الحجز تلقائياً إذا لم يتم التحويل خلال{" "}
-                    <span className="text-foreground">10 دقائق</span>.
+                    الحجز بيتلغي تلقائياً لو مكملتش التحويل خلال{" "}
+                    <span className="text-foreground">10 دقايق</span>.
                   </li>
                   <li>
-                    عند الإلغاء قبل موعد الحجز بـ{" "}
-                    <span className="text-foreground">24 ساعة فأكثر</span>، يتم خصم{" "}
-                    <span className="text-destructive font-bold">50%</span> من المبلغ المدفوع.
+                    لو لغيت قبل ميعاد الحجز بـ{" "}
+                    <span className="text-foreground">24 ساعة أو أكتر</span>، بيتخصم{" "}
+                    <span className="text-destructive font-bold">50%</span> من العربون المدفوع.
                   </li>
                   <li>
-                    لا يمكن استرداد أي مبلغ في حالة الإلغاء قبل موعد الحجز بمدة{" "}
+                    العربون مبيرجعش في حالة الإلغاء قبل ميعاد الحجز بـ{" "}
                     <span className="text-destructive font-bold">أقل من 24 ساعة</span>.
                   </li>
                 </ul>
@@ -391,7 +395,7 @@ export function PaymentModal({
                 onClick={() => setShowProofForm(true)}
                 className="w-full text-xs font-bold text-muted-foreground hover:text-primary transition underline decoration-dashed underline-offset-4"
               >
-                هل واجهت مشكلة في التأكيد التلقائي؟ ارفع الإثبات يدوياً
+                حصلت مشكلة في التأكيد التلقائي؟ ارفع سكرين شوت التحويل من هنا
               </button>
             </div>
           )}
@@ -400,11 +404,11 @@ export function PaymentModal({
             <div className="space-y-4 animate-in slide-in-from-right-4">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-muted-foreground">
-                  رقم المعاملة (Reference Number)
+                  رقم العملية (المرجع في رسالة التحويل)
                 </label>
                 <input
                   type="text"
-                  placeholder="أدخل رقم المعاملة من رسالة البنك"
+                  placeholder="اكتب رقم العملية هنا"
                   value={manualTrxId}
                   onChange={(e) => setManualTrxId(e.target.value)}
                   className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-bold outline-none focus:border-primary transition"
@@ -413,7 +417,7 @@ export function PaymentModal({
 
               <div className="space-y-1">
                 <label className="text-xs font-bold text-muted-foreground">
-                  صورة الإثبات (Screenshot)
+                  صورة التحويل (سكرين شوت)
                 </label>
                 <div
                   onClick={() => fileInputRef.current?.click()}
@@ -423,7 +427,7 @@ export function PaymentModal({
                     className={cn("size-8", proofFile ? "text-primary" : "text-muted-foreground")}
                   />
                   <span className="text-xs font-bold text-muted-foreground">
-                    {proofFile ? proofFile.name : "اضغط لاختيار صورة الإثبات من جهازك"}
+                    {proofFile ? proofFile.name : "دوس هنا واختار صورة السكرين شوت من موبايلك"}
                   </span>
                 </div>
                 <input
@@ -454,7 +458,7 @@ export function PaymentModal({
                   ) : (
                     <Upload className="size-4" />
                   )}
-                  إرسال للإدارة
+                  إرسال للتأكيد
                 </button>
               </div>
             </div>
@@ -464,18 +468,16 @@ export function PaymentModal({
             <div className="animate-in fade-in space-y-4">
               <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-4 text-center">
                 <AlertTriangle className="size-8 text-destructive mx-auto mb-2" />
-                <p className="font-bold text-sm text-foreground">
-                  انتهى وقت الدفع المخصص لهذا الحجز
-                </p>
+                <p className="font-bold text-sm text-foreground">وقت الدفع للحجز ده خلص</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  برجاء العودة وبدء عملية الحجز من جديد.
+                  ارجع لصفحة الملعب واختار الساعة من الأول عشان تحجزها.
                 </p>
               </div>
               <button
                 onClick={onClose}
                 className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition"
               >
-                العودة للملعب
+                رجوع للملعب
               </button>
             </div>
           )}

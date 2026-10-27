@@ -1,3 +1,4 @@
+//process.env.TZ = "Africa/Cairo";
 const dotenv = require("dotenv");
 dotenv.config({ path: "./.env" });
 const { Server } = require("socket.io");

@@ -5,27 +5,45 @@ const User = require("../models/userModel");
 const DailySettlement = require("../models/dailySettlementModel");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
+const { DEFAULT_OPEN_HOUR, parseOpenHour } = require("../utils/accountingDay");
 
-// 1. نظرة عامة على التطبيق (للسوبر أدمن)
+// قراءة اليوم والساعة بتوقيت مصر دائماً
+const CAIRO_TZ = "Africa/Cairo";
+const cairoPartsFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: CAIRO_TZ,
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+const getCairoHour = (dateObj) => {
+  const parts = {};
+  for (const p of cairoPartsFormatter.formatToParts(dateObj)) {
+    parts[p.type] = p.value;
+  }
+  return Number(parts.hour) % 24;
+};
+
 exports.getPlatformOverview = catchAsync(async (req, res, next) => {
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
+  const now = new Date();
+  const currentCairoHour = getCairoHour(now);
+
+  const logicalToday = new Date(now);
+  // نظرة عامة على المنصة كلها: اليوم المحاسبي بيبدأ من الساعة الافتراضية للمنصة
+  if (currentCairoHour < DEFAULT_OPEN_HOUR) {
+    logicalToday.setDate(logicalToday.getDate() - 1);
+  }
+  const startOfDay = new Date(logicalToday);
+  startOfDay.setHours(DEFAULT_OPEN_HOUR, 0, 0, 0);
 
   const platformStats = await Booking.aggregate([
-    // الحجوزات المؤكدة بس: expired/pending_payment عمرها ما اتدفعت، وكانت بتتحسب
-    // إيراد وعمولة (يعني كنت بتقول للملاك إنهم مدينين بعمولة على حجوزات منتهية)
     { $match: { status: { $in: ["confirmed", "completed"] } } },
     {
       $project: {
         totalPrice: 1,
         bookingType: 1,
         startTime: 1,
-        // +++ حساب مدة الحجز بالساعات +++
         durationInHours: {
-          $divide: [
-            { $subtract: ["$endTime", "$startTime"] },
-            1000 * 60 * 60, // تحويل الميلي ثانية إلى ساعات
-          ],
+          $divide: [{ $subtract: ["$endTime", "$startTime"] }, 1000 * 60 * 60],
         },
         isAppBooking: { $cond: [{ $eq: ["$bookingType", "app"] }, 1, 0] },
         isManualBooking: { $cond: [{ $eq: ["$bookingType", "manual"] }, 1, 0] },
@@ -40,7 +58,6 @@ exports.getPlatformOverview = catchAsync(async (req, res, next) => {
         isAppBooking: 1,
         isManualBooking: 1,
         isToday: 1,
-        // +++ حساب العمولة ديناميكياً: 10% لو مدة الحجز >= 2 ساعة، 5% لغير ذلك +++
         commission: {
           $multiply: [
             "$totalPrice",
@@ -100,11 +117,8 @@ exports.getPlatformOverview = catchAsync(async (req, res, next) => {
   });
 });
 
-// 2. أداء الأندية والملاعب
 exports.getVenuesPerformance = catchAsync(async (req, res, next) => {
   const venuesPerformance = await Booking.aggregate([
-    // الحجوزات المؤكدة بس: expired/pending_payment عمرها ما اتدفعت، وكانت بتتحسب
-    // إيراد وعمولة (يعني كنت بتقول للملاك إنهم مدينين بعمولة على حجوزات منتهية)
     { $match: { status: { $in: ["confirmed", "completed"] } } },
     {
       $project: {
@@ -112,7 +126,6 @@ exports.getVenuesPerformance = catchAsync(async (req, res, next) => {
         court: 1,
         totalPrice: 1,
         bookingType: 1,
-        // +++ حساب مدة الحجز بالساعات +++
         durationInHours: {
           $divide: [{ $subtract: ["$endTime", "$startTime"] }, 1000 * 60 * 60],
         },
@@ -124,7 +137,6 @@ exports.getVenuesPerformance = catchAsync(async (req, res, next) => {
         court: 1,
         totalPrice: 1,
         bookingType: 1,
-        // +++ حساب العمولة ديناميكياً بناءً على مدة الحجز +++
         calculatedCommission: {
           $multiply: [
             "$totalPrice",
@@ -144,9 +156,7 @@ exports.getVenuesPerformance = catchAsync(async (req, res, next) => {
         courtManualBookings: {
           $sum: { $cond: [{ $eq: ["$bookingType", "manual"] }, 1, 0] },
         },
-        courtCommission: {
-          $sum: "$calculatedCommission", // استخدام العمولة المحسوبة مسبقاً
-        },
+        courtCommission: { $sum: "$calculatedCommission" },
       },
     },
     {
@@ -209,10 +219,8 @@ exports.getVenuesPerformance = catchAsync(async (req, res, next) => {
   });
 });
 
-// +++ 3. دالة جديدة: إنشاء مالك جديد مباشرة (للسوبر أدمن) +++
 exports.createOwner = catchAsync(async (req, res, next) => {
   const { name, email, phone, password, passwordConfirm } = req.body;
-
   const newOwner = await User.create({
     name,
     email,
@@ -220,12 +228,9 @@ exports.createOwner = catchAsync(async (req, res, next) => {
     password,
     passwordConfirm,
     role: "owner",
-    verified: true, // الحساب مفعل تلقائياً لأنه مضاف من الإدارة
+    verified: true,
   });
-
-  // إخفاء الباسورد من النتيجة
   newOwner.password = undefined;
-
   res.status(201).json({
     status: "success",
     message: "تم إنشاء حساب المالك بنجاح!",
@@ -233,7 +238,6 @@ exports.createOwner = catchAsync(async (req, res, next) => {
   });
 });
 
-// +++ 4. دالة جديدة: جلب جميع الملاك (عشان الفرونت إند يعرضهم في قائمة) +++
 exports.getAllOwners = catchAsync(async (req, res, next) => {
   const owners = await User.find({ role: "owner" })
     .select("name phone email createdAt")
@@ -245,18 +249,17 @@ exports.getAllOwners = catchAsync(async (req, res, next) => {
     data: { owners },
   });
 });
-// +++ 5. دالة جديدة: جلب جميع العملاء مع عدد حجوزاتهم +++
+
 exports.getAllCustomers = catchAsync(async (req, res, next) => {
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
   const skip = (page - 1) * limit;
 
-  // جلب إجمالي عدد العملاء لحساب الصفحات
   const totalDocuments = await User.countDocuments({ role: "customer" });
   const totalPages = Math.ceil(totalDocuments / limit);
 
   const customers = await User.aggregate([
-    { $match: { role: "customer" } }, // نجيب العملاء فقط
+    { $match: { role: "customer" } },
     {
       $lookup: {
         from: "bookings",
@@ -272,12 +275,10 @@ exports.getAllCustomers = catchAsync(async (req, res, next) => {
         email: 1,
         createdAt: 1,
         verified: 1,
-        bookingCount: { $size: "$bookingsData" }, // نعد المصفوفة بتاعت الحجوزات
+        bookingCount: { $size: "$bookingsData" },
       },
     },
-    { $sort: { bookingCount: -1, createdAt: -1 } }, // الترتيب بالأكثر حجزاً
-
-    // +++ إضافة الـ Pagination للـ Aggregation +++
+    { $sort: { bookingCount: -1, createdAt: -1 } },
     { $skip: skip },
     { $limit: limit },
   ]);
@@ -297,7 +298,6 @@ exports.getAllCustomers = catchAsync(async (req, res, next) => {
   });
 });
 
-// +++ 6. تقفيل اليومية: جلب إيرادات اليوم الحالي لكل الأندية والملاعب +++
 exports.getDailyClosing = catchAsync(async (req, res, next) => {
   const { date, venue } = req.query;
 
@@ -305,19 +305,27 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
   if (Number.isNaN(targetDate.getTime())) {
     return next(new AppError("صيغة التاريخ غير صحيحة", 400));
   }
-  const startOfDay = new Date(targetDate);
-  startOfDay.setHours(0, 0, 0, 0);
 
-  const endOfDay = new Date(targetDate);
-  endOfDay.setHours(23, 59, 59, 999);
-
+  let openHour = DEFAULT_OPEN_HOUR; // لو بنستعلم عن كل الأندية مع بعض
   let venueMatch = {};
+
   if (venue && venue !== "all") {
-    if (!mongoose.isValidObjectId(venue)) {
+    if (!mongoose.isValidObjectId(venue))
       return next(new AppError("معرف النادي غير صالح", 400));
-    }
     venueMatch = { "bookingDetails.venue": new mongoose.Types.ObjectId(venue) };
+
+    // +++ ميعاد فتح النادي هو بداية اليوم المحاسبي +++
+    const venueDoc = await Venue.findById(venue).select("openTime");
+    if (venueDoc) openHour = parseOpenHour(venueDoc.openTime);
   }
+
+  // +++ اليوم المحاسبي: من ميعاد الفتح لحد قبله بملي ثانية في اليوم التالي +++
+  const startOfDay = new Date(targetDate);
+  startOfDay.setHours(openHour, 0, 0, 0);
+
+  const endOfDay = new Date(startOfDay);
+  endOfDay.setDate(endOfDay.getDate() + 1);
+  endOfDay.setTime(endOfDay.getTime() - 1);
 
   const pipeline = [
     {
@@ -337,12 +345,9 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
     { $unwind: "$bookingDetails" },
   ];
 
-  if (Object.keys(venueMatch).length > 0) {
-    pipeline.push({ $match: venueMatch });
-  }
+  if (Object.keys(venueMatch).length > 0) pipeline.push({ $match: venueMatch });
 
   pipeline.push(
-    // +++ تجميع فواتير الحجز الواحد معاً لمنع التكرار +++
     {
       $group: {
         _id: "$bookingDetails._id",
@@ -411,7 +416,7 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
         totalCash: { $sum: "$bookingCashRevenue" },
         totalRevenue: { $sum: "$totalBookingRevenue" },
         totalCommission: { $sum: "$calculatedCommission" },
-        bookingsCount: { $sum: 1 }, // العد الصحيح للحجوزات الفريدة
+        bookingsCount: { $sum: 1 },
       },
     },
     {
@@ -449,7 +454,6 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
 
   const dailyClosing = await mongoose.model("Payment").aggregate(pipeline);
 
-  const DailySettlement = require("../models/dailySettlementModel");
   const targetDateStr = targetDate.toISOString().split("T")[0];
   const settlements = await DailySettlement.find({ dateString: targetDateStr });
 
@@ -491,7 +495,6 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
 
 exports.toggleDailySettlement = catchAsync(async (req, res, next) => {
   const { venue, date, isSettled } = req.body;
-  const DailySettlement = require("../models/dailySettlementModel");
 
   if (!venue || !date || isSettled === undefined) {
     return next(new AppError("بيانات التصفية غير مكتملة", 400));
@@ -504,14 +507,17 @@ exports.toggleDailySettlement = catchAsync(async (req, res, next) => {
     return next(new AppError("صيغة التاريخ غير صحيحة", 400));
   }
 
-  // توحيد صيغة التاريخ YYYY-MM-DD
   const targetDateStr = parsedDate.toISOString().split("T")[0];
 
-  // upsert ذري: كان findOne ثم create، فضغطتين متزامنتين بيعملوا سجلين لنفس اليوم
   const settlement = await DailySettlement.findOneAndUpdate(
     { venue, dateString: targetDateStr },
     { $set: { isSettled: Boolean(isSettled), settledBy: req.user.id } },
-    { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true },
+    {
+      returnDocument: "after",
+      upsert: true,
+      runValidators: true,
+      setDefaultsOnInsert: true,
+    },
   );
 
   res.status(200).json({
@@ -523,7 +529,6 @@ exports.toggleDailySettlement = catchAsync(async (req, res, next) => {
   });
 });
 
-// +++ 7. إنشاء حساب موظف / مدير فرعي لنادي معين +++
 exports.createEmployee = catchAsync(async (req, res, next) => {
   const { name, email, phone, password, passwordConfirm, venue } = req.body;
 
@@ -532,9 +537,7 @@ exports.createEmployee = catchAsync(async (req, res, next) => {
   }
 
   const venueExists = await Venue.findById(venue);
-  if (!venueExists) {
-    return next(new AppError("النادي المختار غير موجود", 404));
-  }
+  if (!venueExists) return next(new AppError("النادي المختار غير موجود", 404));
 
   const newEmployee = await User.create({
     name,
@@ -544,11 +547,10 @@ exports.createEmployee = catchAsync(async (req, res, next) => {
     passwordConfirm,
     role: "employee",
     venue,
-    verified: true, // مفعل تلقائياً لأنه مضاف من الإدارة
+    verified: true,
   });
 
   newEmployee.password = undefined;
-
   res.status(201).json({
     status: "success",
     message: "تم إنشاء حساب الموظف وربطه بالنادي بنجاح!",
@@ -556,7 +558,6 @@ exports.createEmployee = catchAsync(async (req, res, next) => {
   });
 });
 
-// +++ 8. جلب جميع الموظفين مع بيانات النادي التابعين له +++
 exports.getAllEmployees = catchAsync(async (req, res, next) => {
   const employees = await User.find({ role: "employee" })
     .populate({ path: "venue", select: "name address" })
@@ -570,16 +571,13 @@ exports.getAllEmployees = catchAsync(async (req, res, next) => {
   });
 });
 
-// +++ 9. حذف حساب موظف +++
 exports.deleteEmployee = catchAsync(async (req, res, next) => {
   const employee = await User.findOneAndDelete({
     _id: req.params.id,
     role: "employee",
   });
 
-  if (!employee) {
-    return next(new AppError("لا يوجد موظف بهذا المعرف", 404));
-  }
+  if (!employee) return next(new AppError("لا يوجد موظف بهذا المعرف", 404));
 
   res.status(200).json({
     status: "success",

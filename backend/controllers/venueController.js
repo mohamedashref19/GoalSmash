@@ -1,6 +1,7 @@
 const Venue = require("../models/venueModel");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
+const { validateVenueSchedule } = require("../utils/accountingDay");
 
 // الحقول المسموح بتعديلها
 const VENUE_FIELDS = [
@@ -22,6 +23,14 @@ const pick = (obj, fields) =>
 
 exports.createVenue = catchAsync(async (req, res, next) => {
   const data = pick(req.body, VENUE_FIELDS);
+
+  // التأكد من ترتيب مواعيد الفتح والمسائي والإغلاق (بنفس قيم الـ default في الموديل)
+  const scheduleError = validateVenueSchedule(
+    data.openTime ?? "08:00",
+    data.eveningStartTime ?? "18:00",
+    data.closeTime ?? "04:00",
+  );
+  if (scheduleError) return next(new AppError(scheduleError, 400));
 
   // الأدمن بس يقدر يحدد مالك تاني، المالك دايماً هو نفسه
   data.owner =
@@ -119,6 +128,14 @@ exports.updateVenue = catchAsync(async (req, res, next) => {
   }
 
   const data = pick(req.body, VENUE_FIELDS);
+
+  // نراجع المواعيد بعد الدمج مع القيم الحالية، عشان تعديل حقل واحد مايبوظش الترتيب
+  const scheduleError = validateVenueSchedule(
+    data.openTime ?? venue.openTime,
+    data.eveningStartTime ?? venue.eveningStartTime,
+    data.closeTime ?? venue.closeTime,
+  );
+  if (scheduleError) return next(new AppError(scheduleError, 400));
 
   // نقل الملكية وتفعيل/إيقاف النادي للأدمن فقط
   if (req.user.role === "admin") {

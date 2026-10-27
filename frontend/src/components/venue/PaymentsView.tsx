@@ -6,11 +6,9 @@ import {
   Check,
   Wallet,
   FileImage,
-  Info,
   CalendarDays,
   TrendingUp,
   Banknote,
-  Ban,
   XOctagon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -109,17 +107,14 @@ export function PaymentsView({ venueId }: { venueId: string }) {
   };
 
   const summary = useMemo(() => {
-    // 1. تحديد تاريخ اليوم المختار
     const selectedDateString = formatDateForInput(selectedDate);
 
-    // 2. فلترة الدفعات اللي تمت في "اليوم المختار" فقط
     const paymentsForSelectedDate = payments.filter((p) => {
       if (!p.createdAt) return false;
       const paymentDateString = formatDateForInput(new Date(p.createdAt));
       return paymentDateString === selectedDateString;
     });
 
-    // 3. حساب الإيرادات بناءً على دفعات اليوم فقط
     const totalConfirmed = paymentsForSelectedDate
       .filter((p) => p.status === "verified" && p.method !== "cash")
       .reduce((sum, p) => sum + getDisplayAmount(p), 0);
@@ -135,37 +130,36 @@ export function PaymentsView({ venueId }: { venueId: string }) {
       totalCash: Number(totalCash.toFixed(2)),
       totalOverall: Number(totalOverall.toFixed(2)),
     };
-  }, [payments, selectedDate]); // +++ ضفنا selectedDate هنا عشان تتحدث لما تغير اليوم +++
+  }, [payments, selectedDate]);
 
   const handleVerify = async (id: string, isExpired: boolean = false) => {
     const msg = isExpired
-      ? "⚠️ هذا الحجز منتهي! هل تأكدت من عدم حجز الملعب لعميل آخر وتريد إحياءه؟"
-      : "هل استلمت الكاش وتريد تأكيد الحجز يدوياً؟";
+      ? "⚠️ الحجز ده كان وقته خلص! متأكد إن الساعة فاضية وعايز ترجعه تاني؟"
+      : "استلمت الكاش خلاص وعايز تأكد الحجز؟";
 
     const isConfirmed = await confirm(msg);
-    // if (!window.confirm(msg)) return;
-    if (isConfirmed) return;
+    if (!isConfirmed) return;
     try {
       await manuallyVerifyPayment(
         id,
-        isExpired ? "تم إحياء الحجز بعد الانتهاء" : "تأكيد الكاش من المالك",
+        isExpired ? "تم إحياء الحجز بعد الانتهاء" : "تأكيد استلام الكاش من الملعب",
       );
-      toast.success("تم تأكيد الدفع بنجاح");
+      toast.success("تمام! تم تأكيد استلام المبلغ بنجاح");
       loadData();
     } catch (err: unknown) {
       toast.error(err as string);
     }
   };
 
-  const handleSavePaymentNote = async (id: string, currentNote?: string) => {
+  const handleSavePaymentNote = async (id: string) => {
     const note = paymentNotesInput[id];
     if (!note || note.trim() === "") {
-      toast.error("يرجى كتابة الملاحظة!");
+      toast.error("اكتب الملاحظة الأول قبل الحفظ!");
       return;
     }
     try {
       await addPaymentNote(id, note);
-      toast.success("تم الإضافة بنجاح");
+      toast.success("اتحفظت الملاحظة بنجاح");
       loadData();
       setPaymentNotesInput((prev) => {
         const next = { ...prev };
@@ -194,9 +188,9 @@ export function PaymentsView({ venueId }: { venueId: string }) {
   });
 
   const getMethodName = (method: string) => {
-    if (method === "cash") return "كاش (يدوي)";
+    if (method === "cash") return "كاش في الملعب";
     if (method === "instapay") return "إنستا باي";
-    return "فودافون كاش";
+    return "محفظة إلكترونية";
   };
 
   const groupedPayments = useMemo(() => {
@@ -218,7 +212,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
     <div className="flex flex-col gap-6 animate-in fade-in">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h2 className="font-display text-xl font-extrabold flex items-center gap-2">
-          <Wallet className="size-6 text-primary" /> المدفوعات
+          <Wallet className="size-6 text-primary" /> حسابات ومدفوعات الملعب
         </h2>
         <div className="flex items-center gap-2 bg-card border border-border p-1.5 rounded-xl shadow-sm">
           <CalendarDays className="size-5 text-muted-foreground ml-2" />
@@ -237,7 +231,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
         <div className="card-surface p-4 border-b-4 border-b-primary relative overflow-hidden group">
           <div className="absolute -left-6 -top-6 bg-primary/10 size-24 rounded-full blur-xl group-hover:bg-primary/20 transition" />
           <p className="text-sm font-semibold text-muted-foreground mb-1 flex items-center gap-1">
-            <Wallet className="size-4 text-primary" /> إجمالي إيرادات اليوم
+            <Wallet className="size-4 text-primary" /> إجمالي إيراد اليوم
           </p>
           <p className="font-display text-2xl font-black text-primary mt-1">
             {summary.totalOverall} ج.م
@@ -247,7 +241,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
         <div className="card-surface p-4 border-b-4 border-b-success relative overflow-hidden group">
           <div className="absolute -left-6 -top-6 bg-success/10 size-24 rounded-full blur-xl group-hover:bg-success/20 transition" />
           <p className="text-sm font-semibold text-muted-foreground mb-1 flex items-center gap-1">
-            <TrendingUp className="size-4" /> إيرادات أونلاين
+            <TrendingUp className="size-4" /> محصّل أونلاين (عربون)
           </p>
           <p className="font-display text-2xl font-black text-success mt-1">
             {summary.totalConfirmed} ج.م
@@ -257,7 +251,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
         <div className="card-surface p-4 border-b-4 border-b-info relative overflow-hidden group">
           <div className="absolute -left-6 -top-6 bg-info/10 size-24 rounded-full blur-xl group-hover:bg-info/20 transition" />
           <p className="text-sm font-semibold text-muted-foreground mb-1 flex items-center gap-1">
-            <Banknote className="size-4" /> إيرادات الكاش
+            <Banknote className="size-4" /> محصّل كاش في الملعب
           </p>
           <p className="font-display text-2xl font-black text-info mt-1">{summary.totalCash} ج.م</p>
         </div>
@@ -268,7 +262,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
           {[
             { id: "verified", label: "أونلاين", icon: CheckCircle2 },
             { id: "manual", label: "كاش", icon: Banknote },
-            { id: "all", label: "الكل", icon: Wallet },
+            { id: "all", label: "كل الحركات", icon: Wallet },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -290,7 +284,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <input
             type="text"
-            placeholder="بحث بالاسم، الرقم..."
+            placeholder="دور بالاسم أو رقم الموبايل..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full rounded-xl border border-border bg-background pr-9 pl-4 py-2 text-sm outline-none"
@@ -306,7 +300,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
         <div className="card-surface p-10 text-center flex flex-col items-center justify-center border border-dashed border-border/60">
           <Wallet className="size-10 text-muted-foreground/30 mb-3" />
           <p className="text-muted-foreground font-bold text-sm">
-            لا توجد مدفوعات في هذا التصنيف اليوم.
+            مفيش مدفوعات متسجلة في القسم ده النهاردة.
           </p>
         </div>
       ) : (
@@ -317,7 +311,6 @@ export function PaymentsView({ venueId }: { venueId: string }) {
             const isCancelled = booking?.status === "cancelled";
             const isExpired = firstPayment?.status === "expired";
 
-            // +++ استخدام بيانات الحجز الأصلية للحصول على السعر والمتبقي بدقة +++
             const totalDisplayAmt =
               booking?.totalPrice || group.reduce((sum, p) => sum + getDisplayAmount(p), 0);
             const price = booking?.totalPrice || 0;
@@ -357,15 +350,14 @@ export function PaymentsView({ venueId }: { venueId: string }) {
                           <span className="text-xs text-muted-foreground">ج.م</span>
                         </p>
                       </div>
-                      {/* +++ مؤشر دقيق للمتبقي أو الخالص يعتمد على الحجز وليس التبويب +++ */}
                       {!isCancelled && !isExpired && booking && remaining > 0 && (
                         <span className="text-[10px] font-bold text-destructive bg-destructive/10 px-2 py-0.5 rounded-md border border-destructive/20 self-start mt-1">
-                          يُدفع في الملعب: {remaining} ج.م
+                          باقي في الملعب: {remaining} ج.م
                         </span>
                       )}
                       {!isCancelled && !isExpired && booking && remaining === 0 && (
                         <span className="text-[10px] font-bold text-success bg-success/10 px-2 py-0.5 rounded-md border border-success/20 self-start mt-1 flex items-center gap-1">
-                          <CheckCircle2 className="size-3" /> مدفوع بالكامل
+                          <CheckCircle2 className="size-3" /> خالص بالكامل
                         </span>
                       )}
                     </div>
@@ -381,7 +373,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
                           : "bg-primary/10 text-primary border-primary/20",
                     )}
                   >
-                    {isCancelled ? "حجز مُلغى" : isExpired ? "ملغي (لم يُدفع)" : "حجز نشط"}
+                    {isCancelled ? "حجز ملغي" : isExpired ? "ملغي (مدفعش)" : "حجز مؤكد"}
                   </span>
                 </div>
 
@@ -389,7 +381,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
                   <div className="mb-4 bg-gray-100 border border-gray-300 rounded-xl p-3 flex items-start gap-2 shadow-sm relative z-10">
                     <XOctagon className="size-4 text-gray-600 shrink-0 mt-0.5" />
                     <p className="text-[11px] text-gray-700 font-semibold leading-relaxed">
-                      هذا الحجز تم إلغاؤه.
+                      الحجز ده اتلغى خلاص.
                     </p>
                   </div>
                 )}
@@ -403,7 +395,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
                   </p>
 
                   <p className="flex justify-between border-b border-border pb-2">
-                    <span className="text-muted-foreground">موعد الحجز</span>
+                    <span className="text-muted-foreground">ميعاد اللعب</span>
                     <span
                       className={cn(
                         "font-bold text-[11px] px-2 py-0.5 rounded-md",
@@ -417,9 +409,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
                   </p>
 
                   <p className="flex justify-between border-b border-border pb-2">
-                    <span className="text-muted-foreground">
-                      {isExpired || isCancelled ? "هاتف العميل" : "الهاتف المسجل"}
-                    </span>
+                    <span className="text-muted-foreground">رقم الموبايل</span>
                     <span
                       className={cn(
                         "font-bold text-[11px]",
@@ -437,7 +427,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
 
                 <div className="mt-2 flex flex-col gap-2 relative z-10 border-t border-border pt-4">
                   <h4 className="text-[11px] font-extrabold text-muted-foreground mb-1">
-                    دفعات الحجز المقسمة:
+                    تفاصيل الدفعات:
                   </h4>
                   {group.map((p) => {
                     const displayedAmount = getDisplayAmount(p);
@@ -479,14 +469,14 @@ export function PaymentsView({ venueId }: { venueId: string }) {
                             {p.status === "verified"
                               ? "مؤكد"
                               : p.status === "expired" || isPaymentCancelled
-                                ? "غير صالح"
-                                : "بانتظار التأكيد"}
+                                ? "ملغي"
+                                : "مستني التأكيد"}
                           </span>
                         </div>
 
                         <div className="flex justify-between items-center text-[10px] text-muted-foreground mt-0.5 pb-1 border-b border-border/40 border-dashed">
                           <span className="flex items-center gap-1">
-                            <Clock className="size-3" /> وقت الحركة:
+                            <Clock className="size-3" /> وقت التسجيل:
                           </span>
                           <span className="font-bold text-foreground" dir="ltr">
                             {formatDateTime(p.createdAt)}
@@ -495,7 +485,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
 
                         {p.manualTransactionId && (
                           <p className="text-[10px] text-muted-foreground flex justify-between mt-1">
-                            <span>المرجع:</span>
+                            <span>رقم العملية:</span>
                             <span className="font-bold text-foreground" dir="ltr">
                               {p.manualTransactionId}
                             </span>
@@ -512,7 +502,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
                         <div className="mt-2 flex gap-2">
                           <input
                             type="text"
-                            placeholder="إضافة ملاحظة"
+                            placeholder="اكتب ملاحظة على الدفعة دي..."
                             value={paymentNotesInput[p._id] || ""}
                             onChange={(e) =>
                               setPaymentNotesInput({
@@ -523,7 +513,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
                             className="w-full rounded-md border border-border bg-background px-2 py-1 text-[11px] outline-none focus:border-primary"
                           />
                           <button
-                            onClick={() => handleSavePaymentNote(p._id, p.verificationNotes)}
+                            onClick={() => handleSavePaymentNote(p._id)}
                             className="shrink-0 rounded-md bg-primary px-3 py-1 text-[11px] font-bold text-white transition hover:bg-primary/90"
                           >
                             حفظ
@@ -537,7 +527,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
                             rel="noreferrer"
                             className="mt-2 flex items-center justify-center gap-1.5 rounded-lg bg-info/10 text-info border border-info/20 hover:bg-info hover:text-white transition py-1.5 text-[11px] font-bold"
                           >
-                            <FileImage className="size-3.5" /> عرض الإثبات
+                            <FileImage className="size-3.5" /> شوف صورة التحويل
                           </a>
                         )}
 
@@ -548,7 +538,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
                               onClick={() => handleVerify(p._id, false)}
                               className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-lg bg-success/10 text-success border border-success/20 hover:bg-success hover:text-white transition py-2 text-[11px] font-bold"
                             >
-                              <Check className="size-3.5" /> تأكيد استلام الكاش
+                              <Check className="size-3.5" /> استلمت الكاش خلاص
                             </button>
                           )}
 
@@ -557,7 +547,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
                             onClick={() => handleVerify(p._id, true)}
                             className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-lg bg-warning/10 text-warning border border-warning/30 hover:bg-warning hover:text-white transition py-2 text-[11px] font-bold"
                           >
-                            <CheckCircle2 className="size-3.5" /> تأكيد وإحياء الحجز
+                            <CheckCircle2 className="size-3.5" /> تأكيد وإرجاع الحجز
                           </button>
                         )}
                       </div>

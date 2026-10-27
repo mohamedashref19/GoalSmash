@@ -1,20 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
-import {
-  CalendarCheck,
-  Wallet,
-  Users,
-  Activity,
-  Ticket,
-  Clock,
-  AlertCircle,
-  CheckCircle2,
-} from "lucide-react";
+import { CalendarCheck, Wallet, Users, Clock, AlertCircle, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 // @ts-expect-error: API lacks TypeScript definitions
 import { fetchTodayStats, fetchTopCustomers } from "@/api/dashboardApi";
-// +++ استيراد دالة fetchVenueBookings بدلاً من fetchMyBookings +++
 // @ts-expect-error: API lacks TypeScript definitions
 import { fetchVenueBookings } from "@/api/bookingApi";
 // @ts-expect-error: API lacks TypeScript definitions
@@ -58,18 +48,12 @@ function StatusBadge({ status }: { status: string }) {
         status === "cancelled" && "bg-destructive/12 text-destructive",
       )}
     >
-      {status === "confirmed" ? "مؤكد" : status === "pending" ? "بانتظار الدفع" : "ملغي"}
+      {status === "confirmed" ? "مؤكد" : status === "pending" ? "مستني الدفع" : "ملغي"}
     </span>
   );
 }
 
-export function OverviewView({
-  venueId,
-  onSendCode,
-}: {
-  venueId: string;
-  onSendCode: (name: string) => void;
-}) {
+export function OverviewView({ venueId }: { venueId: string; onSendCode: (name: string) => void }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -83,7 +67,6 @@ export function OverviewView({
     try {
       setLoading(true);
 
-      // +++ استخدام الدالة الجديدة لجلب حجوزات الملعب بالكامل +++
       const [statsData, topCustomersData, allBookingsData] = await Promise.all([
         fetchTodayStats(venueId),
         fetchTopCustomers(venueId),
@@ -101,7 +84,6 @@ export function OverviewView({
           (b: BookingData) =>
             b && b.startTime && new Date(b.startTime) >= now && b.status === "confirmed",
         )
-        // +++ ترتيب الحجوزات زمنياً من الأقرب للأبعد +++
         .sort(
           (a: BookingData, b: BookingData) =>
             new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
@@ -123,7 +105,7 @@ export function OverviewView({
   }, [venueId, loadDashboardData]);
 
   const handleMarkAsPaid = async (id: string, fullPrice: number) => {
-    const isConfirmed = await confirm("هل تأكدت من استلام باقي المبلغ نقداً؟");
+    const isConfirmed = await confirm("استلمت باقي المبلغ كاش خلاص؟");
     if (!isConfirmed) return;
     setUpdatingPaymentId(id);
     try {
@@ -132,10 +114,10 @@ export function OverviewView({
         paymentStatus: "paid",
       });
 
-      toast.success("تم تأكيد استلام باقي المبلغ بنجاح");
+      toast.success("تمام! اتسجل إن المبلغ خالص بالكامل");
       await loadDashboardData();
     } catch (err) {
-      toast.error("حدث خطأ أثناء تحديث بيانات الدفع");
+      toast.error("حصلت مشكلة وإحنا بنحدّث حالة الدفع، جرب تاني");
     } finally {
       setUpdatingPaymentId(null);
     }
@@ -145,7 +127,7 @@ export function OverviewView({
     return (
       <div className="grid h-64 place-items-center text-muted-foreground">
         <Clock className="h-8 w-8 animate-spin text-primary" />
-        <p className="mt-4 font-semibold">جارٍ تحميل الإحصائيات...</p>
+        <p className="mt-4 font-semibold">بنحمّل إحصائيات الملعب...</p>
       </div>
     );
   }
@@ -160,9 +142,9 @@ export function OverviewView({
   }
 
   const statCards = [
-    { label: "حجوزات اليوم", value: stats?.todayBookings || 0, icon: CalendarCheck },
-    { label: "إيرادات اليوم", value: `${stats?.todayRevenue || 0} ج`, icon: Wallet },
-    { label: "الملاعب المتاحة", value: stats?.activeCourts || 0, change: "نشط", icon: Users },
+    { label: "حجوزات النهاردة", value: stats?.todayBookings || 0, icon: CalendarCheck },
+    { label: "إيراد النهاردة", value: `${stats?.todayRevenue || 0} ج`, icon: Wallet },
+    { label: "الملاعب الشغالة", value: stats?.activeCourts || 0, change: "شغال", icon: Users },
   ];
 
   return (
@@ -186,7 +168,7 @@ export function OverviewView({
       <ConfirmDialog />
       <section className="card-surface overflow-hidden">
         <div className="flex items-center justify-between gap-3 border-b border-border p-5">
-          <h2 className="font-display text-lg font-extrabold">أقرب الحجوزات القادمة</h2>
+          <h2 className="font-display text-lg font-extrabold">أقرب الحجوزات الجاية</h2>
           <span className="text-xs text-muted-foreground">{upcomingBookings.length} حجز معروض</span>
         </div>
         <div className="overflow-x-auto">
@@ -196,16 +178,16 @@ export function OverviewView({
                 <th className="px-5 py-3 font-semibold">العميل / الفريق</th>
                 <th className="px-5 py-3 font-semibold">الملعب</th>
                 <th className="px-5 py-3 font-semibold">التاريخ</th>
-                <th className="px-5 py-3 font-semibold">الوقت</th>
+                <th className="px-5 py-3 font-semibold">الساعة</th>
                 <th className="px-5 py-3 font-semibold">الحالة</th>
-                <th className="px-5 py-3 font-semibold">المبلغ المطلوب / المتبقي</th>
+                <th className="px-5 py-3 font-semibold">الحساب / المتبقي</th>
               </tr>
             </thead>
             <tbody>
               {upcomingBookings.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-5 py-4 text-center text-muted-foreground">
-                    لا توجد حجوزات قادمة
+                    مفيش حجوزات جاية دلوقتي
                   </td>
                 </tr>
               ) : (
@@ -267,11 +249,11 @@ export function OverviewView({
                             >
                               {updatingPaymentId === m._id ? (
                                 <>
-                                  <Clock className="size-3.5 animate-spin" /> جاري...
+                                  <Clock className="size-3.5 animate-spin" /> ثواني...
                                 </>
                               ) : (
                                 <>
-                                  <CheckCircle2 className="size-3.5" /> تأكيد الدفع
+                                  <CheckCircle2 className="size-3.5" /> استلمت الكاش
                                 </>
                               )}
                             </button>
@@ -289,23 +271,23 @@ export function OverviewView({
 
       <section className="card-surface overflow-hidden">
         <div className="border-b border-border p-5">
-          <h2 className="font-display text-lg font-extrabold">أفضل العملاء</h2>
+          <h2 className="font-display text-lg font-extrabold">أكتر عملاء بيحجزوا</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-right text-sm whitespace-nowrap">
             <thead className="bg-surface text-xs text-muted-foreground">
               <tr>
-                <th className="px-5 py-3 font-semibold">صورة اللاعب</th>
+                <th className="px-5 py-3 font-semibold">اللاعب</th>
                 <th className="px-5 py-3 font-semibold">الاسم والرقم</th>
-                <th className="px-5 py-3 font-semibold">إجمالي الحجوزات</th>
-                <th className="px-5 py-3 font-semibold">إجمالي الإنفاق</th>
+                <th className="px-5 py-3 font-semibold">عدد الحجوزات</th>
+                <th className="px-5 py-3 font-semibold">إجمالي المدفوع</th>
               </tr>
             </thead>
             <tbody>
               {customers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-5 py-4 text-center text-muted-foreground">
-                    لا يوجد عملاء حتى الآن
+                  <td colSpan={4} className="px-5 py-4 text-center text-muted-foreground">
+                    لسه مفيش عملاء مسجلين
                   </td>
                 </tr>
               ) : (

@@ -119,7 +119,6 @@ interface BookingResponse {
   status: string;
 }
 
-// +++ تم إضافة واجهة لبيانات الحجز لحل خطأ (no-explicit-any) +++
 interface FetchedBooking {
   venue?: { _id: string } | string;
   status: string;
@@ -145,7 +144,7 @@ const getImageUrl = (imagePath?: string) => {
 
 export const Route = createFileRoute("/venue/$id")({
   head: () => ({
-    meta: [{ title: "تفاصيل الملعب | Tigi-Hagz" }],
+    meta: [{ title: "تفاصيل وحجز الملعب | Tigi-Hagz" }],
   }),
   component: VenueDetailsPage,
 });
@@ -164,11 +163,19 @@ const AMENITY_ICONS: Record<string, AmenityIcon> = {
 };
 
 const DAYS_COUNT = 7;
+const DEFAULT_OPEN_HOUR = 8;
 
-function getDays() {
+// يحوّل openTime زي "14:00" لرقم الساعة، ولو القيمة ناقصة أو غلط يرجع للافتراضي
+const parseOpenHour = (openTime?: string) => {
+  const h = parseInt(String(openTime || "").split(":")[0] ?? "", 10);
+  return Number.isInteger(h) && h >= 0 && h <= 23 ? h : DEFAULT_OPEN_HOUR;
+};
+
+// اليوم المنطقي بيبدأ من ميعاد فتح النادي (openHour) مش من 8 ثابتة
+function getDays(openHour: number) {
   const now = new Date();
   const logicalToday = new Date(now);
-  logicalToday.setHours(logicalToday.getHours() - 8);
+  logicalToday.setHours(logicalToday.getHours() - openHour);
 
   return Array.from({ length: DAYS_COUNT }, (_, i) => {
     const d = new Date(logicalToday);
@@ -215,7 +222,8 @@ function VenueDetailsPage() {
 
   const [showInfoModal, setShowInfoModal] = useState(false);
 
-  const days = useMemo(getDays, []);
+  const openHour = parseOpenHour(venue?.openTime);
+  const days = useMemo(() => getDays(openHour), [openHour]);
   const [selectedCourt, setSelectedCourt] = useState<CourtType | null>(null);
   const [selectedDay, setSelectedDay] = useState(0);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
@@ -238,7 +246,6 @@ function VenueDetailsPage() {
   useEffect(() => {
     if (currentUser?.role === "customer") {
       fetchMyBookings()
-        // +++ تم استخدام الواجهة FetchedBooking بدلاً من any +++
         .then((bookingsArray: FetchedBooking[]) => {
           const hasPlayed = bookingsArray.some((b: FetchedBooking) => {
             const bVenueId =
@@ -255,7 +262,6 @@ function VenueDetailsPage() {
     }
   }, [currentUser, venueId]);
 
-  // +++ تم تغليف الدالة بـ useCallback لحل مشكلة exhaustive-deps +++
   const loadReviews = useCallback(async () => {
     try {
       const data = await fetchVenueReviews(venueId);
@@ -270,15 +276,15 @@ function VenueDetailsPage() {
     if (!selectedSlot) {
       return {
         dayText: `${days[selectedDay]!.weekday}، ${days[selectedDay]!.label}`,
-        mobileText: "اختر ساعة للمتابعة",
-        timeText: "لم تُحدد",
+        mobileText: "اختار الساعة عشان تكمّل الحجز",
+        timeText: "لسه مختارش",
       };
     }
 
     const hourNum = parseInt(selectedSlot.split(":")[0] || "0", 10);
     const actualDateObj = new Date(days[selectedDay]!.dateObj);
 
-    if (hourNum < 8) actualDateObj.setDate(actualDateObj.getDate() + 1);
+    if (hourNum < openHour) actualDateObj.setDate(actualDateObj.getDate() + 1);
 
     const weekday = actualDateObj.toLocaleDateString("ar-EG", { weekday: "long" });
     const label = actualDateObj.toLocaleDateString("ar-EG", { day: "numeric", month: "long" });
@@ -311,7 +317,7 @@ function VenueDetailsPage() {
       }
     };
     getVenue();
-  }, [venueId, loadReviews]); // +++ تمت إضافة loadReviews لمصفوفة الاعتمادات +++
+  }, [venueId, loadReviews]);
 
   useEffect(() => {
     if (!selectedCourt) return;
@@ -389,7 +395,7 @@ function VenueDetailsPage() {
       const hourNum = parseInt(time.split(":")[0] || "0", 10);
       const slotTime = new Date(selectedDate);
       slotTime.setHours(hourNum, 0, 0, 0);
-      if (hourNum < 8) slotTime.setDate(slotTime.getDate() + 1);
+      if (hourNum < openHr) slotTime.setDate(slotTime.getDate() + 1);
 
       const diffInMinutes = (slotTime.getTime() - realNow.getTime()) / (1000 * 60);
       const isPastOrTooClose = diffInMinutes < 30;
@@ -473,7 +479,9 @@ function VenueDetailsPage() {
       const hourNum = parseInt(hours || "0", 10);
       const startDateTime = new Date(days[selectedDay]!.dateObj);
       startDateTime.setHours(hourNum, 0, 0, 0);
-      if (hourNum < 8) startDateTime.setDate(startDateTime.getDate() + 1);
+      if (hourNum < parseOpenHour(venue.openTime)) {
+        startDateTime.setDate(startDateTime.getDate() + 1);
+      }
 
       const endDateTime = new Date(startDateTime);
       endDateTime.setMinutes(startDateTime.getMinutes() + selectedDuration);
@@ -497,7 +505,7 @@ function VenueDetailsPage() {
         }
         setShowPaymentModal(true);
       } else {
-        toast.success(`تم تأكيد الحجز في ${venue.name} بنجاح!`);
+        toast.success(`حجزك اتأكد في ${venue.name}.. جهّز فريقك!`);
         navigate({ to: "/my-bookings" });
       }
     } catch (err) {
@@ -509,7 +517,7 @@ function VenueDetailsPage() {
 
   const handleOpenReviewModal = (existingReview?: ReviewType) => {
     if (!currentUser) {
-      toast.error("يجب تسجيل الدخول أولاً لتقييم الملعب.");
+      toast.error("سجّل دخولك الأول عشان تقدر تقيّم الملعب.");
       navigate({ to: "/login" });
       return;
     }
@@ -530,10 +538,10 @@ function VenueDetailsPage() {
     try {
       if (editingReviewId) {
         await updateReview(editingReviewId, { review: reviewText, rating: reviewRating });
-        toast.success("تم تحديث تقييمك بنجاح.");
+        toast.success("تم تعديل تقييمك بنجاح.");
       } else {
         await submitReview(venueId, { review: reviewText, rating: reviewRating });
-        toast.success("شكراً لك! تم إضافة تقييمك بنجاح.");
+        toast.success("تسلم! تقييمك اتسجل بنجاح.");
       }
       setShowReviewModal(false);
       await loadReviews();
@@ -547,10 +555,10 @@ function VenueDetailsPage() {
   };
 
   const handleDeleteReview = async (reviewId: string) => {
-    if (!window.confirm("هل أنت متأكد من حذف هذا التقييم؟")) return;
+    if (!window.confirm("متأكد إنك عايز تمسح تقييمك؟")) return;
     try {
       await deleteReview(reviewId);
-      toast.success("تم حذف التقييم بنجاح.");
+      toast.success("تم مسح التقييم خلاص.");
       await loadReviews();
       const updatedVenue = await fetchVenueById(venueId);
       setVenue(updatedVenue);
@@ -589,12 +597,12 @@ function VenueDetailsPage() {
         className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background text-foreground"
       >
         <AlertCircle className="size-10 text-destructive" />
-        <h1 className="text-lg font-bold">الملعب غير موجود أو حدث خطأ</h1>
+        <h1 className="text-lg font-bold">الملعب ده مش موجود أو حصلت مشكلة</h1>
         <Link
           to="/explore"
           className="gradient-primary rounded-xl px-5 py-2.5 text-sm font-bold text-primary-foreground"
         >
-          العودة لتصفح الملاعب
+          رجوع للملاعب
         </Link>
       </div>
     );
@@ -615,7 +623,7 @@ function VenueDetailsPage() {
             onClick={() => window.history.back()}
             className="flex items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-xs font-bold text-muted-foreground transition hover:bg-muted"
           >
-            <ArrowRight className="size-4" /> عودة
+            <ArrowRight className="size-4" /> رجوع
           </button>
           <span className="truncate text-sm font-bold">{venue.name}</span>
         </div>
@@ -636,7 +644,11 @@ function VenueDetailsPage() {
         {!displayImage && <Trophy className="relative z-10 size-16 text-primary-foreground/40" />}
         {selectedCourt && (
           <span className="absolute right-4 top-4 rounded-lg bg-background/85 px-3 py-1 text-xs font-bold backdrop-blur">
-            {selectedCourt.sportType === "padel" ? "بادل" : "خماسي"}
+            {selectedCourt.sportType === "padel"
+              ? "بادل"
+              : selectedCourt.sportType === "football_7"
+                ? "سباعي"
+                : "خماسي"}
           </span>
         )}
       </div>
@@ -690,7 +702,7 @@ function VenueDetailsPage() {
           {venue.courts && venue.courts.length > 1 && (
             <section className="card-surface space-y-3 p-5">
               <h2 className="flex items-center gap-2 text-sm font-bold sm:text-base">
-                <Trophy className="size-4 text-primary" /> اختر الملعب
+                <Trophy className="size-4 text-primary" /> اختار الملعب
               </h2>
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {venue.courts.map((c) => (
@@ -716,7 +728,7 @@ function VenueDetailsPage() {
 
           <section className="card-surface space-y-3 p-5">
             <h2 className="flex items-center gap-2 text-sm font-bold sm:text-base">
-              <CalendarDays className="size-4 text-primary" /> اختر اليوم
+              <CalendarDays className="size-4 text-primary" /> اختار اليوم
             </h2>
             <div className="flex gap-2 overflow-x-auto pb-1">
               {days.map((d) => {
@@ -750,7 +762,7 @@ function VenueDetailsPage() {
 
           <section className="card-surface space-y-3 p-5">
             <h2 className="flex items-center gap-2 text-sm font-bold sm:text-base">
-              <Hourglass className="size-4 text-primary" /> حدد المدة
+              <Hourglass className="size-4 text-primary" /> اختار المدة
             </h2>
             <div className="flex gap-2">
               {[
@@ -772,13 +784,13 @@ function VenueDetailsPage() {
               ))}
             </div>
             <p className="text-[11px] text-muted-foreground">
-              سيتم استبعاد الأوقات التي لا تسمح بهذه المدة المحددة.
+              الساعات اللي متكفيش المدة اللي اخترتها بتتقفل تلقائياً.
             </p>
           </section>
 
           <section className="card-surface space-y-3 p-5">
             <h2 className="flex items-center gap-2 text-sm font-bold sm:text-base">
-              <Clock className="size-4 text-primary" /> اختر الساعة
+              <Clock className="size-4 text-primary" /> اختار الساعة
             </h2>
             <div className="mb-4 flex gap-2 rounded-xl border border-border bg-muted/50 p-1">
               <button
@@ -834,18 +846,18 @@ function VenueDetailsPage() {
               </div>
             ) : (
               <p className="text-center text-sm font-bold text-muted-foreground border border-dashed rounded-xl py-6">
-                لا توجد ساعات متاحة في هذا التوقيت
+                مفيش ساعات فاضية في الفترة دي
               </p>
             )}
             <p className="text-[11px] text-muted-foreground mt-2">
-              الساعات المشطوبة محجوزة مسبقاً أو الوقت لم يعد كافياً للحجز.
+              الساعات المشطوبة محجوزة أو وقتها عدّى.
             </p>
           </section>
 
           <section className="card-surface space-y-4 p-5" id="reviews-section">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <h2 className="flex items-center gap-2 text-sm font-bold sm:text-base">
-                <MessageSquare className="size-5 text-primary" /> آراء اللاعبين
+                <MessageSquare className="size-5 text-primary" /> آراء اللاعيبة
               </h2>
               {currentUser?.role === "customer" &&
                 canReview &&
@@ -854,7 +866,7 @@ function VenueDetailsPage() {
                     onClick={() => handleOpenReviewModal()}
                     className="rounded-xl bg-primary/10 px-4 py-2 text-xs font-bold text-primary hover:bg-primary hover:text-primary-foreground transition-colors"
                   >
-                    قيّم تجربتك
+                    قيّم الملعب
                   </button>
                 )}
             </div>
@@ -862,8 +874,8 @@ function VenueDetailsPage() {
             {reviews.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
                 <Star className="size-10 mb-2 opacity-20" />
-                <p className="text-sm font-bold">لا توجد تقييمات حتى الآن.</p>
-                <p className="text-xs">كُن أول من يقيّم هذا الملعب!</p>
+                <p className="text-sm font-bold">لسه مفيش تقييمات للملعب ده.</p>
+                <p className="text-xs">احجز والعب وكون أول واحد يقيّمه!</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -935,16 +947,16 @@ function VenueDetailsPage() {
 
         <aside className="hidden lg:block">
           <div className="card-surface sticky top-20 space-y-4 p-5">
-            <h2 className="text-sm font-bold">ملخص الحجز</h2>
+            <h2 className="text-sm font-bold">تفاصيل حجزك</h2>
             <div className="space-y-2 text-sm text-muted-foreground">
               <p className="flex justify-between">
-                <span>المكان</span>
+                <span>النادي</span>
                 <span className="font-bold text-foreground">{venue.name}</span>
               </p>
               <p className="flex justify-between">
                 <span>الملعب</span>
                 <span className="font-bold text-foreground">
-                  {selectedCourt?.name || "لم يُحدد"}
+                  {selectedCourt?.name || "لسه مختارش"}
                 </span>
               </p>
               <p className="flex justify-between items-center">
@@ -952,7 +964,7 @@ function VenueDetailsPage() {
                 <span className="font-bold text-foreground text-left">{summary.dayText}</span>
               </p>
               <p className="flex justify-between items-center">
-                <span>الساعة</span>
+                <span>الميعاد</span>
                 <span className="font-bold text-foreground text-left" dir="ltr">
                   {summary.timeText}
                 </span>
@@ -960,20 +972,20 @@ function VenueDetailsPage() {
 
               <div className="border-t border-dashed border-border pt-3 mt-2">
                 <p className="flex justify-between">
-                  <span>الإجمالي</span>
+                  <span>إجمالي الساعة/المدة</span>
                   <span className="font-bold text-foreground">
                     {total > 0 ? `${total} ج.م` : "--"}
                   </span>
                 </p>
                 {total > 0 && (
                   <p className="flex justify-between mt-2">
-                    <span className="font-bold text-primary">العربون المطلوب الآن</span>
+                    <span className="font-bold text-primary">العربون المطلوب دلوقتي</span>
                     <span className="font-black text-primary text-lg">{deposit} ج.م</span>
                   </p>
                 )}
                 {total > 0 && deposit < total && (
                   <p className="text-[10px] text-muted-foreground mt-1 text-left">
-                    يتم سداد باقي المبلغ ({total - deposit} ج.م) في الملعب
+                    وباقي المبلغ ({total - deposit} ج.م) بتدفعه في الملعب
                   </p>
                 )}
               </div>
@@ -981,13 +993,13 @@ function VenueDetailsPage() {
             <div className="border-t border-border pt-3">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-xs font-bold text-muted-foreground flex items-center gap-1">
-                  <Wallet className="size-3" /> اختر طريقة الدفع
+                  <Wallet className="size-3" /> اختار طريقة الدفع
                 </p>
                 <button
                   onClick={() => setShowInfoModal(true)}
                   className="text-primary hover:bg-primary/20 transition flex items-center gap-1 text-[11px] font-bold bg-primary/10 px-2 py-1 rounded-md"
                 >
-                  <Info className="size-3" /> تعليمات الحجز
+                  <Info className="size-3" /> نظام الحجز
                 </button>
               </div>
 
@@ -1021,7 +1033,7 @@ function VenueDetailsPage() {
               disabled={!selectedSlot || bookingLoading}
               className="gradient-primary w-full rounded-xl py-3 text-sm font-bold text-primary-foreground transition disabled:opacity-40"
             >
-              {bookingLoading ? "جارٍ المتابعة..." : "المتابعة لدفع العربون"}
+              {bookingLoading ? "ثواني..." : "كمّل وادفع العربون"}
             </button>
           </div>
         </aside>
@@ -1031,12 +1043,12 @@ function VenueDetailsPage() {
         <div className="mx-auto flex max-w-6xl flex-col gap-3">
           <div className="flex flex-col gap-2 w-full border-b border-border pb-2">
             <div className="flex justify-between items-center px-1">
-              <span className="text-[11px] font-bold text-muted-foreground">اختر طريقة الدفع</span>
+              <span className="text-[11px] font-bold text-muted-foreground">اختار طريقة الدفع</span>
               <button
                 onClick={() => setShowInfoModal(true)}
                 className="text-primary hover:bg-primary/20 transition flex items-center gap-1 text-[11px] font-bold bg-primary/10 px-2 py-1 rounded-md"
               >
-                <Info className="size-3" /> التعليمات والسياسات
+                <Info className="size-3" /> نظام الحجز والإلغاء
               </button>
             </div>
             <div className="flex gap-2 w-full">
@@ -1072,7 +1084,7 @@ function VenueDetailsPage() {
                   <span className="text-[10px] text-muted-foreground opacity-90">
                     الإجمالي: {total} ج.م
                   </span>
-                  <span className="text-sm font-black text-primary">عربون : {deposit} ج.م</span>
+                  <span className="text-sm font-black text-primary">العربون: {deposit} ج.م</span>
                 </div>
               ) : (
                 <p className="text-sm font-bold text-primary">--</p>
@@ -1083,7 +1095,7 @@ function VenueDetailsPage() {
               disabled={!selectedSlot || bookingLoading}
               className="gradient-primary rounded-xl px-5 py-3 text-sm font-bold text-primary-foreground disabled:opacity-40 whitespace-nowrap"
             >
-              {bookingLoading ? "متابعة..." : "دفع العربون"}
+              {bookingLoading ? "ثواني..." : "ادفع العربون"}
             </button>
           </div>
         </div>
@@ -1113,7 +1125,9 @@ function VenueDetailsPage() {
 
             <div className="space-y-5">
               <div className="flex flex-col items-center gap-2">
-                <span className="text-sm font-bold text-muted-foreground">كيف كانت تجربتك؟</span>
+                <span className="text-sm font-bold text-muted-foreground">
+                  إيه رأيك في الملعب والماتش؟
+                </span>
                 <div className="flex items-center gap-1" dir="ltr">
                   {[1, 2, 3, 4, 5].map((star) => (
                     <button
@@ -1136,11 +1150,11 @@ function VenueDetailsPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-bold text-foreground">التعليق (اختياري)</label>
+                <label className="text-sm font-bold text-foreground">اكتب تعليقك (اختياري)</label>
                 <textarea
                   value={reviewText}
                   onChange={(e) => setReviewText(e.target.value)}
-                  placeholder="شاركنا رأيك في أرضية الملعب، الإضاءة، والتعامل..."
+                  placeholder="قولنا رأيك في النجيل، الإضاءة، والتعامل هناك..."
                   className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm font-medium outline-none focus:border-primary transition min-h-24 resize-none"
                 />
               </div>
@@ -1155,7 +1169,7 @@ function VenueDetailsPage() {
                 ) : (
                   <Star className="size-4" />
                 )}
-                {isSubmittingReview ? "جاري الحفظ..." : "حفظ التقييم"}
+                {isSubmittingReview ? "بيتحفظ..." : "إرسال التقييم"}
               </button>
             </div>
           </div>
@@ -1174,7 +1188,7 @@ function VenueDetailsPage() {
           <div className="relative z-10 w-full max-w-sm rounded-3xl bg-card shadow-2xl border border-border animate-in fade-in zoom-in-95 p-5">
             <div className="flex items-center justify-between border-b border-border pb-3 mb-4">
               <h3 className="font-bold flex items-center gap-2 text-foreground">
-                <Info className="size-5 text-primary" /> تعليمات الحجز والدفع
+                <Info className="size-5 text-primary" /> نظام الحجز والدفع
               </h3>
               <button
                 onClick={() => setShowInfoModal(false)}
@@ -1187,29 +1201,30 @@ function VenueDetailsPage() {
               <li className="flex gap-2 items-start">
                 <Wallet className="size-4 text-primary shrink-0 mt-0.5" />
                 <span>
-                  النظام يتطلب دفع <strong className="text-foreground">عربون</strong> فقط لتأكيد
-                  الحجز، وباقي المبلغ يتم سداده في الملعب.
+                  بتدفع <strong className="text-foreground">عربون بس</strong> عشان تأكد حجزك، وباقي
+                  المبلغ بتدفعه كاش في الملعب.
                 </span>
               </li>
               <li className="flex gap-2 items-start">
                 <AlertCircle className="size-4 text-warning shrink-0 mt-0.5" />
                 <span>
-                  يجب تحويل مبلغ العربون <strong className="text-foreground">بالكسور</strong> لضمان
-                  التأكيد الآلي والسريع للحجز.
+                  لازم تحوّل مبلغ العربون{" "}
+                  <strong className="text-foreground">بالقروش المحددة</strong> عشان السيستم يأكد
+                  حجزك تلقائياً وبسرعة.
                 </span>
               </li>
               <li className="flex gap-2 items-start">
                 <Clock className="size-4 text-destructive shrink-0 mt-0.5" />
                 <span>
-                  يتم <strong className="text-foreground">إلغاء طلب الحجز تلقائياً</strong> إذا لم
-                  يتم إتمام التحويل خلال 10 دقائق.
+                  طلب الحجز <strong className="text-foreground">بيتلغي تلقائياً</strong> لو مكملتش
+                  التحويل خلال 10 دقايق.
                 </span>
               </li>
               <li className="flex gap-2 items-start">
                 <AlertCircle className="size-4 text-primary shrink-0 mt-0.5" />
                 <span>
-                  <strong className="text-foreground">لا يمكن استرداد العربون</strong> في حالة
-                  الإلغاء قبل موعد الحجز بمدة أقل من 24 ساعة.
+                  <strong className="text-foreground">العربون مبيرجعش</strong> لو لغيت الحجز قبل
+                  الميعاد بأقل من 24 ساعة.
                 </span>
               </li>
             </ul>
@@ -1217,7 +1232,7 @@ function VenueDetailsPage() {
               onClick={() => setShowInfoModal(false)}
               className="w-full mt-6 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition"
             >
-              حسناً، فهمت
+              تمام، فهمت
             </button>
           </div>
         </div>
@@ -1227,6 +1242,7 @@ function VenueDetailsPage() {
         open={showPaymentModal}
         paymentData={paymentData}
         bookingDetails={bookingDetails}
+        openHour={openHour}
         onClose={() => {
           setShowPaymentModal(false);
           navigate({ to: "/my-bookings" });

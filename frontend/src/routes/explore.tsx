@@ -53,7 +53,7 @@ const getImageUrl = (imagePath?: string) => {
 
 export const Route = createFileRoute("/explore")({
   head: () => ({
-    meta: [{ title: "تصفح الملاعب | Tigi-Hagz" }],
+    meta: [{ title: "اختار ملعبك | Tigi-Hagz" }],
   }),
   component: ExplorePage,
 });
@@ -120,7 +120,7 @@ function PromoSlider() {
     {
       id: 2,
       title: "كمّل فريقك",
-      subtitle: "ميزة الشله",
+      subtitle: "ميزة الشلة",
       badge: "قريباً 🚀",
       bg: "bg-emerald-950",
       accent: "text-emerald-400",
@@ -129,7 +129,7 @@ function PromoSlider() {
     {
       id: 3,
       title: "أكاديميات وتدريب",
-      subtitle: "أفضل المدربين",
+      subtitle: "أحسن المدربين",
       badge: "قريباً 🚀",
       bg: "bg-indigo-950",
       accent: "text-indigo-400",
@@ -138,7 +138,7 @@ function PromoSlider() {
     {
       id: 4,
       title: "متجر رياضي",
-      subtitle: "Tigi-Hagz بأسعار مخفضة",
+      subtitle: "Tigi-Hagz بأسعار خاصة",
       badge: "قريباً 🚀",
       bg: "bg-rose-950",
       accent: "text-rose-400",
@@ -147,7 +147,7 @@ function PromoSlider() {
     {
       id: 5,
       title: "جيم ومكملات",
-      subtitle: "كل احتياجاتك الرياضية",
+      subtitle: "كل اللي محتاجه للياقة",
       badge: "قريباً 🚀",
       bg: "bg-amber-950",
       accent: "text-amber-400",
@@ -292,7 +292,7 @@ function ExplorePage() {
   ) as string[];
 
   const dynamicFilters = [
-    { id: "all", label: "الكل" },
+    { id: "all", label: "كل الملاعب" },
     ...uniqueSports.map((sport) => ({
       id: sport,
       label: sportTypeLabels[sport] || sport,
@@ -311,7 +311,7 @@ function ExplorePage() {
   return (
     <div className="flex min-h-screen w-full flex-col bg-background text-foreground overflow-x-hidden">
       <CustomerMobileMenu open={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
-      <Header title="استكشف الملاعب" onMenu={() => setIsMobileMenuOpen(true)} />
+      <Header title="اختار ملعبك" onMenu={() => setIsMobileMenuOpen(true)} />
 
       <main className="mx-auto w-full max-w-5xl flex-1 p-4 sm:p-6 lg:p-8">
         <PromoSlider />
@@ -324,7 +324,7 @@ function ExplorePage() {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="h-12 w-full appearance-none rounded-2xl border border-input bg-card pr-11 pl-10 shadow-sm outline-none transition-shadow focus:border-primary focus:ring-2 focus:ring-ring/40 sm:text-base text-sm"
             >
-              <option value="">كل المناطق في الإسكندرية</option>
+              <option value="">كل مناطق إسكندرية</option>
               {uniqueAreas.map((area, index) => (
                 <option key={index} value={area}>
                   {area}
@@ -368,7 +368,7 @@ function ExplorePage() {
         {loading && (
           <div className="grid place-items-center py-20 text-muted-foreground">
             <Clock className="h-8 w-8 animate-spin" />
-            <p className="mt-4 font-semibold">جارٍ تحميل الملاعب...</p>
+            <p className="mt-4 font-semibold">بنجهّزلك الملاعب المتاحة...</p>
           </div>
         )}
 
@@ -384,15 +384,15 @@ function ExplorePage() {
             {filteredVenues.length === 0 ? (
               <div className="grid place-items-center rounded-2xl border border-dashed p-12 text-center text-muted-foreground">
                 <Search className="h-10 w-10 opacity-20" />
-                <p className="mt-4 font-semibold">لا توجد ملاعب مطابقة لبحثك</p>
+                <p className="mt-4 font-semibold">مفيش ملاعب بنفس المواصفات دي حالياً</p>
                 <button
                   onClick={() => {
                     setSearchQuery("");
                     setActiveFilter("all");
                   }}
-                  className="mt-2 text-primary hover:underline"
+                  className="mt-2 font-bold text-primary hover:underline"
                 >
-                  إلغاء الفلاتر
+                  عرض كل الملاعب
                 </button>
               </div>
             ) : (
@@ -424,7 +424,6 @@ function ExplorePage() {
                           <div className="absolute inset-0 bg-gradient-to-br from-primary/40 to-emerald-900/60 mix-blend-multiply" />
                         )}
 
-                        {/* +++ تم التعديل: إظهار التقييم دائماً (الافتراضي 4.5) +++ */}
                         <div className="absolute left-3 top-3 flex items-center gap-1 rounded-lg bg-background/90 px-2 py-1 text-xs font-bold backdrop-blur">
                           <Star className="h-3.5 w-3.5 fill-warning text-warning" />
                           <span className="text-foreground">
@@ -450,7 +449,9 @@ function ExplorePage() {
 
                         <div className="mt-4 mt-auto flex items-end justify-between border-t pt-4">
                           <div>
-                            <p className="text-xs font-semibold text-muted-foreground">يبدأ من</p>
+                            <p className="text-xs font-semibold text-muted-foreground">
+                              الساعة تبدأ من
+                            </p>
                             <p className="font-display text-lg font-bold text-primary">
                               {minPrice !== Infinity ? `${minPrice} ج` : "--- ج"}
                               <span className="text-sm font-normal text-muted-foreground">
@@ -464,7 +465,7 @@ function ExplorePage() {
                             params={{ id: venue._id }}
                             className="rounded-xl bg-primary/10 px-4 py-2 text-sm font-bold text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
                           >
-                            احجز الآن
+                            احجز ملعبك
                           </Link>
                         </div>
                       </div>

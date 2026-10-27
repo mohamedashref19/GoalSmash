@@ -45,7 +45,7 @@ exports.updateAccount = catchAsync(async (req, res, next) => {
     req.params.id,
     req.body,
     {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
     },
   );
@@ -84,7 +84,7 @@ exports.getAvailablePaymentAccount = catchAsync(async (req, res, next) => {
   const account = await PaymentAccount.findOneAndUpdate(
     { type, isActive: true },
     { lastUsedAt: new Date() }, // تحديث تاريخ الاستخدام فور اختياره
-    { sort: { lastUsedAt: 1 }, new: true }, // 1 تعني تصاعدي (الأقدم أولاً)
+    { sort: { lastUsedAt: 1 }, returnDocument: "after" }, // 1 تعني تصاعدي (الأقدم أولاً)
   );
 
   if (!account) {
