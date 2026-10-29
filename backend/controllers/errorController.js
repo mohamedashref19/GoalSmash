@@ -2,10 +2,13 @@ const AppError = require("../utils/appError");
 const Sentry = require("@sentry/node");
 
 const handleErrorCastDB = (err) => {
-  const value =
-    err.stringValue ||
-    (typeof err.value === "object" ? JSON.stringify(err.value) : err.value);
-  const message = `القيمة غير صالحة ${err.path}: ${value}`;
+  // ما نرجّعش قيمة طويلة أو object (كان بيطلع داتا كاملة في رسالة الخطأ)
+  const raw =
+    err.stringValue || (typeof err.value === "object" ? "" : err.value);
+  const value = raw ? String(raw).slice(0, 60) : "";
+  const message = value
+    ? `القيمة غير صالحة ${err.path}: ${value}`
+    : `القيمة غير صالحة ${err.path}`;
   return new AppError(message, 400);
 };
 

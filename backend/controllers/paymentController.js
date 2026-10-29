@@ -31,9 +31,10 @@ const parsePaymentSMS = (sender, message) => {
   const senderLower = sender ? sender.toLowerCase() : "";
 
   // دعم الفواصل العشرية العربية أو الإنجليزية والمسافات المتغيرة
-  const amountMatch = message.match(/بمبلغ\s*([0-9]+(?:\.[0-9]+)?)/);
+  // يدعم الفاصلة بين الآلاف ("1,250.00") عشان المبلغ ما يتقرأش "1"
+  const amountMatch = message.match(/بمبلغ\s*([0-9][0-9,]*(?:\.[0-9]+)?)/);
   if (amountMatch) {
-    amount = parseFloat(amountMatch[1]);
+    amount = parseFloat(amountMatch[1].replace(/,/g, ""));
   }
 
   if (
@@ -109,6 +110,24 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
   }
   const safeSender = typeof sender === "string" ? sender.slice(0, 100) : "";
 
+  // مرسلين معتمدين (اختياري): SMS_ALLOWED_SENDERS=InstaPay,VF-Cash
+  // بيمنع أي حد يبعت SMS عادية للموبايل بنص شبه تحويل ويأكد حجز من غير ما يدفع.
+  // لو المتغير فاضي مفيش فلترة (عشان تعرف أسماء المرسلين الحقيقية من اللوج الأول).
+  const allowedSenders = (process.env.SMS_ALLOWED_SENDERS || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  console.log("[SMS webhook] sender:", safeSender);
+  if (
+    allowedSenders.length > 0 &&
+    !allowedSenders.some((a) => safeSender.toLowerCase().includes(a))
+  ) {
+    console.warn("[SMS webhook] مرسل غير معتمد تم تجاهله:", safeSender);
+    return res
+      .status(200)
+      .json({ status: "ignored", message: "مرسل غير معتمد" });
+  }
+
   // تاريخ استلام غير صالح كان بيكسر إنشاء السجل (Invalid Date)
   const receivedAtDate =
     receivedAt && !Number.isNaN(new Date(receivedAt).getTime())
@@ -151,33 +170,46 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
   }
 
   // +++ التعديل الأهم: التحديث الذري (Atomic Update) في خطوة واحدة +++
-  const payment = await Payment.findOneAndUpdate(
-    {
-      expectedAmount: parsedPayment.amount,
-      method: parsedPayment.method,
-      status: { $in: ["pending", "pending_verification"] },
-      expiresAt: { $gt: new Date() },
-    },
-    {
-      $set: {
-        amountReceived: parsedPayment.amount,
-        senderPhone: parsedPayment.senderPhone,
-        senderName: parsedPayment.senderName,
-        // لو اتحط null على حقل unique فالـ SMS التاني من غير رقم معاملة بيفشل بـ E11000
-        ...(parsedPayment.transactionId
-          ? { transactionId: parsedPayment.transactionId }
-          : {}),
-        smsEventId: eventId,
-        receivedAt: receivedAtDate,
-        status: "verified",
-        verifiedAt: new Date(),
-        verificationMethod: "sms_auto",
-        rawPaymentData: message,
-        verificationNotes: "تم التأكيد آلياً عبر رسائل البنك",
+  let payment;
+  try {
+    payment = await Payment.findOneAndUpdate(
+      {
+        expectedAmount: parsedPayment.amount,
+        method: parsedPayment.method,
+        status: { $in: ["pending", "pending_verification"] },
+        expiresAt: { $gt: new Date() },
       },
-    },
-    { returnDocument: "after" }, // لضمان إرجاع الداتا بعد التحديث مباشرة
-  );
+      {
+        $set: {
+          amountReceived: parsedPayment.amount,
+          senderPhone: parsedPayment.senderPhone,
+          senderName: parsedPayment.senderName,
+          // لو اتحط null على حقل unique فالـ SMS التاني من غير رقم معاملة بيفشل بـ E11000
+          ...(parsedPayment.transactionId
+            ? { transactionId: parsedPayment.transactionId }
+            : {}),
+          smsEventId: eventId,
+          receivedAt: receivedAtDate,
+          status: "verified",
+          verifiedAt: new Date(),
+          verificationMethod: "sms_auto",
+          rawPaymentData: message,
+          verificationNotes: "تم التأكيد آلياً عبر رسائل البنك",
+        },
+      },
+      // sort: لو أكتر من دفعة بنفس المبلغ، الأقدم هي اللي تتأكد (FIFO)
+      { returnDocument: "after", sort: { createdAt: 1 } },
+    );
+  } catch (err) {
+    // نفس الرسالة وصلت مرتين في نفس اللحظة: التانية بتفشل بـ unique index، ونرد 200
+    // عشان Macrodroid ما يعيدش المحاولة
+    if (err && err.code === 11000) {
+      return res
+        .status(200)
+        .json({ status: "success", message: "تم معالجة هذه الرسالة مسبقاً" });
+    }
+    throw err;
+  }
   // +++ تحديث إحصائيات حساب الدفع الفعلي (إضافة المبلغ وتاريخ آخر استلام) +++
   if (payment && payment.paymentAccount) {
     await PaymentAccount.findByIdAndUpdate(payment.paymentAccount, {
@@ -262,8 +294,11 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
         io.emit(`notification-${userId}`, customerNotif);
 
         // +++ هذا هو سطر إغلاق الشاشة الآلي +++
+        // بدون بيانات العميل (الاسم/الإيميل/التليفون): io.emit بيوصل لكل المتصلين
+        const { user: _omitUser, ...bookingForSocket } =
+          updatedBooking.toObject();
         io.emit(`booking-confirmed-${userId}`, {
-          booking: updatedBooking,
+          booking: bookingForSocket,
           paymentStatus: "paid",
           status: "confirmed",
         });
@@ -275,7 +310,12 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
               updatedBooking.user,
               process.env.FRONTEND_URL,
             );
-            await customerEmail.sendBookingTicket(updatedBooking);
+            // من غير await: الرد ما يستناش الـ SMTP (كان بياخد ثواني)
+            customerEmail
+              .sendBookingTicket(updatedBooking)
+              .catch((emailErr) => {
+                console.error("خطأ في إرسال تذكرة الإيميل للعميل:", emailErr);
+              });
           } catch (emailErr) {
             console.error("خطأ في إرسال تذكرة الإيميل للعميل:", emailErr);
           }
@@ -651,8 +691,11 @@ exports.manuallyVerifyPayment = catchAsync(async (req, res, next) => {
         io.emit(`notification-${userId}`, customerNotif);
 
         // +++ هذا هو سطر إغلاق الشاشة الآلي +++
+        // بدون بيانات العميل (الاسم/الإيميل/التليفون): io.emit بيوصل لكل المتصلين
+        const { user: _omitUser, ...bookingForSocket } =
+          updatedBooking.toObject();
         io.emit(`booking-confirmed-${userId}`, {
-          booking: updatedBooking,
+          booking: bookingForSocket,
           paymentStatus: "paid",
           status: "confirmed",
         });
@@ -664,7 +707,12 @@ exports.manuallyVerifyPayment = catchAsync(async (req, res, next) => {
               updatedBooking.user,
               process.env.FRONTEND_URL,
             );
-            await customerEmail.sendBookingTicket(updatedBooking);
+            // من غير await: الرد ما يستناش الـ SMTP (كان بياخد ثواني)
+            customerEmail
+              .sendBookingTicket(updatedBooking)
+              .catch((emailErr) => {
+                console.error("خطأ في إرسال تذكرة الإيميل للعميل:", emailErr);
+              });
           } catch (emailErr) {
             console.error("خطأ في إرسال تذكرة الإيميل للعميل:", emailErr);
           }
