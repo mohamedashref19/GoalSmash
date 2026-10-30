@@ -214,7 +214,7 @@ module.exports = class Email {
         : `<span style="color:#28a745; font-weight:bold;">خالص بالكامل</span>`;
 
     const body = `
-      <h2 style="color:#1f3d2b; font-size:20px; margin:0 0 12px; text-align:center;">حجزك اتأكد يا بطل! 🎉</h2>
+      <h2 style="color:#1f3d2b; font-size:20px; margin:0 0 12px; text-align:center;">حجزك اتأكد يا لاعيب! 🎉</h2>
       <p style="color:#555; font-size:15px; line-height:1.8; margin:0 0 20px; text-align:center;">
         أهلاً يا ${escapeHtml(this.firstName)}، حجزك في <strong>${escapeHtml(bookingData.venue.name)}</strong> اتأكد معانا.. جهّز فريقك!
       </p>
@@ -240,7 +240,7 @@ module.exports = class Email {
         </div>
       </div>
       
-      <p style="color:#999; font-size:13px; margin:0; text-align:center;">لما توصل الملعب إن شاء الله، افتح الإيميل ده وورّي الكود (QR) للكابتن عشان يأكد وصولك.</p>
+      <p style="color:#999; font-size:13px; margin:0; text-align:center;">لما توصل الملعب إن شاء الله، افتح الإيميل ده وورّي  QR للكابتن عشان يأكد وصولك.</p>
     `;
     await this.send("تذكرة حجزك في Tigi Hagz 🎟️", body);
   }

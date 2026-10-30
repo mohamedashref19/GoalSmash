@@ -9,6 +9,7 @@ const Notification = require("../models/notificationModel");
 const Venue = require("../models/venueModel");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
+const { emitToUser } = require("../utils/socketEmit");
 const PaymentAccount = require("../models/paymentAccountModel");
 const CourtBlock = require("../models/courtBlockModel");
 
@@ -291,13 +292,13 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
           relatedId: updatedBooking._id,
         });
 
-        io.emit(`notification-${userId}`, customerNotif);
+        emitToUser(io, userId, `notification-${userId}`, customerNotif);
 
         // +++ هذا هو سطر إغلاق الشاشة الآلي +++
-        // بدون بيانات العميل (الاسم/الإيميل/التليفون): io.emit بيوصل لكل المتصلين
+        // بدون بيانات العميل (الاسم/الإيميل/التليفون): الحدث بيروح لغرفة العميل بس، ومنها نقلل البيانات للأدنى
         const { user: _omitUser, ...bookingForSocket } =
           updatedBooking.toObject();
-        io.emit(`booking-confirmed-${userId}`, {
+        emitToUser(io, userId, `booking-confirmed-${userId}`, {
           booking: bookingForSocket,
           paymentStatus: "paid",
           status: "confirmed",
@@ -332,7 +333,12 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
           type: "booking",
           relatedId: updatedBooking._id,
         });
-        io.emit(`notification-${updatedBooking.venue.owner}`, ownerNotif);
+        emitToUser(
+          io,
+          updatedBooking.venue.owner,
+          `notification-${updatedBooking.venue.owner}`,
+          ownerNotif,
+        );
       }
     }
   } catch (err) {
@@ -688,13 +694,13 @@ exports.manuallyVerifyPayment = catchAsync(async (req, res, next) => {
           relatedId: updatedBooking._id,
         });
 
-        io.emit(`notification-${userId}`, customerNotif);
+        emitToUser(io, userId, `notification-${userId}`, customerNotif);
 
         // +++ هذا هو سطر إغلاق الشاشة الآلي +++
-        // بدون بيانات العميل (الاسم/الإيميل/التليفون): io.emit بيوصل لكل المتصلين
+        // بدون بيانات العميل (الاسم/الإيميل/التليفون): الحدث بيروح لغرفة العميل بس، ومنها نقلل البيانات للأدنى
         const { user: _omitUser, ...bookingForSocket } =
           updatedBooking.toObject();
-        io.emit(`booking-confirmed-${userId}`, {
+        emitToUser(io, userId, `booking-confirmed-${userId}`, {
           booking: bookingForSocket,
           paymentStatus: "paid",
           status: "confirmed",
@@ -732,7 +738,12 @@ exports.manuallyVerifyPayment = catchAsync(async (req, res, next) => {
           type: "booking",
           relatedId: updatedBooking._id,
         });
-        io.emit(`notification-${venueOwnerId}`, ownerNotif);
+        emitToUser(
+          io,
+          venueOwnerId,
+          `notification-${venueOwnerId}`,
+          ownerNotif,
+        );
       }
     }
   } catch (err) {
@@ -852,7 +863,12 @@ exports.submitPaymentProof = catchAsync(async (req, res, next) => {
           type: "payment",
           relatedId: payment._id,
         });
-        io.emit(`notification-${venueOwnerId}`, ownerNotif);
+        emitToUser(
+          io,
+          venueOwnerId,
+          `notification-${venueOwnerId}`,
+          ownerNotif,
+        );
       }
     }
   } catch (err) {

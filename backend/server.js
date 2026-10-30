@@ -1,4 +1,4 @@
-//process.env.TZ = "Africa/Cairo";
+process.env.TZ = "Africa/Cairo";
 const dotenv = require("dotenv");
 dotenv.config({ path: "./.env" });
 const { Server } = require("socket.io");
@@ -12,6 +12,8 @@ Sentry.init({
 
 const mongoose = require("mongoose");
 const http = require("http");
+const jwt = require("jsonwebtoken");
+const User = require("./models/userModel");
 
 const startExpirationJob = require("./services/expirationService");
 const startCronJobs = require("./utils/cronJobs");
@@ -30,6 +32,30 @@ const io = new Server(server, {
 
 // تفعيل السوكت الحقيقي وإتاحته للكنترولرز
 app.set("io", io);
+
+// ---------- تحقق هوية السوكت + غرفة لكل مستخدم ----------
+// الإشعارات بتتبعت لغرفة المستخدم (user:<id>) بس، مش لكل المتصلين: io.emit كان بيوصّل
+// إشعارات وبيانات كل العملاء لأي حد يفتح اتصال. الاتصال من غير توكن صالح بيتوصل
+// (عشان النسخ القديمة من التطبيق ما تتكسرش) لكنه مابيدخلش أي غرفة، فمابيستقبلش حاجة.
+io.use(async (socket, next) => {
+  try {
+    const token = socket.handshake.auth && socket.handshake.auth.token;
+    if (typeof token === "string" && token && token !== "loggedout") {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const user = await User.findById(decoded.id);
+      if (user && !user.changedPasswordAfter(decoded.iat)) {
+        socket.data.userId = user.id;
+      }
+    }
+  } catch (err) {
+    // توكن غير صالح أو منتهي: نكمل كزائر من غير غرفة
+  }
+  next();
+});
+
+io.on("connection", (socket) => {
+  if (socket.data.userId) socket.join(`user:${socket.data.userId}`);
+});
 
 const DB = process.env.DATABASE;
 mongoose

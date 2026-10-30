@@ -69,7 +69,12 @@ export function Header({ title, onMenu }: { title: string; onMenu: () => void })
         }
 
         // 2. الاتصال بالسوكيت للإشعارات اللحظية الجديدة
-        socket = io(BACKEND_URL);
+        // التوكن عشان السيرفر يدخّل الاتصال في غرفة المستخدم ويبعتله إشعاراته هو بس
+        // (دالة: بتتقرأ تاني عند كل إعادة اتصال)
+        socket = io(BACKEND_URL, {
+          auth: (cb) =>
+            cb({ token: localStorage.getItem("token") || sessionStorage.getItem("token") }),
+        });
         if (userId) {
           socket.on(`notification-${userId}`, (notification: NotificationItem) => {
             toast.success(notification.title, {

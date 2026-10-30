@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Clock,
   CalendarDays,
@@ -25,6 +25,9 @@ import { fetchCourts } from "@/api/courtApi";
 interface VenueData {
   _id: string;
   name: string;
+  openTime?: string;
+  closeTime?: string;
+  eveningStartTime?: string;
 }
 
 interface CourtData {
@@ -58,8 +61,26 @@ const kindClass: Record<string, string> = {
   manual: "bg-info/20 border-info/50 text-blue-950",
 };
 
-const MORNING_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
-const EVENING_HOURS = [19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 7];
+// "14:00" -> 14، ولو القيمة ناقصة أو غلط نرجع للافتراضي (نفس قيم الباك إند)
+const parseHour = (time: string | undefined, fallback: number) => {
+  const h = parseInt(String(time || "").split(":")[0] ?? "", 10);
+  return Number.isInteger(h) && h >= 0 && h <= 24 ? h % 24 : fallback;
+};
+
+const formatHour12 = (h: number) => `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? "ص" : "م"}`;
+
+// الساعات من start لحد end (مش شاملة end) مع اللف بعد منتصف الليل
+const hoursBetween = (start: number, end: number) => {
+  const hours: number[] = [];
+  let current = start;
+  let iters = 0;
+  while (current !== end && iters < 24) {
+    hours.push(current);
+    current = (current + 1) % 24;
+    iters++;
+  }
+  return hours;
+};
 
 // =========================================
 // +++ نافذة تفاصيل الحجز (للعرض فقط للآدمن) +++
@@ -288,6 +309,26 @@ export function AdminScheduleView() {
     }
   }, [selectedVenueId, selectedDate, loadScheduleData]);
 
+  // مواعيد النادي المختار: الصباحي من الفتح لبداية المسائي، والمسائي لحد الإغلاق
+  const selectedVenue = venues.find((v) => v._id === selectedVenueId);
+  const openHour = parseHour(selectedVenue?.openTime, 8);
+  const eveningStartHour = parseHour(selectedVenue?.eveningStartTime, 18);
+  const closeHour = parseHour(selectedVenue?.closeTime, 4);
+
+  const morningHours = useMemo(
+    () => hoursBetween(openHour, eveningStartHour),
+    [openHour, eveningStartHour],
+  );
+  const eveningHours = useMemo(
+    () => hoursBetween(eveningStartHour, closeHour),
+    [eveningStartHour, closeHour],
+  );
+
+  // نادي مفيهوش فترة صباحية (بيفتح مساءً): نفتح تاب المسائي تلقائياً
+  useEffect(() => {
+    if (morningHours.length === 0) setTimeTab("evening");
+  }, [morningHours.length]);
+
   const getBookingForCell = (courtId: string, hour: number) => {
     return bookings.find((b) => {
       if (!b || !b.startTime || !b.endTime) return false;
@@ -298,7 +339,8 @@ export function AdminScheduleView() {
       const cellDateTime = new Date(selectedDate);
       cellDateTime.setHours(hour, 0, 0, 0);
 
-      if (hour < 8) {
+      // الساعات قبل ميعاد فتح النادي (بعد منتصف الليل) تابعة لنفس اليوم المنطقي
+      if (hour < openHour) {
         cellDateTime.setDate(cellDateTime.getDate() + 1);
       }
 
@@ -309,7 +351,7 @@ export function AdminScheduleView() {
     });
   };
 
-  const activeHours = timeTab === "morning" ? MORNING_HOURS : EVENING_HOURS;
+  const activeHours = timeTab === "morning" ? morningHours : eveningHours;
 
   return (
     <div
@@ -373,7 +415,8 @@ export function AdminScheduleView() {
               : "text-muted-foreground hover:text-foreground",
           )}
         >
-          <Sun className="h-4 w-4" /> الصباح (8 ص - 6 م)
+          <Sun className="h-4 w-4" /> الصباح ({formatHour12(openHour)} -{" "}
+          {formatHour12(eveningStartHour)})
         </button>
         <button
           onClick={() => setTimeTab("evening")}
@@ -384,7 +427,8 @@ export function AdminScheduleView() {
               : "text-muted-foreground hover:text-foreground",
           )}
         >
-          <Moon className="h-4 w-4" /> المساء (7 م - 7 ص)
+          <Moon className="h-4 w-4" /> المساء ({formatHour12(eveningStartHour)} -{" "}
+          {formatHour12(closeHour)})
         </button>
       </div>
 

@@ -7,6 +7,7 @@ const Venue = require("../models/venueModel");
 const Notification = require("../models/notificationModel");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
+const { emitToUser } = require("../utils/socketEmit");
 const PaymentAccount = require("../models/paymentAccountModel");
 const CourtBlock = require("../models/courtBlockModel");
 const {
@@ -483,7 +484,7 @@ exports.createBooking = catchAsync(async (req, res, next) => {
               relatedId: newBooking._id,
             });
             if (io)
-              io.emit(`notification-${venueObj.owner}`, {
+              emitToUser(io, venueObj.owner, `notification-${venueObj.owner}`, {
                 title: "حجز جديد",
                 message: ownerMessage,
               });

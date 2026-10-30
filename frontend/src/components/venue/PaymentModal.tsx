@@ -108,6 +108,9 @@ export function PaymentModal({
       const socket = io(SOCKET_URL, {
         transports: ["polling"],
         withCredentials: true,
+        // التوكن عشان السيرفر يدخّل الاتصال في غرفة المستخدم ويبعتله إشعاراته هو بس
+        auth: (cb) =>
+          cb({ token: localStorage.getItem("token") || sessionStorage.getItem("token") }),
       });
 
       const eventName = `booking-confirmed-${userId}`;

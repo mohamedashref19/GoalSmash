@@ -783,9 +783,9 @@ function VenueDetailsPage() {
                 </button>
               ))}
             </div>
-            <p className="text-[11px] text-muted-foreground">
+            {/* <p className="text-[11px] text-muted-foreground">
               الساعات اللي متكفيش المدة اللي اخترتها بتتقفل تلقائياً.
-            </p>
+            </p> */}
           </section>
 
           <section className="card-surface space-y-3 p-5">
@@ -849,9 +849,9 @@ function VenueDetailsPage() {
                 مفيش ساعات فاضية في الفترة دي
               </p>
             )}
-            <p className="text-[11px] text-muted-foreground mt-2">
+            {/* <p className="text-[11px] text-muted-foreground mt-2">
               الساعات المشطوبة محجوزة أو وقتها عدّى.
-            </p>
+            </p> */}
           </section>
 
           <section className="card-surface space-y-4 p-5" id="reviews-section">
