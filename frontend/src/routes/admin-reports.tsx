@@ -4,11 +4,19 @@ import { LayoutDashboard, Wallet, FileText, Settings, X, ClipboardList } from "l
 import { XCircle, CalendarDays } from "lucide-react";
 import { Header } from "@/components/venue/Header";
 import { AdminReportsView } from "@/components/admin/AdminReportsView";
+import { requireRole, RoleGuard } from "../components/RoleGuard";
+
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin-reports")({
   head: () => ({ meta: [{ title: "تقارير المنصة | Tigi-Hagz" }] }),
-  component: AdminReportsPage,
+  beforeLoad: () => requireRole(["admin"]),
+  //component: AdminReportsPage,
+  component: () => (
+    <RoleGuard allowedRoles={["admin"]}>
+      <AdminReportsPage />
+    </RoleGuard>
+  ),
 });
 
 function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {

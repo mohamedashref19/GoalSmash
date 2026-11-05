@@ -35,12 +35,19 @@ import { updateUserData, updateUserPassword, logoutUser, deleteUserAccount } fro
 // @ts-expect-error: apiClient is a JavaScript module without TypeScript declarations
 import apiClient from "@/api/axiosConfig";
 import { MobileSidebar } from "@/components/venue/Sidebar";
+import { requireRole, RoleGuard } from "../components/RoleGuard";
 
 export const Route = createFileRoute("/profile")({
   head: () => ({
     meta: [{ title: "الملف الشخصي | Tigi-Hagz" }],
   }),
-  component: ProfilePage,
+  beforeLoad: () => requireRole([]),
+  //component: ProfilePage,
+  component: () => (
+    <RoleGuard allowedRoles={[]}>
+      <ProfilePage />
+    </RoleGuard>
+  ),
 });
 
 const field =
@@ -304,7 +311,9 @@ function ProfilePage() {
     setSavingInfo(true);
     try {
       const res = await updateUserData({ name, email });
-      localStorage.setItem("userData", JSON.stringify(res.data.user));
+      // localStorage.setItem("userData", JSON.stringify(res.data.user));
+      const storage = localStorage.getItem("token") ? localStorage : sessionStorage;
+      storage.setItem("userData", JSON.stringify(res.data.user));
       toast.success("تم تحديث البيانات الشخصية بنجاح");
     } catch (err) {
       toast.error(err as string);

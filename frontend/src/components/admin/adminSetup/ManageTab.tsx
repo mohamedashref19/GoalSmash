@@ -1,4 +1,14 @@
-import { Building2, CalendarDays, Clock, Edit, ImageIcon, MapPin, Moon, Sun, UserPlus } from "lucide-react";
+import {
+  Building2,
+  CalendarDays,
+  Clock,
+  Edit,
+  ImageIcon,
+  MapPin,
+  Moon,
+  Sun,
+  UserPlus,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { WEEKDAYS, getScheduleError, scheduleSummary } from "./helpers";
 import type { AdminSetupState } from "./useAdminSetup";
@@ -45,17 +55,13 @@ export function ManageTab({ s }: { s: AdminSetupState }) {
                 <input
                   type="text"
                   value={editVenueForm.phone}
-                  onChange={(e) =>
-                    setEditVenueForm({ ...editVenueForm, phone: e.target.value })
-                  }
+                  onChange={(e) => setEditVenueForm({ ...editVenueForm, phone: e.target.value })}
                   className="rounded-lg border px-3 py-2 text-sm"
                   placeholder="التليفون"
                 />
                 <select
                   value={editVenueForm.ownerId}
-                  onChange={(e) =>
-                    setEditVenueForm({ ...editVenueForm, ownerId: e.target.value })
-                  }
+                  onChange={(e) => setEditVenueForm({ ...editVenueForm, ownerId: e.target.value })}
                   className="rounded-lg border px-3 py-2 text-sm"
                 >
                   {ownersList.map((o) => (
@@ -71,7 +77,7 @@ export function ManageTab({ s }: { s: AdminSetupState }) {
                   className="rounded-lg border px-3 py-2 text-sm"
                   placeholder="المنطقة الرئيسية"
                 />
-  
+
                 <div className="col-span-1 md:col-span-2 grid grid-cols-3 gap-3 bg-background p-2 rounded-lg border border-border">
                   <div>
                     <label className="text-[10px] font-bold text-muted-foreground block mb-1">
@@ -116,7 +122,7 @@ export function ManageTab({ s }: { s: AdminSetupState }) {
                     />
                   </div>
                 </div>
-  
+
                 <p
                   className={cn(
                     "md:col-span-2 text-[10px] font-bold",
@@ -140,7 +146,7 @@ export function ManageTab({ s }: { s: AdminSetupState }) {
                       editVenueForm.closeTime,
                     )}
                 </p>
-  
+
                 <div className="md:col-span-2 mt-1">
                   <label className="text-[10px] font-bold text-muted-foreground block mb-2">
                     أيام العمل المتاحة
@@ -167,7 +173,7 @@ export function ManageTab({ s }: { s: AdminSetupState }) {
                     ))}
                   </div>
                 </div>
-  
+
                 <div className="md:col-span-2 flex flex-col md:flex-row gap-2">
                   <input
                     type="text"
@@ -237,8 +243,7 @@ export function ManageTab({ s }: { s: AdminSetupState }) {
                       <span className="font-bold text-foreground">
                         {venue.workingDays && venue.workingDays.length === 7
                           ? "طوال الأسبوع"
-                          : venue.workingDays?.map((d) => WEEKDAYS[d]).join("، ") ||
-                            "طوال الأسبوع"}
+                          : venue.workingDays?.map((d) => WEEKDAYS[d]).join("، ") || "طوال الأسبوع"}
                       </span>
                     </p>
                   </div>
@@ -252,7 +257,7 @@ export function ManageTab({ s }: { s: AdminSetupState }) {
               </>
             )}
           </div>
-  
+
           <div className="p-4 border-t border-border">
             <h4 className="text-xs font-extrabold text-muted-foreground mb-3 uppercase tracking-wider">
               ملاعب النادي ({venue.courts?.length || 0})

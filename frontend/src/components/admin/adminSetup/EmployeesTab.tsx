@@ -28,7 +28,7 @@ export function EmployeesTab({ s }: { s: AdminSetupState }) {
             </option>
           ))}
         </select>
-  
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <input
             type="text"
@@ -48,7 +48,7 @@ export function EmployeesTab({ s }: { s: AdminSetupState }) {
             dir="ltr"
           />
         </div>
-  
+
         <input
           type="email"
           placeholder="البريد الإلكتروني"
@@ -57,7 +57,7 @@ export function EmployeesTab({ s }: { s: AdminSetupState }) {
           onChange={(e) => setEmployeeData({ ...employeeData, email: e.target.value })}
           className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none"
         />
-  
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <input
             type="password"
@@ -74,27 +74,21 @@ export function EmployeesTab({ s }: { s: AdminSetupState }) {
             required
             minLength={8}
             value={employeeData.passwordConfirm}
-            onChange={(e) =>
-              setEmployeeData({ ...employeeData, passwordConfirm: e.target.value })
-            }
+            onChange={(e) => setEmployeeData({ ...employeeData, passwordConfirm: e.target.value })}
             className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none"
           />
         </div>
-  
+
         <button
           disabled={loading}
           type="submit"
           className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 font-bold text-white transition disabled:opacity-50"
         >
-          {loading ? (
-            <Loader2 className="size-5 animate-spin" />
-          ) : (
-            <UserPlus className="size-5" />
-          )}{" "}
+          {loading ? <Loader2 className="size-5 animate-spin" /> : <UserPlus className="size-5" />}{" "}
           إنشاء حساب الموظف وربطه بالنادي
         </button>
       </form>
-  
+
       {/* جدول عرض الموظفين الحاليين */}
       <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full text-sm text-right">
@@ -136,10 +130,7 @@ export function EmployeesTab({ s }: { s: AdminSetupState }) {
             ))}
             {employeesList.length === 0 && !loading && (
               <tr>
-                <td
-                  colSpan={5}
-                  className="px-4 py-8 text-center text-muted-foreground font-bold"
-                >
+                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground font-bold">
                   لا يوجد موظفون مسجلون حتى الآن
                 </td>
               </tr>

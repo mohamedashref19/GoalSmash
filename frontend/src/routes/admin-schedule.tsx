@@ -12,11 +12,19 @@ import {
 } from "lucide-react";
 import { Header } from "@/components/venue/Header";
 import { AdminScheduleView } from "@/components/admin/AdminScheduleView";
+import { requireRole, RoleGuard } from "../components/RoleGuard";
+
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin-schedule")({
   head: () => ({ meta: [{ title: "جدول الأندية | الإدارة المركزية" }] }),
-  component: AdminSchedulePage,
+  beforeLoad: () => requireRole(["admin"]),
+  // component: AdminSchedulePage,
+  component: () => (
+    <RoleGuard allowedRoles={["admin"]}>
+      <AdminSchedulePage />
+    </RoleGuard>
+  ),
 });
 
 function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {

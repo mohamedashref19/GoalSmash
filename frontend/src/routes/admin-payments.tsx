@@ -14,10 +14,17 @@ import {
   CalendarDays,
 } from "lucide-react"; // +++ إضافة FileText
 import { cn } from "@/lib/utils";
+import { requireRole, RoleGuard } from "../components/RoleGuard";
 
 export const Route = createFileRoute("/admin-payments")({
   head: () => ({ meta: [{ title: "المدفوعات المركزية | الإدارة" }] }),
-  component: AdminPaymentsPage,
+  beforeLoad: () => requireRole(["admin"]),
+  // component: AdminPaymentsPage,
+  component: () => (
+    <RoleGuard allowedRoles={["admin"]}>
+      <AdminPaymentsPage />
+    </RoleGuard>
+  ),
 });
 
 function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {

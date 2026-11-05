@@ -26,9 +26,7 @@ export function BlockTab({ s }: { s: AdminSetupState }) {
           <select
             required
             value={blockData.venueId}
-            onChange={(e) =>
-              setBlockData({ ...blockData, venueId: e.target.value, courtId: "" })
-            }
+            onChange={(e) => setBlockData({ ...blockData, venueId: e.target.value, courtId: "" })}
             className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none cursor-pointer"
           >
             <option value="">-- اختر النادي --</option>
@@ -53,7 +51,7 @@ export function BlockTab({ s }: { s: AdminSetupState }) {
             ))}
           </select>
         </div>
-  
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-muted/30 p-3 rounded-xl border border-border">
           <div>
             <label className="text-[11px] font-bold text-muted-foreground mb-1.5 block">
@@ -78,12 +76,10 @@ export function BlockTab({ s }: { s: AdminSetupState }) {
               onChange={(e) => setBlockData({ ...blockData, dateTo: e.target.value })}
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none"
             />
-            <p className="text-[9px] text-muted-foreground mt-1">
-              اتركه فارغاً لغلق يوم واحد فقط.
-            </p>
+            <p className="text-[9px] text-muted-foreground mt-1">اتركه فارغاً لغلق يوم واحد فقط.</p>
           </div>
         </div>
-  
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="text-[11px] font-bold text-muted-foreground mb-1.5 block">
@@ -139,7 +135,7 @@ export function BlockTab({ s }: { s: AdminSetupState }) {
             </select>
           </div>
         </div>
-  
+
         <input
           type="text"
           placeholder="ملاحظات (مثال: صيانة أرضية، أكاديمية كابتن محمد...)"
@@ -147,21 +143,17 @@ export function BlockTab({ s }: { s: AdminSetupState }) {
           onChange={(e) => setBlockData({ ...blockData, notes: e.target.value })}
           className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none"
         />
-  
+
         <button
           disabled={isBlocking}
           type="submit"
           className="w-full flex items-center justify-center gap-2 rounded-xl bg-destructive px-4 py-3 font-bold text-white transition disabled:opacity-50 hover:bg-destructive/90"
         >
-          {isBlocking ? (
-            <Loader2 className="size-5 animate-spin" />
-          ) : (
-            <Lock className="size-5" />
-          )}{" "}
+          {isBlocking ? <Loader2 className="size-5 animate-spin" /> : <Lock className="size-5" />}{" "}
           تأكيد إغلاق المواعيد
         </button>
       </form>
-  
+
       {/* جدول المواعيد المغلقة */}
       <div className="overflow-x-auto rounded-xl border border-border mt-6">
         <table className="w-full text-sm text-right">
@@ -177,10 +169,7 @@ export function BlockTab({ s }: { s: AdminSetupState }) {
           <tbody>
             {blocksList.length === 0 ? (
               <tr>
-                <td
-                  colSpan={5}
-                  className="px-4 py-8 text-center text-muted-foreground font-bold"
-                >
+                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground font-bold">
                   لا توجد مواعيد مغلقة حالياً.
                 </td>
               </tr>
@@ -219,12 +208,12 @@ export function BlockTab({ s }: { s: AdminSetupState }) {
                   },
                   {} as Record<string, GroupedCourtBlock>,
                 );
-  
+
                 return Object.values(groupedBlocks).map((group: GroupedCourtBlock) => {
                   const isAcademy = group.blockType === "academy";
                   const isExpanded = expandedBlocks.includes(group.recurrenceId);
                   const isSingleDay = group.blocks.length === 1;
-  
+
                   return (
                     <React.Fragment key={group.recurrenceId}>
                       <tr
@@ -308,7 +297,7 @@ export function BlockTab({ s }: { s: AdminSetupState }) {
                           </div>
                         </td>
                       </tr>
-  
+
                       {isExpanded &&
                         !isSingleDay &&
                         group.blocks.map((block: CourtBlock) => (

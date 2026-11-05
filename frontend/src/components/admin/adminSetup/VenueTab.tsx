@@ -58,7 +58,7 @@ export function VenueTab({ s }: { s: AdminSetupState }) {
           className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none"
         />
       </div>
-  
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-muted/30 p-3 rounded-xl border border-border">
         <div>
           <label className="text-[11px] font-bold text-muted-foreground mb-1.5 block">
@@ -99,7 +99,7 @@ export function VenueTab({ s }: { s: AdminSetupState }) {
             dir="ltr"
           />
         </div>
-  
+
         <div className="col-span-1 sm:col-span-3 mt-1">
           <label className="text-[11px] font-bold text-muted-foreground mb-2 block">
             أيام العمل المتاحة للحجز
@@ -126,18 +126,17 @@ export function VenueTab({ s }: { s: AdminSetupState }) {
             ))}
           </div>
         </div>
-  
+
         <div className="col-span-1 sm:col-span-3">
           <p className="text-[11px] font-bold text-muted-foreground flex items-center gap-1">
             <Clock className="size-3.5" />
-            إجمالي ساعات العمل المحسوبة:{" "}
-            {calculateHours(venueData.openTime, venueData.closeTime)} ساعة
+            إجمالي ساعات العمل المحسوبة: {calculateHours(
+              venueData.openTime,
+              venueData.closeTime,
+            )}{" "}
+            ساعة
           </p>
-          {getScheduleError(
-            venueData.openTime,
-            venueData.eveningStartTime,
-            venueData.closeTime,
-          ) ? (
+          {getScheduleError(venueData.openTime, venueData.eveningStartTime, venueData.closeTime) ? (
             <p className="mt-1 text-[11px] font-bold text-destructive">
               {getScheduleError(
                 venueData.openTime,
@@ -147,16 +146,12 @@ export function VenueTab({ s }: { s: AdminSetupState }) {
             </p>
           ) : (
             <p className="mt-1 text-[11px] font-bold text-primary" dir="ltr">
-              {scheduleSummary(
-                venueData.openTime,
-                venueData.eveningStartTime,
-                venueData.closeTime,
-              )}
+              {scheduleSummary(venueData.openTime, venueData.eveningStartTime, venueData.closeTime)}
             </p>
           )}
         </div>
       </div>
-  
+
       <div className="border-2 border-dashed border-border rounded-xl p-6 text-center cursor-pointer hover:bg-muted/50 transition">
         <input
           type="file"
@@ -180,11 +175,7 @@ export function VenueTab({ s }: { s: AdminSetupState }) {
         type="submit"
         className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 font-bold text-white transition disabled:opacity-50"
       >
-        {loading ? (
-          <Loader2 className="size-5 animate-spin" />
-        ) : (
-          <Building2 className="size-5" />
-        )}{" "}
+        {loading ? <Loader2 className="size-5 animate-spin" /> : <Building2 className="size-5" />}{" "}
         تسجيل النادي
       </button>
     </form>

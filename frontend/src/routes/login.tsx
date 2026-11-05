@@ -49,6 +49,12 @@ function LoginPage() {
       const response = await loginUser(phone, password);
 
       const storage = rememberMe ? localStorage : sessionStorage;
+      const other = rememberMe ? sessionStorage : localStorage;
+
+      // امسح بيانات أي حساب قديم من الـ storage التاني
+      other.removeItem("token");
+      other.removeItem("userData");
+
       storage.setItem("token", response.token);
       storage.setItem("userData", JSON.stringify(response.data.user));
 

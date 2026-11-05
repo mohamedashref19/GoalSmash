@@ -1,4 +1,3 @@
-const cron = require("node-cron");
 const Payment = require("../models/paymentModel");
 const Booking = require("../models/bookingModel");
 
@@ -90,18 +89,34 @@ const expirePendingPayments = async () => {
 
 // تشغيل الخدمة
 const startExpirationJob = () => {
+  // لو الدورة اللي فاتت لسه شغالة نتخطى الدورة دي بدل ما يتراكم تشغيلين فوق بعض
+  let running = false;
+  const tick = async () => {
+    if (running) return;
+    running = true;
+    try {
+      await expirePendingPayments();
+    } finally {
+      running = false;
+    }
+  };
+
   // +++ التعديل 3: تأمين التشغيل المبدئي بـ catch لمنع سقوط السيرفر عند الإقلاع +++
-  expirePendingPayments().catch((err) =>
+  tick().catch((err) =>
     console.error(
       "⚠️ [CRON START ERROR] فشل التشغيل المبدئي للخدمة:",
       err.message,
     ),
   );
 
-  // ثم تشغيل كل دقيقة
-  cron.schedule("* * * * *", async () => {
-    await expirePendingPayments();
-  });
+  // ثم تشغيل كل دقيقة بـ setInterval مش node-cron:
+  // node-cron بيحسب مواعيده على ساعة الحائط، ولما الساعة رجعت ساعة (ليلة 29/10)
+  // وقف الجوب حوالي ساعة كاملة (23:00-23:59 اتحسبت "مفقودة"). setInterval ما بيتأثرش بتغيير الساعة.
+  setInterval(() => {
+    tick().catch((err) =>
+      console.error("⚠️ [CRON ERROR] دورة الإلغاء فشلت:", err.message),
+    );
+  }, 60 * 1000);
 
   console.log(
     "✅ The cancellation service for expired bookings (Cron Job) has been activated.",

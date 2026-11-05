@@ -3,6 +3,7 @@ import { useState } from "react";
 import { XCircle } from "lucide-react";
 import { Header } from "@/components/venue/Header";
 import { AdminSetupView } from "@/components/admin/AdminSetupView";
+import { requireRole, RoleGuard } from "../components/RoleGuard";
 import {
   LayoutDashboard,
   Wallet,
@@ -16,8 +17,14 @@ import {
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin-setup")({
+  beforeLoad: () => requireRole(["admin"]),
   head: () => ({ meta: [{ title: "إعدادات النظام | الإدارة" }] }),
-  component: AdminSetupPage,
+  // component: AdminSetupPage,
+  component: () => (
+    <RoleGuard allowedRoles={["admin"]}>
+      <AdminSetupPage />
+    </RoleGuard>
+  ),
 });
 
 function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {

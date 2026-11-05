@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { Header } from "@/components/venue/Header";
 import { cn } from "@/lib/utils";
+import { requireRole, RoleGuard } from "../components/RoleGuard";
 
 // @ts-expect-error APIs without TS definitions
 import { fetchPlatformOverview, fetchVenuesPerformance } from "@/api/adminApi";
@@ -62,7 +63,13 @@ interface VenuePerformance {
 
 export const Route = createFileRoute("/admin-dashboard")({
   head: () => ({ meta: [{ title: "لوحة القيادة | Tigi-Hagz" }] }),
-  component: AdminDashboardPage,
+  beforeLoad: () => requireRole(["admin"]),
+  //component: AdminDashboardPage,
+  component: () => (
+    <RoleGuard allowedRoles={["admin"]}>
+      <AdminDashboardPage />
+    </RoleGuard>
+  ),
 });
 
 function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {

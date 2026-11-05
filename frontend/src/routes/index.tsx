@@ -12,6 +12,8 @@ import { SettingsView } from "@/components/venue/SettingsView";
 import { QuickBookingModal, type BookingFormData } from "@/components/venue/QuickBookingModal";
 import { ReviewsView } from "@/components/venue/ReviewsView";
 import { ScannerView } from "@/components/venue/ScannerView";
+import { requireRole, RoleGuard } from "../components/RoleGuard";
+
 import {
   MapPin,
   LayoutDashboard,
@@ -31,7 +33,13 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [{ title: "لوحة إدارة الملاعب | Tigi-Hagz" }],
   }),
-  component: Dashboard,
+  beforeLoad: () => requireRole(["admin", "owner", "employee"]),
+  //component: Dashboard,
+  component: () => (
+    <RoleGuard allowedRoles={["admin", "owner", "employee"]}>
+      <Dashboard />
+    </RoleGuard>
+  ),
 });
 
 const titles: Record<ViewKey, string> = {

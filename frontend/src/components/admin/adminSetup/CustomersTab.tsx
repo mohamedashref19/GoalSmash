@@ -3,10 +3,7 @@ import { cn } from "@/lib/utils";
 import type { AdminSetupState } from "./useAdminSetup";
 
 export function CustomersTab({ s }: { s: AdminSetupState }) {
-  const {
-    customersList,
-    loading,
-  } = s;
+  const { customersList, loading } = s;
 
   return (
     <div className="animate-in slide-in-from-bottom-2">
@@ -59,10 +56,7 @@ export function CustomersTab({ s }: { s: AdminSetupState }) {
               ))}
               {customersList.length === 0 && (
                 <tr>
-                  <td
-                    colSpan={4}
-                    className="px-4 py-8 text-center text-muted-foreground font-bold"
-                  >
+                  <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground font-bold">
                     لا يوجد عملاء مسجلين حتى الآن
                   </td>
                 </tr>

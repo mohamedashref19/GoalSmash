@@ -12,13 +12,21 @@ import {
 } from "lucide-react";
 import { Header } from "@/components/venue/Header";
 import { AdminCancellationsView } from "@/components/admin/AdminCancellationsView";
+import { requireRole, RoleGuard } from "../components/RoleGuard";
+
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin-cancellations")({
   head: () => ({
     meta: [{ title: "سجل الإلغاءات | الإدارة المركزية" }],
   }),
-  component: AdminCancellationsPage,
+  beforeLoad: () => requireRole(["admin"]),
+  //component: AdminCancellationsPage,
+  component: () => (
+    <RoleGuard allowedRoles={["admin"]}>
+      <AdminCancellationsPage />
+    </RoleGuard>
+  ),
 });
 
 function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {

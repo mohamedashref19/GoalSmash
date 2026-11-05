@@ -5,10 +5,17 @@ import { XCircle, CalendarDays } from "lucide-react";
 import { Header } from "@/components/venue/Header";
 import { AdminDailyClosingView } from "@/components/admin/AdminDailyClosingView";
 import { cn } from "@/lib/utils";
+import { requireRole, RoleGuard } from "../components/RoleGuard";
 
 export const Route = createFileRoute("/admin-daily-closing")({
   head: () => ({ meta: [{ title: "تقفيل اليومية | Tigi-Hagz" }] }),
-  component: AdminDailyClosingPage,
+  beforeLoad: () => requireRole(["admin"]),
+  //component: AdminDailyClosingPage,
+  component: () => (
+    <RoleGuard allowedRoles={["admin"]}>
+      <AdminDailyClosingPage />
+    </RoleGuard>
+  ),
 });
 
 function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {

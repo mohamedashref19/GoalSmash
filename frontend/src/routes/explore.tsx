@@ -17,6 +17,8 @@ import {
   ShoppingBag,
   Dumbbell,
 } from "lucide-react";
+import { requireRole, RoleGuard } from "../components/RoleGuard";
+
 import { Header } from "@/components/venue/Header";
 import { cn } from "@/lib/utils";
 // @ts-expect-error - venueApi module type definitions not available
@@ -55,7 +57,13 @@ export const Route = createFileRoute("/explore")({
   head: () => ({
     meta: [{ title: "اختار ملعبك | Tigi-Hagz" }],
   }),
-  component: ExplorePage,
+  beforeLoad: () => requireRole([]),
+  //component: ExplorePage,
+  component: () => (
+    <RoleGuard allowedRoles={[]}>
+      <ExplorePage />
+    </RoleGuard>
+  ),
 });
 
 function CustomerMobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {

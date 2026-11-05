@@ -13,11 +13,11 @@ export const loginUser = async (phone, password) => {
 
 // دالة تسجيل الخروج
 export const logoutUser = () => {
-  localStorage.removeItem("token");
-  localStorage.removeItem("userData");
-  sessionStorage.removeItem("token"); // السطر ده جديد
-  sessionStorage.removeItem("userData"); // السطر ده جديد
-  window.location.href = "/login"; // توجيه لصفحة الدخول
+  ["token", "userData", "ownerActiveTab"].forEach((key) => {
+    localStorage.removeItem(key);
+    sessionStorage.removeItem(key);
+  });
+  window.location.href = "/login";
 };
 
 // دالة إنشاء حساب جديد (Signup)

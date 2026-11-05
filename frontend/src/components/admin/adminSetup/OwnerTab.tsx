@@ -2,12 +2,7 @@ import { Loader2, Save } from "lucide-react";
 import type { AdminSetupState } from "./useAdminSetup";
 
 export function OwnerTab({ s }: { s: AdminSetupState }) {
-  const {
-    handleCreateOwner,
-    loading,
-    ownerData,
-    setOwnerData,
-  } = s;
+  const { handleCreateOwner, loading, ownerData, setOwnerData } = s;
 
   return (
     <form
@@ -66,8 +61,8 @@ export function OwnerTab({ s }: { s: AdminSetupState }) {
         type="submit"
         className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 font-bold text-white transition disabled:opacity-50"
       >
-        {loading ? <Loader2 className="size-5 animate-spin" /> : <Save className="size-5" />}{" "}
-        إنشاء الحساب
+        {loading ? <Loader2 className="size-5 animate-spin" /> : <Save className="size-5" />} إنشاء
+        الحساب
       </button>
     </form>
   );

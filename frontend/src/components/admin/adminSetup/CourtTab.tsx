@@ -95,11 +95,7 @@ export function CourtTab({ s }: { s: AdminSetupState }) {
         type="submit"
         className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 font-bold text-white transition disabled:opacity-50"
       >
-        {loading ? (
-          <Loader2 className="size-5 animate-spin" />
-        ) : (
-          <Dribbble className="size-5" />
-        )}{" "}
+        {loading ? <Loader2 className="size-5 animate-spin" /> : <Dribbble className="size-5" />}{" "}
         إضافة الملعب
       </button>
     </form>

@@ -34,12 +34,21 @@ import { submitPaymentProof } from "@/api/paymentApi";
 // @ts-expect-error APIs without TS definitions
 import { submitReview, fetchVenueReviews } from "@/api/reviewApi";
 import { MobileSidebar } from "@/components/venue/Sidebar";
+import { requireRole, RoleGuard } from "../components/RoleGuard";
+// @ts-expect-error: authApi is a JavaScript module without TypeScript declarations
+import { logoutUser } from "@/api/authApi";
 
 export const Route = createFileRoute("/my-bookings")({
   head: () => ({
     meta: [{ title: "حجوزاتي | Tigi-Hagz" }],
   }),
-  component: MyBookingsPage,
+  beforeLoad: () => requireRole([]),
+  //component: MyBookingsPage,
+  component: () => (
+    <RoleGuard allowedRoles={[]}>
+      <MyBookingsPage />
+    </RoleGuard>
+  ),
 });
 
 type Tab = "upcoming" | "past";
@@ -337,10 +346,8 @@ function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void
           </Link>
           <button
             onClick={() => {
-              localStorage.removeItem("token");
-              localStorage.removeItem("userData");
               onClose();
-              navigate({ to: "/login" });
+              logoutUser(); // بيمسح الأربعة ويحوّل على /login
             }}
             className="mt-4 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-destructive transition hover:bg-destructive/10"
           >
