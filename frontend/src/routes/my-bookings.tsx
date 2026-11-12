@@ -42,10 +42,10 @@ export const Route = createFileRoute("/my-bookings")({
   head: () => ({
     meta: [{ title: "حجوزاتي | Tigi-Hagz" }],
   }),
-  beforeLoad: () => requireRole([]),
+  beforeLoad: () => requireRole(["customer"]),
   //component: MyBookingsPage,
   component: () => (
-    <RoleGuard allowedRoles={[]}>
+    <RoleGuard allowedRoles={["customer"]}>
       <MyBookingsPage />
     </RoleGuard>
   ),

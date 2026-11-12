@@ -5,29 +5,30 @@ import { useEffect, useState, type ReactNode } from "react";
 function getStoredAuth() {
   if (typeof window === "undefined") return { token: null, role: null };
   try {
-    // نفس منطق login.tsx: الحفظ يتم في localStorage أو sessionStorage حسب "تذكرني"
-    const store = localStorage.getItem("token") ? localStorage : sessionStorage;
-    const token = store.getItem("token");
-    const userStr = store.getItem("userData"); // ← كان "user" وده سبب المشكلة
+    const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+    const userStr =
+      localStorage.getItem("userData") ||
+      sessionStorage.getItem("userData") ||
+      localStorage.getItem("user");
     const user = userStr ? JSON.parse(userStr) : null;
-    return { token, role: user?.role?.toString().toLowerCase() || null };
+    const role = user?.role ? String(user.role).toLowerCase().trim() : null;
+    return { token, role };
   } catch {
     return { token: null, role: null };
   }
 }
 
-// الصفحة الرئيسية المناسبة لكل دور (عشان نتجنب لوب التحويل)
+// الصفحة الرئيسية المناسبة لكل دور (لتوجيه كل مستخدم للوحته الصحيحة وتجنب لوب التحويل)
 function getHomeForRole(role: string): string {
-  if (role === "admin") return "/admin-dashboard";
-  if (role === "customer") return "/explore";
-  return "/";
+  if (role === "admin" || role === "super_admin") return "/admin-dashboard";
+  if (role === "owner" || role === "employee") return "/";
+  return "/explore";
 }
 
 // 1. حارس مسارات TanStack Router (يُستخدم داخل beforeLoad)
-// This helper must remain exported from this module for route guards.
 // eslint-disable-next-line react-refresh/only-export-components
 export function requireRole(allowedRoles: string[]) {
-  if (typeof window === "undefined") return; // تخطي فحص localStorage أثناء الـ SSR
+  if (typeof window === "undefined") return; // تخطي فحص التخزين أثناء الـ SSR
 
   const { token, role } = getStoredAuth();
 
@@ -35,7 +36,9 @@ export function requireRole(allowedRoles: string[]) {
     throw redirect({ to: "/login" });
   }
 
-  if (allowedRoles.length > 0 && !allowedRoles.includes(role)) {
+  const normalizedAllowed = allowedRoles.map((r) => r.toLowerCase().trim());
+
+  if (normalizedAllowed.length > 0 && !normalizedAllowed.includes(role)) {
     throw redirect({ to: getHomeForRole(role) });
   }
 }
@@ -50,7 +53,7 @@ export function RoleGuard({
 }) {
   const navigate = useNavigate();
   const [isAuthorized, setIsAuthorized] = useState(false);
-  const rolesKey = allowedRoles.join(",");
+  const rolesKey = allowedRoles.map((r) => r.toLowerCase().trim()).join(",");
 
   useEffect(() => {
     const { token, role } = getStoredAuth();
@@ -60,13 +63,14 @@ export function RoleGuard({
       return;
     }
 
-    if (allowedRoles.length > 0 && !allowedRoles.includes(role)) {
+    const normalizedAllowed = rolesKey ? rolesKey.split(",") : [];
+
+    if (normalizedAllowed.length > 0 && !normalizedAllowed.includes(role)) {
       navigate({ to: getHomeForRole(role), replace: true });
       return;
     }
 
     setIsAuthorized(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rolesKey, navigate]);
 
   // عدم رسم الصفحة أو تشغيل أي useEffect بداخلها حتى يتم التأكد من الصلاحية
