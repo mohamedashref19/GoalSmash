@@ -2,8 +2,8 @@ const express = require("express");
 const courtController = require("../controllers/courtController");
 const authController = require("../controllers/authControllers");
 const {
-  uploadVenueImage,
-  processAndUploadImage,
+  uploadCourtImages,
+  processAndUploadCourtImages,
 } = require("../utils/uploadMiddleware");
 
 const router = express.Router();
@@ -12,19 +12,19 @@ router.get("/", courtController.getAllCourts);
 
 router.use(authController.protect);
 
-router.use(authController.restrictTo("owner", "admin"));
-
 router.post(
   "/",
-  uploadVenueImage,
-  processAndUploadImage,
+  authController.restrictTo("owner", "admin"),
+  uploadCourtImages,
+  processAndUploadCourtImages,
   courtController.createCourt,
 );
+
 router.patch(
   "/:id",
   authController.restrictTo("owner", "admin", "employee"),
-  uploadVenueImage,
-  processAndUploadImage,
+  uploadCourtImages,
+  processAndUploadCourtImages,
   courtController.updateCourt,
 );
 

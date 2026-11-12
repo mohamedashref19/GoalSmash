@@ -2,9 +2,6 @@ import { useState, useEffect, type FormEvent } from "react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import {
   User,
-  Phone,
-  Mail,
-  KeyRound,
   Lock,
   Eye,
   EyeOff,
@@ -21,10 +18,12 @@ import {
   FileText,
   Settings,
   XCircle,
-  AlertTriangle,
   Trash2,
   ShieldAlert,
   FileLock2,
+  Pencil,
+  ReceiptText,
+  Trophy,
 } from "lucide-react";
 import { Header } from "@/components/venue/Header";
 import { Toaster } from "@/components/ui/sonner";
@@ -32,8 +31,6 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 // @ts-expect-error: authApi is a JavaScript module without TypeScript declarations
 import { updateUserData, updateUserPassword, logoutUser, deleteUserAccount } from "@/api/authApi";
-// @ts-expect-error: apiClient is a JavaScript module without TypeScript declarations
-import apiClient from "@/api/axiosConfig";
 import { MobileSidebar } from "@/components/venue/Sidebar";
 import { requireRole, RoleGuard } from "../components/RoleGuard";
 
@@ -42,7 +39,6 @@ export const Route = createFileRoute("/profile")({
     meta: [{ title: "الملف الشخصي | Tigi-Hagz" }],
   }),
   beforeLoad: () => requireRole([]),
-  //component: ProfilePage,
   component: () => (
     <RoleGuard allowedRoles={[]}>
       <ProfilePage />
@@ -50,17 +46,16 @@ export const Route = createFileRoute("/profile")({
   ),
 });
 
-const field =
-  "mt-1.5 w-full rounded-xl border border-input bg-background py-2.5 pr-4 pl-3 text-sm outline-none transition-shadow focus:border-primary focus:ring-2 focus:ring-ring/40";
+const roundedField =
+  "mt-1.5 w-full rounded-2xl border border-border bg-background/60 py-3 px-4 text-sm font-bold text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20";
 
-const passwordField =
-  "w-full rounded-xl border border-input bg-background py-2.5 pr-11 pl-11 text-sm outline-none transition-shadow focus:border-primary focus:ring-2 focus:ring-ring/40";
+const roundedPasswordField =
+  "w-full rounded-2xl border border-border bg-background/60 py-3 pr-10 pl-10 text-sm font-bold text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20";
 
 // =========================================
-// +++ مكونات القوائم الجانبية (لم تتغير) +++
+// +++ مكونات القوائم الجانبية +++
 // =========================================
 function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const navigate = useNavigate();
   return (
     <div className={cn("lg:hidden", open ? "" : "pointer-events-none")} dir="rtl">
       <div
@@ -141,7 +136,6 @@ function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void
 }
 
 function CustomerMobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const navigate = useNavigate();
   return (
     <div className={cn("lg:hidden", open ? "" : "pointer-events-none")} dir="rtl">
       <div
@@ -264,21 +258,23 @@ function ProfilePage() {
   const navigate = useNavigate();
 
   const [name, setName] = useState("");
+  const [originalName, setOriginalName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [roleLabel, setRoleLabel] = useState("");
   const [rawRole, setRawRole] = useState("");
 
-  const [savingInfo, setSavingInfo] = useState(false);
+  // حالة فتح وإغلاق وضع التعديل عند الضغط على علامة القلم
+  const [isEditing, setIsEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [savingPassword, setSavingPassword] = useState(false);
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // +++ حالات حذف الحساب +++
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -288,15 +284,17 @@ function ProfilePage() {
       try {
         const user = JSON.parse(userData);
         setName(user.name || "");
+        setOriginalName(user.name || "");
         setPhone(user.phone || "");
         setEmail(user.email || "");
         setRawRole(user.role || "customer");
+        // +++ تحويل كلمة "عميل" إلى "لاعب" +++
         setRoleLabel(
           user.role === "customer"
-            ? "عميل"
+            ? "لاعب"
             : user.role === "owner" || user.role === "employee"
-              ? "مالك/مدير"
-              : "إدارة مركزية",
+              ? "مالك / مدير ملعب"
+              : "مدير النظام",
         );
       } catch (e) {
         console.error("Error parsing user data:", e);
@@ -306,43 +304,56 @@ function ProfilePage() {
     }
   }, [navigate]);
 
-  const onSaveInfo = async (e: FormEvent) => {
+  // دالة حفظ موحدة تحفظ الاسم و/أو كلمة المرور عند الضغط على "حفظ التعديلات"
+  const handleSaveAll = async (e: FormEvent) => {
     e.preventDefault();
-    setSavingInfo(true);
-    try {
-      const res = await updateUserData({ name, email });
-      // localStorage.setItem("userData", JSON.stringify(res.data.user));
-      const storage = localStorage.getItem("token") ? localStorage : sessionStorage;
-      storage.setItem("userData", JSON.stringify(res.data.user));
-      toast.success("تم تحديث البيانات الشخصية بنجاح");
-    } catch (err) {
-      toast.error(err as string);
-    } finally {
-      setSavingInfo(false);
-    }
-  };
 
-  const onChangePassword = async (e: FormEvent) => {
-    e.preventDefault();
-    if (newPassword !== confirmPassword) {
-      toast.error("كلمتا المرور غير متطابقتين.");
+    const isNameChanged = name.trim() !== "" && name.trim() !== originalName;
+    const isPasswordFilled =
+      currentPassword.trim() !== "" || newPassword.trim() !== "" || confirmPassword.trim() !== "";
+
+    if (!isNameChanged && !isPasswordFilled) {
+      setIsEditing(false);
       return;
     }
-    setSavingPassword(true);
+
+    if (isPasswordFilled) {
+      if (!currentPassword || !newPassword || !confirmPassword) {
+        toast.error("يرجى ملء جميع حقول كلمة المرور لتغييرها.");
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        toast.error("كلمتا المرور غير متطابقتين.");
+        return;
+      }
+    }
+
+    setSaving(true);
     try {
-      await updateUserPassword({
-        passwordCurrent: currentPassword,
-        password: newPassword,
-        passwordConfirm: confirmPassword,
-      });
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-      toast.success("تم تغيير كلمة المرور بنجاح");
+      if (isNameChanged) {
+        const res = await updateUserData({ name: name.trim(), email });
+        const storage = localStorage.getItem("token") ? localStorage : sessionStorage;
+        storage.setItem("userData", JSON.stringify(res.data.user));
+        setOriginalName(name.trim());
+      }
+
+      if (isPasswordFilled) {
+        await updateUserPassword({
+          passwordCurrent: currentPassword,
+          password: newPassword,
+          passwordConfirm: confirmPassword,
+        });
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+      }
+
+      toast.success("تم حفظ التعديلات بنجاح");
+      setIsEditing(false);
     } catch (err) {
       toast.error(err as string);
     } finally {
-      setSavingPassword(false);
+      setSaving(false);
     }
   };
 
@@ -357,6 +368,11 @@ function ProfilePage() {
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  const handleLogout = () => {
+    logoutUser();
+    navigate({ to: "/login" });
   };
 
   const isAdmin = rawRole === "admin" || rawRole === "super_admin";
@@ -388,265 +404,327 @@ function ProfilePage() {
 
       <Header title="الملف الشخصي" onMenu={() => setIsMobileMenuOpen(true)} />
 
-      <main className="mx-auto w-full max-w-3xl flex-1 p-4 sm:p-6 pb-24">
-        <div className="card-surface mb-5 flex items-center gap-4 p-5 sm:p-6">
-          <div className="gradient-primary grid h-16 w-16 shrink-0 place-items-center rounded-2xl font-display text-xl font-extrabold text-primary-foreground">
-            {name.substring(0, 2).toUpperCase()}
-          </div>
-          <div className="min-w-0">
-            <h2 className="truncate font-display text-lg font-extrabold">{name}</h2>
-            <p className="truncate text-sm text-muted-foreground" dir="ltr">
-              {email}
-            </p>
-            <span className="mt-1.5 inline-block rounded-full bg-surface px-2.5 py-0.5 text-xs font-bold text-primary">
-              {roleLabel}
-            </span>
-          </div>
-        </div>
-
-        <div className="card-surface mb-5 p-5 sm:p-6">
-          <h3 className="mb-4 flex items-center gap-2 font-display text-base font-extrabold">
-            <User className="h-5 w-5 text-primary" /> البيانات الشخصية
-          </h3>
-          <form className="grid gap-4 sm:grid-cols-2" onSubmit={onSaveInfo}>
-            <label className="block text-sm font-semibold sm:col-span-2">
-              الاسم الكامل
-              <input
-                className={field}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-              />
-            </label>
-            <label className="block text-sm font-semibold">
-              البريد الإلكتروني
-              <input
-                className={field}
-                type="email"
-                value={email}
-                dir="ltr"
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </label>
-            <label className="block text-sm font-semibold">
-              رقم الهاتف (غير قابل للتعديل)
-              <input
-                className={`${field} cursor-not-allowed bg-muted text-muted-foreground`}
-                value={phone}
-                disabled
-                dir="ltr"
-              />
-            </label>
+      <main className="mx-auto w-full max-w-md flex-1 p-4 sm:p-6 pb-24 flex flex-col justify-center">
+        {/* ======================================================= */}
+        {/* 1. وضع العرض الأساسي (الاسم + الرقم + القلم + الأزرار) */}
+        {/* ======================================================= */}
+        {!isEditing ? (
+          <div className="card-surface relative rounded-3xl border border-border/80 p-6 sm:p-8 shadow-xl animate-in fade-in zoom-in-95">
+            {/* زر القلم في الزاوية لفتح التعديل والبيانات الكاملة وتسجيل الخروج */}
             <button
-              type="submit"
-              disabled={savingInfo}
-              className="gradient-primary mt-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white sm:col-span-2 transition-opacity hover:opacity-90 disabled:opacity-50"
+              type="button"
+              onClick={() => setIsEditing(true)}
+              title="تعديل البيانات وإعدادات الحساب"
+              className="absolute left-5 top-5 rounded-xl p-2 text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
             >
-              {savingInfo ? "جارٍ الحفظ..." : "حفظ التعديلات"}
+              <Pencil className="size-5" />
             </button>
-          </form>
-        </div>
 
-        <div className="card-surface mb-5 p-5 sm:p-6">
-          <h3 className="mb-4 flex items-center gap-2 font-display text-base font-extrabold">
-            <KeyRound className="h-5 w-5 text-primary" /> تغيير كلمة المرور
-          </h3>
-          <form className="grid gap-4 sm:grid-cols-2" onSubmit={onChangePassword}>
-            <div className="sm:col-span-2">
-              <label
-                htmlFor="profile-current-password"
-                className="mb-1.5 block text-sm font-semibold"
-              >
-                كلمة المرور الحالية
-              </label>
-              <div className="relative">
-                <Lock className="pointer-events-none absolute right-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
-                <input
-                  id="profile-current-password"
-                  className={passwordField}
-                  type={showPassword ? "text" : "password"}
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  required
-                  dir="ltr"
-                  placeholder="••••••••"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((s) => !s)}
-                  aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
-                  className="absolute left-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-[18px] w-[18px]" />
-                  ) : (
-                    <Eye className="h-[18px] w-[18px]" />
-                  )}
-                </button>
+            {/* الصورة الرمزية ومعلومات المستخدم */}
+            <div className="flex flex-col items-center text-center mt-2">
+              <div className="grid h-20 w-20 place-items-center rounded-full border border-primary/30 bg-primary/10 text-primary shadow-inner">
+                <User className="size-9" />
               </div>
+
+              <h2 className="mt-4 font-display text-2xl font-extrabold text-primary">
+                {name || "لاعب"}
+              </h2>
+
+              <p className="mt-1.5 text-sm font-bold tracking-wide text-muted-foreground" dir="ltr">
+                {phone || "---"}
+              </p>
+
+              <span className="mt-3 inline-block rounded-full border border-primary/30 bg-primary/10 px-4 py-1 text-xs font-extrabold text-primary">
+                {roleLabel}
+              </span>
             </div>
 
-            <div>
-              <label htmlFor="profile-new-password" className="mb-1.5 block text-sm font-semibold">
-                الجديدة
-              </label>
-              <div className="relative">
-                <Lock className="pointer-events-none absolute right-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
-                <input
-                  id="profile-new-password"
-                  className={passwordField}
-                  type={showPassword ? "text" : "password"}
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  required
-                  dir="ltr"
-                  placeholder="••••••••"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((s) => !s)}
-                  aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
-                  className="absolute left-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            {/* أزرار التنقل الرئيسية داخل الكارت */}
+            <div className="mt-8 flex flex-col gap-3">
+              {isAdmin && (
+                <Link
+                  to="/admin-dashboard"
+                  className="gradient-primary flex items-center justify-between rounded-2xl px-5 py-3.5 text-sm font-extrabold text-primary-foreground shadow-md transition hover:opacity-95"
                 >
-                  {showPassword ? (
-                    <EyeOff className="h-[18px] w-[18px]" />
-                  ) : (
-                    <Eye className="h-[18px] w-[18px]" />
-                  )}
-                </button>
-              </div>
-            </div>
+                  <span>لوحة الإدارة</span>
+                  <LayoutDashboard className="size-5" />
+                </Link>
+              )}
 
-            <div>
-              <label
-                htmlFor="profile-confirm-password"
-                className="mb-1.5 block text-sm font-semibold"
-              >
-                تأكيد الجديدة
-              </label>
-              <div className="relative">
-                <Lock className="pointer-events-none absolute right-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
-                <input
-                  id="profile-confirm-password"
-                  className={`${passwordField} ${confirmPassword && confirmPassword !== newPassword ? "border-destructive focus:border-destructive focus:ring-destructive/40" : ""}`}
-                  type={showPassword ? "text" : "password"}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  dir="ltr"
-                  placeholder="••••••••"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((s) => !s)}
-                  aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
-                  className="absolute left-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              {isOwner && (
+                <Link
+                  to="/"
+                  className="gradient-primary flex items-center justify-between rounded-2xl px-5 py-3.5 text-sm font-extrabold text-primary-foreground shadow-md transition hover:opacity-95"
                 >
-                  {showPassword ? (
-                    <EyeOff className="h-[18px] w-[18px]" />
-                  ) : (
-                    <Eye className="h-[18px] w-[18px]" />
-                  )}
-                </button>
-              </div>
-              {confirmPassword && confirmPassword !== newPassword && (
-                <span className="mt-1 block text-xs font-semibold text-destructive">
-                  كلمتا المرور غير متطابقتين
-                </span>
+                  <span>لوحة إدارة الملعب</span>
+                  <LayoutDashboard className="size-5" />
+                </Link>
+              )}
+
+              {!isAdmin && !isOwner && (
+                <>
+                  <Link
+                    to="/explore"
+                    className="gradient-primary flex items-center justify-between rounded-2xl px-5 py-3.5 text-sm font-extrabold text-primary-foreground shadow-md transition hover:opacity-95"
+                  >
+                    <span>تصفح الملاعب</span>
+                    <Home className="size-5" />
+                  </Link>
+
+                  <Link
+                    to="/my-bookings"
+                    className="flex items-center justify-between rounded-2xl border border-border bg-background/60 px-5 py-3.5 text-sm font-extrabold text-foreground transition hover:bg-muted"
+                  >
+                    <span>حجوزاتي</span>
+                    <ReceiptText className="size-5 text-muted-foreground" />
+                  </Link>
+
+                  {/* +++ زر إحصائيات اللاعب (معطل حالياً + بادج قريباً) +++ */}
+                  <div className="relative mt-1">
+                    <span className="absolute -top-2.5 left-4 z-10 rounded-full bg-warning px-2.5 py-0.5 text-[10px] font-black text-warning-foreground shadow-sm border border-warning/40">
+                      قريباً 🔥
+                    </span>
+                    <button
+                      type="button"
+                      disabled
+                      className="flex w-full cursor-not-allowed items-center justify-between rounded-2xl border border-dashed border-primary/30 bg-muted/40 px-5 py-3 text-right opacity-75 select-none"
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-sm font-extrabold text-foreground">
+                          فورمتي وأرقامي ⚽
+                        </span>
+                        <span className="text-[10px] font-bold text-muted-foreground mt-0.5">
+                          أهدافك · أسيستاتك · كارت الحريفة
+                        </span>
+                      </div>
+                      <Trophy className="size-5 text-warning shrink-0" />
+                    </button>
+                  </div>
+                </>
               )}
             </div>
-
+          </div>
+        ) : (
+          /* ======================================================= */
+          /* 2. وضع التعديل الكامل (عند الضغط على علامة القلم)        */
+          /* ======================================================= */
+          <div className="card-surface relative rounded-3xl border border-border/80 p-6 sm:p-7 shadow-xl animate-in fade-in zoom-in-95">
+            {/* زر الإغلاق (X) للعودة للكارت المصغر */}
             <button
-              type="submit"
-              disabled={savingPassword}
-              className="gradient-primary mt-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white sm:col-span-2 transition-opacity hover:opacity-90 disabled:opacity-50"
+              type="button"
+              onClick={() => {
+                setName(originalName);
+                setCurrentPassword("");
+                setNewPassword("");
+                setConfirmPassword("");
+                setIsEditing(false);
+              }}
+              title="إغلاق"
+              className="absolute left-5 top-5 rounded-xl p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground"
             >
-              {savingPassword ? "جارٍ التغيير..." : "تغيير كلمة المرور"}
+              <X className="size-5" />
             </button>
-          </form>
-        </div>
 
-        <div className="card-surface mb-5 p-5 sm:p-6 space-y-4">
-          <h3 className="flex items-center gap-2 font-display text-base font-extrabold">
-            <MessageCircle className="h-5 w-5 text-primary" /> تواصل مع دعم الابليكشن
+            <div className="flex flex-col items-center text-center mb-5">
+              <div className="grid h-16 w-16 place-items-center rounded-full border border-primary/30 bg-primary/10 text-primary">
+                <User className="size-8" />
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveAll} className="space-y-4">
+              <div>
+                <label className="block text-xs font-extrabold text-muted-foreground">الاسم</label>
+                <input
+                  className={roundedField}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-extrabold text-muted-foreground">
+                  رقم الهاتف (غير قابل للتعديل)
+                </label>
+                <input
+                  className={cn(
+                    roundedField,
+                    "cursor-not-allowed bg-muted/50 text-muted-foreground",
+                  )}
+                  value={phone}
+                  disabled
+                  dir="ltr"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-extrabold text-muted-foreground">
+                  البريد الإلكتروني (غير قابل للتعديل)
+                </label>
+                <input
+                  className={cn(
+                    roundedField,
+                    "cursor-not-allowed bg-muted/50 text-muted-foreground",
+                  )}
+                  type="email"
+                  value={email}
+                  disabled
+                  dir="ltr"
+                />
+              </div>
+
+              {/* قسم تغيير كلمة المرور */}
+              <div className="border-t border-border pt-4 mt-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-extrabold text-primary">تغيير كلمة المرور</h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((s) => !s)}
+                    className="flex items-center gap-1 text-xs font-bold text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? (
+                      <>
+                        <EyeOff className="size-3.5" /> إخفاء
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="size-3.5" /> إظهار
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute right-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    className={roundedPasswordField}
+                    type={showPassword ? "text" : "password"}
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="كلمة المرور الحالية"
+                    autoComplete="current-password"
+                  />
+                </div>
+
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute right-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    className={roundedPasswordField}
+                    type={showPassword ? "text" : "password"}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="كلمة المرور الجديدة"
+                    autoComplete="new-password"
+                  />
+                </div>
+
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute right-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    className={cn(
+                      roundedPasswordField,
+                      confirmPassword && confirmPassword !== newPassword
+                        ? "border-destructive focus:border-destructive"
+                        : "",
+                    )}
+                    type={showPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="تأكيد كلمة المرور الجديدة"
+                    autoComplete="new-password"
+                  />
+                </div>
+
+                {confirmPassword && confirmPassword !== newPassword && (
+                  <span className="block text-xs font-bold text-destructive">
+                    كلمتا المرور غير متطابقتين
+                  </span>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                disabled={saving}
+                className="gradient-primary w-full rounded-2xl py-3.5 text-sm font-extrabold text-primary-foreground shadow-md transition hover:opacity-95 disabled:opacity-50 mt-2"
+              >
+                {saving ? "جارٍ الحفظ..." : "حفظ التعديلات"}
+              </button>
+            </form>
+
+            {/* خيارات الخصوصية وتسجيل الخروج وحذف الحساب داخل نافذة التعديل فقط */}
+            <div className="border-t border-border mt-6 pt-4 space-y-2.5">
+              <Link
+                to="/privacy-policy"
+                className="flex items-center justify-between rounded-2xl border border-border bg-muted/40 px-4 py-3 text-xs font-extrabold text-foreground transition hover:bg-muted"
+              >
+                <span className="flex items-center gap-2">
+                  <FileLock2 className="size-4 text-primary" /> سياسة الخصوصية
+                </span>
+              </Link>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="flex items-center justify-center gap-1.5 rounded-2xl border border-border bg-muted/60 py-2.5 text-xs font-extrabold text-foreground transition hover:bg-muted"
+                >
+                  <LogOut className="size-4" /> تسجيل الخروج
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteModal(true)}
+                  className="flex items-center justify-center gap-1.5 rounded-2xl border border-destructive/30 bg-destructive/10 py-2.5 text-xs font-extrabold text-destructive transition hover:bg-destructive/20"
+                >
+                  <Trash2 className="size-4" /> حذف الحساب
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* قسم تواصل مع دعم الأبليكشن */}
+        <div className="card-surface mt-5 rounded-3xl p-5 space-y-3 border border-border/60">
+          <h3 className="flex items-center gap-2 font-display text-sm font-extrabold">
+            <MessageCircle className="h-4 w-4 text-primary" /> تواصل مع دعم الابليكشن
           </h3>
-          <p className="text-xs text-muted-foreground mb-1">
-            لديك استفسار أو واجهت مشكلة؟ نحن هنا لمساعدتك.
-          </p>
           <div className="flex gap-2 flex-wrap">
             <a
               href="https://wa.me/201035336792"
               target="_blank"
               rel="noreferrer"
-              className="flex-1 flex flex-col items-center justify-center gap-1.5 bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 py-3 rounded-xl transition min-w-[70px]"
+              className="flex-1 flex flex-col items-center justify-center gap-1 bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 py-2.5 rounded-2xl transition min-w-[65px]"
             >
-              <MessageCircle className="size-5" />
-              <span className="text-[11px] font-bold">واتساب</span>
+              <MessageCircle className="size-4" />
+              <span className="text-[10px] font-bold">واتساب</span>
             </a>
             <a
               href="https://www.facebook.com/tigihagz"
               target="_blank"
               rel="noreferrer"
-              className="flex-1 flex flex-col items-center justify-center gap-1.5 bg-[#1877F2]/10 text-[#1877F2] hover:bg-[#1877F2]/20 py-3 rounded-xl transition min-w-[70px]"
+              className="flex-1 flex flex-col items-center justify-center gap-1 bg-[#1877F2]/10 text-[#1877F2] hover:bg-[#1877F2]/20 py-2.5 rounded-2xl transition min-w-[65px]"
             >
-              <Facebook className="size-5" />
-              <span className="text-[11px] font-bold">فيسبوك</span>
+              <Facebook className="size-4" />
+              <span className="text-[10px] font-bold">فيسبوك</span>
             </a>
             <a
               href="https://www.instagram.com/tigihagz"
               target="_blank"
               rel="noreferrer"
-              className="flex-1 flex flex-col items-center justify-center gap-1.5 bg-[#E1306C]/10 text-[#E1306C] hover:bg-[#E1306C]/20 py-3 rounded-xl transition min-w-[70px]"
+              className="flex-1 flex flex-col items-center justify-center gap-1 bg-[#E1306C]/10 text-[#E1306C] hover:bg-[#E1306C]/20 py-2.5 rounded-2xl transition min-w-[65px]"
             >
-              <Instagram className="size-5" />
-              <span className="text-[11px] font-bold">إنستجرام</span>
+              <Instagram className="size-4" />
+              <span className="text-[10px] font-bold">إنستجرام</span>
             </a>
             <a
               href="https://www.tiktok.com/@tigihagz"
               target="_blank"
               rel="noreferrer"
-              className="flex-1 flex flex-col items-center justify-center gap-1.5 bg-black/10 text-black dark:bg-white/10 dark:text-white hover:bg-black/20 dark:hover:bg-white/20 py-3 rounded-xl transition min-w-[70px]"
+              className="flex-1 flex flex-col items-center justify-center gap-1 bg-black/10 text-black dark:bg-white/10 dark:text-white hover:bg-black/20 dark:hover:bg-white/20 py-2.5 rounded-2xl transition min-w-[65px]"
             >
-              <TiktokIcon className="size-5" />
-              <span className="text-[11px] font-bold">تيك توك</span>
+              <TiktokIcon className="size-4" />
+              <span className="text-[10px] font-bold">تيك توك</span>
             </a>
-          </div>
-        </div>
-
-        {/* +++ قسم إدارة الحساب (تسجيل خروج / حذف / سياسة الخصوصية) +++ */}
-        <div className="card-surface p-5 sm:p-6 space-y-4 border border-border/50">
-          <h3 className="flex items-center gap-2 font-display text-base font-extrabold text-foreground">
-            <ShieldAlert className="h-5 w-5 text-primary" /> إدارة الحساب
-          </h3>
-          <p className="text-xs text-muted-foreground mb-1">
-            إعدادات الأمان الخاصة بحسابك وسياسات الاستخدام.
-          </p>
-          <div className="flex flex-col gap-3 mt-4">
-            <Link
-              to="/privacy-policy"
-              className="flex items-center gap-3 bg-muted/50 text-foreground hover:bg-muted py-3 px-4 rounded-xl text-sm font-bold transition border border-border"
-            >
-              <FileLock2 className="size-4 text-primary" /> سياسة الخصوصية
-            </Link>
-
-            <div className="flex flex-col sm:flex-row gap-3 pt-2">
-              <button
-                onClick={() => {
-                  logoutUser();
-                  navigate({ to: "/login" });
-                }}
-                className="flex-1 flex items-center justify-center gap-2 bg-muted text-foreground hover:bg-muted/80 py-2.5 rounded-xl text-sm font-bold transition"
-              >
-                <LogOut className="size-4" /> تسجيل الخروج
-              </button>
-              <button
-                onClick={() => setShowDeleteModal(true)}
-                className="flex-1 flex items-center justify-center gap-2 bg-destructive/10 border border-destructive/20 text-destructive hover:bg-destructive/20 py-2.5 rounded-xl text-sm font-bold transition"
-              >
-                <Trash2 className="size-4" /> حذف الحساب نهائياً
-              </button>
-            </div>
           </div>
         </div>
       </main>

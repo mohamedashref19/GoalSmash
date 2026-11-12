@@ -2,6 +2,8 @@ import { useMemo, useState, useEffect, useCallback } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   ArrowRight,
+  ChevronRight,
+  ChevronLeft,
   MapPin,
   Star,
   Trophy,
@@ -81,6 +83,7 @@ interface CourtType {
   pricePerHour?: number;
   status?: string;
   image?: string;
+  images?: string[];
 }
 
 interface VenueType {
@@ -165,13 +168,11 @@ const AMENITY_ICONS: Record<string, AmenityIcon> = {
 const DAYS_COUNT = 7;
 const DEFAULT_OPEN_HOUR = 8;
 
-// يحوّل openTime زي "14:00" لرقم الساعة، ولو القيمة ناقصة أو غلط يرجع للافتراضي
 const parseOpenHour = (openTime?: string) => {
   const h = parseInt(String(openTime || "").split(":")[0] ?? "", 10);
   return Number.isInteger(h) && h >= 0 && h <= 23 ? h : DEFAULT_OPEN_HOUR;
 };
 
-// اليوم المنطقي بيبدأ من ميعاد فتح النادي (openHour) مش من 8 ثابتة
 function getDays(openHour: number) {
   const now = new Date();
   const logicalToday = new Date(now);
@@ -225,12 +226,32 @@ function VenueDetailsPage() {
   const openHour = parseOpenHour(venue?.openTime);
   const days = useMemo(() => getDays(openHour), [openHour]);
   const [selectedCourt, setSelectedCourt] = useState<CourtType | null>(null);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [selectedDay, setSelectedDay] = useState(0);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
 
   const [timeTab, setTimeTab] = useState<"morning" | "evening">("morning");
   const [selectedDuration, setSelectedDuration] = useState<60 | 120>(60);
+
+  // +++ تجميع صور الملعب المختار (أو صورة النادي كاحتياطي) +++
+  const galleryImages = useMemo(() => {
+    if (selectedCourt?.images && selectedCourt.images.length > 0) {
+      return selectedCourt.images;
+    }
+    if (selectedCourt?.image) {
+      return [selectedCourt.image];
+    }
+    if (venue?.image) {
+      return [venue.image];
+    }
+    return [];
+  }, [selectedCourt, venue]);
+
+  // إعادة المؤشر للصورة الأولى عند تغيير الملعب المختار
+  useEffect(() => {
+    setActiveImageIndex(0);
+  }, [selectedCourt?._id]);
 
   useEffect(() => {
     const userData = localStorage.getItem("userData") || sessionStorage.getItem("userData");
@@ -613,7 +634,17 @@ function VenueDetailsPage() {
     .filter(Boolean)
     .join("، ");
 
-  const displayImage = selectedCourt?.image || venue.image;
+  const displayImage = galleryImages[activeImageIndex] || galleryImages[0];
+
+  const handlePrevImage = () => {
+    if (galleryImages.length <= 1) return;
+    setActiveImageIndex((prev) => (prev === 0 ? galleryImages.length - 1 : prev - 1));
+  };
+
+  const handleNextImage = () => {
+    if (galleryImages.length <= 1) return;
+    setActiveImageIndex((prev) => (prev === galleryImages.length - 1 ? 0 : prev + 1));
+  };
 
   return (
     <div dir="rtl" className="min-h-screen bg-background pb-32 text-foreground lg:pb-0">
@@ -629,21 +660,23 @@ function VenueDetailsPage() {
         </div>
       </header>
 
-      <div className="relative flex h-52 items-center justify-center bg-muted overflow-hidden sm:h-72">
+      {/* معرض صور الملعب التفاعلي */}
+      <div className="relative flex h-56 items-center justify-center bg-muted overflow-hidden sm:h-80 group">
         {displayImage ? (
           <img
             src={getImageUrl(displayImage)}
             alt={selectedCourt?.name || venue.name}
-            className="absolute inset-0 h-full w-full object-cover animate-in fade-in duration-500"
+            className="absolute inset-0 h-full w-full object-cover animate-in fade-in duration-300"
             key={displayImage}
           />
         ) : (
           <div className="absolute inset-0 bg-gradient-to-br from-primary/30 to-emerald-900/40" />
         )}
-        <div className="absolute inset-0 bg-black/20" />
+        <div className="absolute inset-0 bg-black/25" />
         {!displayImage && <Trophy className="relative z-10 size-16 text-primary-foreground/40" />}
+
         {selectedCourt && (
-          <span className="absolute right-4 top-4 rounded-lg bg-background/85 px-3 py-1 text-xs font-bold backdrop-blur">
+          <span className="absolute right-4 top-4 z-10 rounded-lg bg-background/85 px-3 py-1 text-xs font-bold backdrop-blur shadow-sm">
             {selectedCourt.sportType === "padel"
               ? "بادل"
               : selectedCourt.sportType === "football_7"
@@ -651,7 +684,79 @@ function VenueDetailsPage() {
                 : "خماسي"}
           </span>
         )}
+
+        {/* عداد الصور وأزرار التقليب لو فيه أكتر من صورة للملعب */}
+        {galleryImages.length > 1 && (
+          <>
+            <span
+              dir="ltr"
+              className="absolute left-4 top-4 z-10 rounded-lg bg-black/60 px-2.5 py-1 text-xs font-bold text-white backdrop-blur"
+            >
+              {activeImageIndex + 1} / {galleryImages.length}
+            </span>
+
+            <button
+              type="button"
+              onClick={handlePrevImage}
+              aria-label="الصورة السابقة"
+              className="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white backdrop-blur transition hover:bg-black/75 active:scale-95"
+            >
+              <ChevronRight className="size-5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={handleNextImage}
+              aria-label="الصورة التالية"
+              className="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white backdrop-blur transition hover:bg-black/75 active:scale-95"
+            >
+              <ChevronLeft className="size-5" />
+            </button>
+
+            {/* نقاط التنقل السفلية */}
+            <div className="absolute bottom-3 inset-x-0 z-10 flex justify-center gap-1.5">
+              {galleryImages.map((_, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => setActiveImageIndex(idx)}
+                  className={cn(
+                    "h-2 rounded-full transition-all",
+                    activeImageIndex === idx ? "w-6 bg-primary" : "w-2 bg-white/70 hover:bg-white",
+                  )}
+                />
+              ))}
+            </div>
+          </>
+        )}
       </div>
+
+      {/* شريط الصور المصغرة (Thumbnails) يظهر تحت البانر عند وجود أكثر من صورة */}
+      {galleryImages.length > 1 && (
+        <div className="mx-auto max-w-6xl px-4 pt-3">
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+            {galleryImages.map((imgUrl, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => setActiveImageIndex(idx)}
+                className={cn(
+                  "relative h-14 w-20 shrink-0 overflow-hidden rounded-xl border-2 transition-all",
+                  activeImageIndex === idx
+                    ? "border-primary ring-2 ring-primary/30 scale-[1.02]"
+                    : "border-transparent opacity-65 hover:opacity-100",
+                )}
+              >
+                <img
+                  src={getImageUrl(imgUrl)}
+                  alt={`${selectedCourt?.name || venue.name} - ${idx + 1}`}
+                  className="h-full w-full object-cover"
+                />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <main className="mx-auto grid max-w-6xl grid-cols-1 gap-6 px-4 py-6 lg:grid-cols-[1fr_320px]">
         <div className="space-y-6">
@@ -783,9 +888,6 @@ function VenueDetailsPage() {
                 </button>
               ))}
             </div>
-            {/* <p className="text-[11px] text-muted-foreground">
-              الساعات اللي متكفيش المدة اللي اخترتها بتتقفل تلقائياً.
-            </p> */}
           </section>
 
           <section className="card-surface space-y-3 p-5">
@@ -849,9 +951,6 @@ function VenueDetailsPage() {
                 مفيش ساعات فاضية في الفترة دي
               </p>
             )}
-            {/* <p className="text-[11px] text-muted-foreground mt-2">
-              الساعات المشطوبة محجوزة أو وقتها عدّى.
-            </p> */}
           </section>
 
           <section className="card-surface space-y-4 p-5" id="reviews-section">

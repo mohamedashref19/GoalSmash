@@ -329,9 +329,14 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
 
   const pipeline = [
     {
+      $addFields: {
+        effectiveDate: { $ifNull: ["$verifiedAt", "$createdAt"] },
+      },
+    },
+    {
       $match: {
         status: "verified",
-        createdAt: { $gte: startOfDay, $lte: endOfDay },
+        effectiveDate: { $gte: startOfDay, $lte: endOfDay },
       },
     },
     {
@@ -343,6 +348,11 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
       },
     },
     { $unwind: "$bookingDetails" },
+    {
+      $match: {
+        "bookingDetails.status": { $nin: ["cancelled", "expired"] },
+      },
+    },
   ];
 
   if (Object.keys(venueMatch).length > 0) pipeline.push({ $match: venueMatch });
@@ -355,12 +365,36 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
         venue: { $first: "$bookingDetails.venue" },
         startTime: { $first: "$bookingDetails.startTime" },
         endTime: { $first: "$bookingDetails.endTime" },
+        totalPrice: { $first: "$bookingDetails.totalPrice" },
         savedCommission: { $first: "$bookingDetails.commission" },
+        // إجمالي ما دخل أونلاين اليوم لهذا الحجز
         bookingOnlineRevenue: {
           $sum: { $cond: [{ $ne: ["$method", "cash"] }, "$baseAmount", 0] },
         },
+        // إجمالي ما دخل كاش اليوم لهذا الحجز (سواء حجز يدوي أو تكملة مبلغ)
         bookingCashRevenue: {
-          $sum: { $cond: [{ $eq: ["$method", "cash"] }, "$baseAmount", 0] },
+          $sum: {
+            $cond: [
+              { $eq: ["$method", "cash"] },
+              { $ifNull: ["$amountReceived", "$baseAmount"] },
+              0,
+            ],
+          },
+        },
+        // هل هذه هي الدفعة الأساسية للحجز (عربون أونلاين أو حجز يدوي جديد) أم مجرد تكملة كاش؟
+        hasInitialPaymentToday: {
+          $max: {
+            $cond: [
+              {
+                $regexMatch: {
+                  input: { $ifNull: ["$paymentReference", ""] },
+                  regex: /^(CASH-REST-|QR-CASH-)/,
+                },
+              },
+              0,
+              1,
+            ],
+          },
         },
       },
     },
@@ -376,15 +410,27 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
     },
     {
       $addFields: {
-        calculatedCommission: {
+        fullBookingCommission: {
           $ifNull: [
             "$savedCommission",
             {
               $multiply: [
-                "$totalBookingRevenue",
+                "$totalPrice",
                 { $cond: [{ $gte: ["$durationInHours", 2] }, 0.1, 0.05] },
               ],
             },
+          ],
+        },
+      },
+    },
+    {
+      $addFields: {
+        // العمولة تُخصم مرة واحدة فقط في يوم الدفعة الأولى (يوم تحويل العربون أو إنشاء الحجز اليدوي)
+        calculatedCommission: {
+          $cond: [
+            { $eq: ["$hasInitialPaymentToday", 1] },
+            "$fullBookingCommission",
+            0,
           ],
         },
       },
@@ -416,7 +462,7 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
         totalCash: { $sum: "$bookingCashRevenue" },
         totalRevenue: { $sum: "$totalBookingRevenue" },
         totalCommission: { $sum: "$calculatedCommission" },
-        bookingsCount: { $sum: 1 },
+        bookingsCount: { $sum: "$hasInitialPaymentToday" },
       },
     },
     {
@@ -437,7 +483,9 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
             totalRevenue: "$totalRevenue",
             totalCommission: "$totalCommission",
             bookingsCount: "$bookingsCount",
-            netAmount: { $subtract: ["$totalOnline", "$totalCommission"] },
+            netAmount: {
+              $round: [{ $subtract: ["$totalOnline", "$totalCommission"] }, 2],
+            },
           },
         },
       },
@@ -445,7 +493,10 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
     {
       $addFields: {
         venueNetAmount: {
-          $subtract: ["$venueTotalOnline", "$venueTotalCommission"],
+          $round: [
+            { $subtract: ["$venueTotalOnline", "$venueTotalCommission"] },
+            2,
+          ],
         },
       },
     },
@@ -468,10 +519,14 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
 
   const platformTotals = dailyClosing.reduce(
     (acc, curr) => ({
-      totalRevenue: acc.totalRevenue + curr.venueTotalRevenue,
-      totalCommission: acc.totalCommission + curr.venueTotalCommission,
-      totalOnline: acc.totalOnline + curr.venueTotalOnline,
-      totalCash: acc.totalCash + curr.venueTotalCash,
+      totalRevenue: Number(
+        (acc.totalRevenue + curr.venueTotalRevenue).toFixed(2),
+      ),
+      totalCommission: Number(
+        (acc.totalCommission + curr.venueTotalCommission).toFixed(2),
+      ),
+      totalOnline: Number((acc.totalOnline + curr.venueTotalOnline).toFixed(2)),
+      totalCash: Number((acc.totalCash + curr.venueTotalCash).toFixed(2)),
       totalBookings: acc.totalBookings + curr.venueBookingsCount,
     }),
     {

@@ -22,6 +22,7 @@ import { useConfirm } from "../../components/venue/useConfirm";
 
 interface Payment {
   _id: string;
+  paymentReference?: string;
   expectedAmount: number;
   baseAmount?: number;
   amountReceived?: number;
@@ -58,6 +59,10 @@ const formatDateTime = (dateString: string | undefined) => {
     minute: "2-digit",
   });
 };
+
+// دالة مساعدة لمعرفة هل الدفعة كاش باقي حجز أم كاش حجز يدوي أولي
+const isRestCashPayment = (p: Payment) =>
+  Boolean(p.paymentReference && /^(CASH-REST-|QR-CASH-)/.test(p.paymentReference));
 
 export function PaymentsView({ venueId }: { venueId: string }) {
   const [activeTab, setActiveTab] = useState<TabKey>("verified");
@@ -109,24 +114,36 @@ export function PaymentsView({ venueId }: { venueId: string }) {
   const summary = useMemo(() => {
     const selectedDateString = formatDateForInput(selectedDate);
 
+    // الفلترة بـ verifiedAt ثم createdAt مع استبعاد الحجوزات الملغية والدفعات المنتهية
     const paymentsForSelectedDate = payments.filter((p) => {
-      if (!p.createdAt) return false;
-      const paymentDateString = formatDateForInput(new Date(p.createdAt));
+      if (p.status !== "verified") return false;
+      if (p.booking?.status === "cancelled" || p.booking?.status === "expired") return false;
+
+      const effectiveDate = p.verifiedAt || p.createdAt;
+      if (!effectiveDate) return false;
+      const paymentDateString = formatDateForInput(new Date(effectiveDate));
       return paymentDateString === selectedDateString;
     });
 
     const totalConfirmed = paymentsForSelectedDate
-      .filter((p) => p.status === "verified" && p.method !== "cash")
+      .filter((p) => p.method !== "cash")
       .reduce((sum, p) => sum + getDisplayAmount(p), 0);
 
-    const totalCash = paymentsForSelectedDate
-      .filter((p) => p.method === "cash")
+    const totalManualCash = paymentsForSelectedDate
+      .filter((p) => p.method === "cash" && !isRestCashPayment(p))
       .reduce((sum, p) => sum + getDisplayAmount(p), 0);
 
+    const totalRestCash = paymentsForSelectedDate
+      .filter((p) => p.method === "cash" && isRestCashPayment(p))
+      .reduce((sum, p) => sum + getDisplayAmount(p), 0);
+
+    const totalCash = totalManualCash + totalRestCash;
     const totalOverall = totalConfirmed + totalCash;
 
     return {
       totalConfirmed: Number(totalConfirmed.toFixed(2)),
+      totalManualCash: Number(totalManualCash.toFixed(2)),
+      totalRestCash: Number(totalRestCash.toFixed(2)),
       totalCash: Number(totalCash.toFixed(2)),
       totalOverall: Number(totalOverall.toFixed(2)),
     };
@@ -187,9 +204,11 @@ export function PaymentsView({ venueId }: { venueId: string }) {
     );
   });
 
-  const getMethodName = (method: string) => {
-    if (method === "cash") return "كاش في الملعب";
-    if (method === "instapay") return "إنستا باي";
+  const getMethodName = (p: Payment) => {
+    if (p.method === "cash") {
+      return isRestCashPayment(p) ? "كاش (باقي الحجز)" : "كاش (حجز يدوي)";
+    }
+    if (p.method === "instapay") return "إنستا باي";
     return "محفظة إلكترونية";
   };
 
@@ -204,7 +223,9 @@ export function PaymentsView({ venueId }: { venueId: string }) {
     });
 
     return Object.values(groups).sort(
-      (a, b) => new Date(b[0]?.createdAt ?? 0).getTime() - new Date(a[0]?.createdAt ?? 0).getTime(),
+      (a, b) =>
+        new Date(b[0]?.verifiedAt || b[0]?.createdAt || 0).getTime() -
+        new Date(a[0]?.verifiedAt || a[0]?.createdAt || 0).getTime(),
     );
   }, [filteredPayments]);
 
@@ -227,33 +248,59 @@ export function PaymentsView({ venueId }: { venueId: string }) {
         </div>
       </div>
       <ConfirmDialog />
+
+      {/* كروت الملخص العلوية */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="card-surface p-4 border-b-4 border-b-primary relative overflow-hidden group">
+        {/* 1. إجمالي إيراد اليوم الفعلي */}
+        <div className="card-surface p-4 border-b-4 border-b-primary relative overflow-hidden group flex flex-col justify-between">
           <div className="absolute -left-6 -top-6 bg-primary/10 size-24 rounded-full blur-xl group-hover:bg-primary/20 transition" />
-          <p className="text-sm font-semibold text-muted-foreground mb-1 flex items-center gap-1">
-            <Wallet className="size-4 text-primary" /> إجمالي إيراد اليوم
-          </p>
-          <p className="font-display text-2xl font-black text-primary mt-1">
-            {summary.totalOverall} ج.م
+          <div>
+            <p className="text-sm font-semibold text-muted-foreground mb-1 flex items-center gap-1">
+              <Wallet className="size-4 text-primary" /> إجمالي إيراد اليوم
+            </p>
+            <p className="font-display text-2xl font-black text-primary mt-1">
+              {summary.totalOverall} ج.م
+            </p>
+          </div>
+          <p className="text-[11px] font-bold text-muted-foreground mt-3 pt-2 border-t border-border/60">
+            مجموع الأونلاين والكاش المحصّل اليوم
           </p>
         </div>
 
-        <div className="card-surface p-4 border-b-4 border-b-success relative overflow-hidden group">
+        {/* 2. محصّل أونلاين (عربون) */}
+        <div className="card-surface p-4 border-b-4 border-b-success relative overflow-hidden group flex flex-col justify-between">
           <div className="absolute -left-6 -top-6 bg-success/10 size-24 rounded-full blur-xl group-hover:bg-success/20 transition" />
-          <p className="text-sm font-semibold text-muted-foreground mb-1 flex items-center gap-1">
-            <TrendingUp className="size-4" /> محصّل أونلاين (عربون)
-          </p>
-          <p className="font-display text-2xl font-black text-success mt-1">
-            {summary.totalConfirmed} ج.م
+          <div>
+            <p className="text-sm font-semibold text-muted-foreground mb-1 flex items-center gap-1">
+              <TrendingUp className="size-4 text-success" /> محصّل أونلاين (عربون)
+            </p>
+            <p className="font-display text-2xl font-black text-success mt-1">
+              {summary.totalConfirmed} ج.م
+            </p>
+          </div>
+          <p className="text-[11px] font-bold text-muted-foreground mt-3 pt-2 border-t border-border/60">
+            تحويلات فودافون كاش وإنستا باي المؤكدة اليوم
           </p>
         </div>
 
+        {/* 3. محصّل كاش في الملعب (مقسم: كاش حجز يدوي + كاش باقي الحجز) */}
         <div className="card-surface p-4 border-b-4 border-b-info relative overflow-hidden group">
           <div className="absolute -left-6 -top-6 bg-info/10 size-24 rounded-full blur-xl group-hover:bg-info/20 transition" />
           <p className="text-sm font-semibold text-muted-foreground mb-1 flex items-center gap-1">
-            <Banknote className="size-4" /> محصّل كاش في الملعب
+            <Banknote className="size-4 text-info" /> محصّل كاش في الملعب
           </p>
           <p className="font-display text-2xl font-black text-info mt-1">{summary.totalCash} ج.م</p>
+
+          <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border pt-2.5 text-center relative z-10">
+            <div className="rounded-lg bg-info/10 px-2 py-1">
+              <p className="text-[10px] font-bold text-info">كاش (حجز يدوي)</p>
+              <p className="text-xs font-extrabold text-info">{summary.totalManualCash} ج.م</p>
+            </div>
+            <div className="rounded-lg bg-warning/15 px-2 py-1">
+              <p className="text-[10px] font-bold text-warning">كاش (باقي الحجز)</p>
+              <p className="text-xs font-extrabold text-warning">{summary.totalRestCash} ج.م</p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -446,27 +493,29 @@ export function PaymentsView({ venueId }: { venueId: string }) {
                                 isPaymentCancelled
                                   ? "text-muted-foreground line-through"
                                   : p.method === "cash"
-                                    ? "text-info"
+                                    ? isRestCashPayment(p)
+                                      ? "text-warning"
+                                      : "text-info"
                                     : "text-success",
                               )}
                             >
                               {displayedAmount} ج.م
                             </span>
                             <span className="text-[10px] font-bold text-muted-foreground bg-background px-1.5 py-0.5 rounded border border-border">
-                              {getMethodName(p.method)}
+                              {getMethodName(p)}
                             </span>
                           </div>
                           <span
                             className={cn(
                               "text-[10px] font-bold px-2 py-0.5 rounded",
-                              p.status === "verified"
+                              p.status === "verified" && !isPaymentCancelled
                                 ? "bg-success/15 text-success"
                                 : p.status === "expired" || isPaymentCancelled
                                   ? "bg-destructive/15 text-destructive"
                                   : "bg-warning/15 text-warning",
                             )}
                           >
-                            {p.status === "verified"
+                            {p.status === "verified" && !isPaymentCancelled
                               ? "مؤكد"
                               : p.status === "expired" || isPaymentCancelled
                                 ? "ملغي"
@@ -479,7 +528,7 @@ export function PaymentsView({ venueId }: { venueId: string }) {
                             <Clock className="size-3" /> وقت التسجيل:
                           </span>
                           <span className="font-bold text-foreground" dir="ltr">
-                            {formatDateTime(p.createdAt)}
+                            {formatDateTime(p.verifiedAt || p.createdAt)}
                           </span>
                         </div>
 

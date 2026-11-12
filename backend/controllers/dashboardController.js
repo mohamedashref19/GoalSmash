@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const Booking = require("../models/bookingModel");
+const Payment = require("../models/paymentModel");
 const Court = require("../models/courtModel");
 const Venue = require("../models/venueModel");
 const catchAsync = require("../utils/catchAsync");
@@ -68,6 +69,7 @@ exports.getTodayStats = catchAsync(async (req, res, next) => {
   endOfDay.setDate(endOfDay.getDate() + 1);
   endOfDay.setHours(openHour, 0, 0, 0);
 
+  // 1. حساب عدد حجوزات النهاردة وساعات الإشغال (بناءً على مواعيد لعب اليوم)
   const todayStats = await Booking.aggregate([
     {
       $match: {
@@ -79,7 +81,6 @@ exports.getTodayStats = catchAsync(async (req, res, next) => {
     {
       $group: {
         _id: null,
-        totalRevenue: { $sum: "$totalPrice" },
         bookingsCount: { $sum: 1 },
         totalBookedHours: {
           $sum: {
@@ -94,10 +95,107 @@ exports.getTodayStats = catchAsync(async (req, res, next) => {
   ]);
 
   const stats = todayStats[0] || {
-    totalRevenue: 0,
     bookingsCount: 0,
     totalBookedHours: 0,
   };
+
+  // 2. حساب "إيراد اليوم الفعلي" من المدفوعات المؤكدة اليوم (verifiedAt ثم createdAt)
+  // 2. حساب "إيراد اليوم الفعلي" مقسماً لـ 3 خانات: أونلاين، كاش حجز يدوي، وكاش باقي الحجز
+  const todayPaymentsAgg = await Payment.aggregate([
+    {
+      $addFields: {
+        effectiveDate: { $ifNull: ["$verifiedAt", "$createdAt"] },
+      },
+    },
+    {
+      $match: {
+        status: "verified",
+        effectiveDate: { $gte: startOfDay, $lt: endOfDay },
+      },
+    },
+    {
+      $lookup: {
+        from: "bookings",
+        localField: "booking",
+        foreignField: "_id",
+        as: "bookingDetails",
+      },
+    },
+    { $unwind: "$bookingDetails" },
+    {
+      $match: {
+        "bookingDetails.venue": new mongoose.Types.ObjectId(venueId),
+        "bookingDetails.status": { $nin: ["cancelled", "expired"] },
+      },
+    },
+    {
+      $addFields: {
+        actualCashAmount: { $ifNull: ["$amountReceived", "$baseAmount"] },
+        isRestCash: {
+          $regexMatch: {
+            input: { $ifNull: ["$paymentReference", ""] },
+            regex: /^(CASH-REST-|QR-CASH-)/,
+          },
+        },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        todayOnlineRevenue: {
+          $sum: { $cond: [{ $ne: ["$method", "cash"] }, "$baseAmount", 0] },
+        },
+        todayManualCashRevenue: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ["$method", "cash"] },
+                  { $eq: ["$isRestCash", false] },
+                ],
+              },
+              "$actualCashAmount",
+              0,
+            ],
+          },
+        },
+        todayRestCashRevenue: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ["$method", "cash"] },
+                  { $eq: ["$isRestCash", true] },
+                ],
+              },
+              "$actualCashAmount",
+              0,
+            ],
+          },
+        },
+      },
+    },
+  ]);
+
+  const rev = todayPaymentsAgg[0] || {
+    todayOnlineRevenue: 0,
+    todayManualCashRevenue: 0,
+    todayRestCashRevenue: 0,
+  };
+  const todayOnlineRevenue = Number((rev.todayOnlineRevenue || 0).toFixed(2));
+  const todayManualCashRevenue = Number(
+    (rev.todayManualCashRevenue || 0).toFixed(2),
+  );
+  const todayRestCashRevenue = Number(
+    (rev.todayRestCashRevenue || 0).toFixed(2),
+  );
+  const todayCashRevenue = Number(
+    (todayManualCashRevenue + todayRestCashRevenue).toFixed(2),
+  );
+  const todayRevenue = Number(
+    (todayOnlineRevenue + todayCashRevenue).toFixed(2),
+  );
+
   const activeCourtsCount = await Court.countDocuments({
     venue: venueId,
     status: "active",
@@ -113,7 +211,11 @@ exports.getTodayStats = catchAsync(async (req, res, next) => {
   res.status(200).json({
     status: "success",
     data: {
-      todayRevenue: stats.totalRevenue,
+      todayRevenue,
+      todayOnlineRevenue,
+      todayManualCashRevenue,
+      todayRestCashRevenue,
+      todayCashRevenue,
       todayBookings: stats.bookingsCount,
       occupancyRate: `${Math.min(occupancyRate, 100)}%`,
       activeCourts: activeCourtsCount,

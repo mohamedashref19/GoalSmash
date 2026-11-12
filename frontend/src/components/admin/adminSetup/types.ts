@@ -11,6 +11,8 @@ export interface Court {
   priceMorning: number;
   priceEvening: number;
   sportType: string;
+  image?: string;
+  images?: string[];
 }
 
 export interface Venue {

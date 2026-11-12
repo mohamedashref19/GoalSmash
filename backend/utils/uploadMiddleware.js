@@ -47,7 +47,7 @@ const upload = multer({
   fileFilter: multerFilter,
   limits: {
     fileSize: 5 * 1024 * 1024,
-    files: 1,
+    files: 6, // يسمح برفع حتى 5 صور في field الـ images + صورة إضافية إن وجدت
     fields: 30,
     fieldSize: 10 * 1024,
   },
@@ -78,9 +78,11 @@ const uploadToR2 = async (s3Key, body) => {
   return `${process.env.R2_PUBLIC_URL}/${s3Key}`;
 };
 
+// ==========================================
+// 1. رفع صورة النادي الواحدة (Venue)
+// ==========================================
 exports.uploadVenueImage = upload.single("image");
 
-// 3. Middleware معالجة الصورة أمنياً ورفعها لمجلد الملاعب في Cloudflare R2
 exports.processAndUploadImage = async (req, res, next) => {
   if (!req.file) return next();
 
@@ -100,7 +102,48 @@ exports.processAndUploadImage = async (req, res, next) => {
 };
 
 // ==========================================
-// +++ دالة إضافية لرفع إيصالات الدفع (للمستقبل) +++
+// 2. رفع عدة صور للملعب (Court - حتى 5 صور)
+// يدعم الحقل الجديد "images" والحقل القديم "image" للتوافق
+// ==========================================
+exports.uploadCourtImages = upload.fields([
+  { name: "images", maxCount: 5 },
+  { name: "image", maxCount: 1 },
+]);
+
+exports.processAndUploadCourtImages = async (req, res, next) => {
+  const filesList = [...(req.files?.images || []), ...(req.files?.image || [])];
+
+  if (filesList.length === 0) return next();
+
+  if (filesList.length > 5) {
+    return next(new AppError("الحد الأقصى لصور الملعب الواحد هو 5 صور", 400));
+  }
+
+  try {
+    const uploadedUrls = [];
+
+    // معالجة الصور واحدة تلو الأخرى حفاظاً على رامات السيرفر
+    for (let i = 0; i < filesList.length; i++) {
+      const file = filesList[i];
+      const filename = `court-${req.user?.id || "admin"}-${Date.now()}-${i}.webp`;
+      const s3Key = `venues/${filename}`;
+
+      const buffer = await toWebp(file.buffer, 1200, 800, 80);
+      const url = await uploadToR2(s3Key, buffer);
+      uploadedUrls.push(url);
+    }
+
+    req.uploadedCourtImages = uploadedUrls;
+    next();
+  } catch (err) {
+    if (err instanceof AppError) return next(err);
+    console.error("Court Images Upload Error:", err);
+    return next(new AppError("حدث خطأ أثناء معالجة ورفع صور الملعب", 500));
+  }
+};
+
+// ==========================================
+// 3. دالة إضافية لرفع إيصالات الدفع (للمستقبل)
 // ==========================================
 exports.uploadPaymentProofImage = upload.single("proofImage");
 
@@ -109,9 +152,8 @@ exports.processAndUploadPaymentProof = async (req, res, next) => {
 
   try {
     const filename = `payment-${req.user?.id || "guest"}-${Date.now()}.webp`;
-    const s3Key = `payments/${filename}`; // الرفع داخل مجلد payments عشان يتمسح تلقائياً
+    const s3Key = `payments/${filename}`;
 
-    // إيصالات الدفع غالباً بالطول، وضغط أعلى شوية لأن الجودة العالية مش مطلوبة
     const buffer = await toWebp(req.file.buffer, 800, 1200, 70);
     req.file.path = await uploadToR2(s3Key, buffer);
 

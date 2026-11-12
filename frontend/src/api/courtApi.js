@@ -11,7 +11,9 @@ export const fetchCourts = async (venueId) => {
 
 export const createCourt = async (courtData) => {
   try {
-    const response = await apiClient.post("/courts", courtData);
+    const response = await apiClient.post("/courts", courtData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
     return response.data.data.court;
   } catch (error) {
     throw error.response?.data?.message || "حدث خطأ أثناء إضافة الملعب";
@@ -20,7 +22,9 @@ export const createCourt = async (courtData) => {
 
 export const updateCourt = async (courtId, courtData) => {
   try {
-    const response = await apiClient.patch(`/courts/${courtId}`, courtData);
+    const response = await apiClient.patch(`/courts/${courtId}`, courtData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
     return response.data.data.court;
   } catch (error) {
     throw error.response?.data?.message || "حدث خطأ أثناء تعديل الملعب";

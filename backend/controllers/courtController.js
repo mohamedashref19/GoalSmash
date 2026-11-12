@@ -4,7 +4,6 @@ const Venue = require("../models/venueModel");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
 
-// نفس فكرة venueController: الحقول المسموحة بس
 const COURT_FIELDS = [
   "name",
   "sportType",
@@ -19,16 +18,35 @@ const pick = (obj, fields) =>
     return acc;
   }, {});
 
-// courtModel بيعمل populate للـ venue، فنجيب الـ id بالطريقة دي
 const idOf = (v) => ((v && v._id) || v)?.toString();
 
-// حماية داخل الكنترولر حتى لو الـ route مفيهوش restrictTo
 const ensureCanManage = (req, next) => {
   if (!["owner", "admin", "employee"].includes(req.user?.role)) {
     next(new AppError("ليس لديك الصلاحية للقيام بهذا الإجراء", 403));
     return false;
   }
   return true;
+};
+
+// دالة مساعدة لقراءة الصور القديمة التي أبقى عليها المستخدم أثناء التعديل
+const parseExistingImages = (raw) => {
+  if (!raw) return null;
+  if (Array.isArray(raw)) {
+    return raw.filter((u) => typeof u === "string" && u.startsWith("http"));
+  }
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(
+          (u) => typeof u === "string" && u.startsWith("http"),
+        );
+      }
+    } catch {
+      if (raw.startsWith("http")) return [raw];
+    }
+  }
+  return null;
 };
 
 exports.createCourt = catchAsync(async (req, res, next) => {
@@ -61,8 +79,9 @@ exports.createCourt = catchAsync(async (req, res, next) => {
 
   const data = { ...pick(req.body, COURT_FIELDS), venue: venue._id };
 
-  if (req.file) {
-    data.image = req.file.path;
+  if (req.uploadedCourtImages && req.uploadedCourtImages.length > 0) {
+    data.images = req.uploadedCourtImages;
+    data.image = req.uploadedCourtImages[0]; // الصورة الأولى هي الغلاف الأساسي
   }
 
   const newCourt = await Court.create(data);
@@ -116,7 +135,6 @@ exports.updateCourt = catchAsync(async (req, res, next) => {
     return next(new AppError("ليس لديك صلاحية لتعديل بيانات هذا الملعب", 403));
   }
 
-  // +++ التحقق من أن الموظف يتبع نفس النادي الخاص بالملعب +++
   if (
     req.user.role === "employee" &&
     (!venue ||
@@ -128,8 +146,20 @@ exports.updateCourt = catchAsync(async (req, res, next) => {
 
   const data = pick(req.body, COURT_FIELDS);
 
-  if (req.file) {
-    data.image = req.file.path;
+  const keptImages = parseExistingImages(req.body.existingImages);
+  const newUploads = req.uploadedCourtImages || [];
+
+  // إذا أرسل الفرونت إند قائمة صور قديمة محتفظ بها أو رفع صوراً جديدة
+  if (keptImages !== null || newUploads.length > 0) {
+    const baseList = keptImages !== null ? keptImages : [];
+    const mergedImages = [...baseList, ...newUploads].slice(0, 5);
+
+    data.images = mergedImages;
+    if (mergedImages.length > 0) {
+      data.image = mergedImages[0];
+    } else {
+      data.image = "https://mla3balexandria-api.online/assets/logo.png";
+    }
   }
 
   court = await Court.findByIdAndUpdate(req.params.id, data, {

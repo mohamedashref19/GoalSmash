@@ -8,25 +8,29 @@ import {
   Moon,
   Sun,
   UserPlus,
+  X,
 } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { WEEKDAYS, getScheduleError, scheduleSummary } from "./helpers";
 import type { AdminSetupState } from "./useAdminSetup";
 
 export function ManageTab({ s }: { s: AdminSetupState }) {
   const {
+    editCourtExistingImages,
     editCourtForm,
     editCourtId,
-    editCourtImage,
+    editCourtImages,
     editVenueForm,
     editVenueId,
     editVenueImage,
     ownersList,
     saveEditCourt,
     saveEditVenue,
+    setEditCourtExistingImages,
     setEditCourtForm,
     setEditCourtId,
-    setEditCourtImage,
+    setEditCourtImages,
     setEditVenueForm,
     setEditVenueId,
     setEditVenueImage,
@@ -34,6 +38,20 @@ export function ManageTab({ s }: { s: AdminSetupState }) {
     startEditVenue,
     venuesList,
   } = s;
+
+  const handleEditCourtFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files || []);
+    if (selected.length === 0) return;
+
+    const maxAllowedNew = Math.max(5 - editCourtExistingImages.length, 0);
+    const combinedNew = [...editCourtImages, ...selected];
+
+    if (combinedNew.length > maxAllowedNew) {
+      toast.error(`الحد الأقصى 5 صور للملعب (يمكنك إضافة ${maxAllowedNew} صور أخرى)`);
+    }
+    setEditCourtImages(combinedNew.slice(0, maxAllowedNew));
+    e.target.value = "";
+  };
 
   return (
     <div className="space-y-6 animate-in slide-in-from-bottom-2">
@@ -263,144 +281,222 @@ export function ManageTab({ s }: { s: AdminSetupState }) {
               ملاعب النادي ({venue.courts?.length || 0})
             </h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {venue.courts?.map((court) => (
-                <div
-                  key={court._id}
-                  className="border border-border/60 bg-background rounded-xl p-3 flex flex-col justify-between"
-                >
-                  {editCourtId === court._id ? (
-                    <div className="space-y-2 animate-in fade-in">
-                      <input
-                        type="text"
-                        value={editCourtForm.name}
-                        onChange={(e) =>
-                          setEditCourtForm({ ...editCourtForm, name: e.target.value })
-                        }
-                        className="w-full rounded-md border px-2 py-1.5 text-xs"
-                        placeholder="اسم الملعب"
-                      />
-                      <div className="flex gap-2">
-                        <div className="w-1/2">
-                          <label className="text-[10px] font-bold text-muted-foreground flex items-center gap-1 mb-1">
-                            <Sun className="size-3 text-warning" /> السعر الصباحي
-                          </label>
-                          <input
-                            type="number"
-                            value={editCourtForm.priceMorning}
-                            onChange={(e) =>
-                              setEditCourtForm({
-                                ...editCourtForm,
-                                priceMorning: e.target.value,
-                              })
-                            }
-                            className="w-full rounded-md border px-2 py-1.5 text-xs"
-                            placeholder="مثال: 150"
-                          />
+              {venue.courts?.map((court) => {
+                const courtImagesCount =
+                  court.images && court.images.length > 0
+                    ? court.images.length
+                    : court.image
+                      ? 1
+                      : 0;
+
+                return (
+                  <div
+                    key={court._id}
+                    className="border border-border/60 bg-background rounded-xl p-3 flex flex-col justify-between"
+                  >
+                    {editCourtId === court._id ? (
+                      <div className="space-y-2 animate-in fade-in">
+                        <input
+                          type="text"
+                          value={editCourtForm.name}
+                          onChange={(e) =>
+                            setEditCourtForm({ ...editCourtForm, name: e.target.value })
+                          }
+                          className="w-full rounded-md border px-2 py-1.5 text-xs"
+                          placeholder="اسم الملعب"
+                        />
+                        <div className="flex gap-2">
+                          <div className="w-1/2">
+                            <label className="text-[10px] font-bold text-muted-foreground flex items-center gap-1 mb-1">
+                              <Sun className="size-3 text-warning" /> السعر الصباحي
+                            </label>
+                            <input
+                              type="number"
+                              value={editCourtForm.priceMorning}
+                              onChange={(e) =>
+                                setEditCourtForm({
+                                  ...editCourtForm,
+                                  priceMorning: e.target.value,
+                                })
+                              }
+                              className="w-full rounded-md border px-2 py-1.5 text-xs"
+                              placeholder="مثال: 150"
+                            />
+                          </div>
+                          <div className="w-1/2">
+                            <label className="text-[10px] font-bold text-muted-foreground flex items-center gap-1 mb-1">
+                              <Moon className="size-3 text-primary" /> السعر المسائي
+                            </label>
+                            <input
+                              type="number"
+                              value={editCourtForm.priceEvening}
+                              onChange={(e) =>
+                                setEditCourtForm({
+                                  ...editCourtForm,
+                                  priceEvening: e.target.value,
+                                })
+                              }
+                              className="w-full rounded-md border px-2 py-1.5 text-xs"
+                              placeholder="مثال: 250"
+                            />
+                          </div>
                         </div>
-                        <div className="w-1/2">
-                          <label className="text-[10px] font-bold text-muted-foreground flex items-center gap-1 mb-1">
-                            <Moon className="size-3 text-primary" /> السعر المسائي
-                          </label>
-                          <input
-                            type="number"
-                            value={editCourtForm.priceEvening}
-                            onChange={(e) =>
-                              setEditCourtForm({
-                                ...editCourtForm,
-                                priceEvening: e.target.value,
-                              })
-                            }
-                            className="w-full rounded-md border px-2 py-1.5 text-xs"
-                            placeholder="مثال: 250"
-                          />
+                        <select
+                          value={editCourtForm.sportType}
+                          onChange={(e) =>
+                            setEditCourtForm({ ...editCourtForm, sportType: e.target.value })
+                          }
+                          className="w-full rounded-md border px-2 py-1.5 text-xs"
+                        >
+                          <option value="padel">بادل</option>
+                          <option value="football">خماسي</option>
+                          <option value="football_7">سباعي</option>
+                        </select>
+
+                        {/* عرض الصور الحالية للملعب مع زر حذف لكل صورة */}
+                        {editCourtExistingImages.length > 0 && (
+                          <div className="space-y-1 pt-1">
+                            <p className="text-[10px] font-bold text-muted-foreground">
+                              الصور الحالية ({editCourtExistingImages.length}/5):
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {editCourtExistingImages.map((imgUrl, idx) => (
+                                <div
+                                  key={idx}
+                                  className="relative h-12 w-16 overflow-hidden rounded-lg border border-border group"
+                                >
+                                  <img
+                                    src={imgUrl}
+                                    alt={`صورة ${idx + 1}`}
+                                    className="h-full w-full object-cover"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setEditCourtExistingImages(
+                                        editCourtExistingImages.filter((_, i) => i !== idx),
+                                      )
+                                    }
+                                    className="absolute right-0.5 top-0.5 rounded-full bg-destructive p-0.5 text-white shadow"
+                                    title="حذف الصورة"
+                                  >
+                                    <X className="size-3" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* زر إضافة صور جديدة */}
+                        {editCourtExistingImages.length + editCourtImages.length < 5 && (
+                          <div className="flex items-center gap-2 mt-1">
+                            <label className="flex-1 cursor-pointer bg-muted/50 border border-dashed border-border rounded-md px-2 py-1.5 text-[10px] text-center hover:bg-muted text-muted-foreground transition">
+                              <ImageIcon className="size-3 inline mr-1" />
+                              إضافة صور للملعب (متاح{" "}
+                              {5 - (editCourtExistingImages.length + editCourtImages.length)} صور)
+                              <input
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                className="hidden"
+                                onChange={handleEditCourtFilesChange}
+                              />
+                            </label>
+                          </div>
+                        )}
+
+                        {/* عرض أسماء الصور الجديدة المختارة */}
+                        {editCourtImages.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {editCourtImages.map((file, idx) => (
+                              <div
+                                key={idx}
+                                className="flex items-center gap-1 rounded bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary"
+                              >
+                                <span className="max-w-[110px] truncate">{file.name}</span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setEditCourtImages(editCourtImages.filter((_, i) => i !== idx))
+                                  }
+                                  className="text-destructive hover:bg-destructive/10 rounded"
+                                >
+                                  <X className="size-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="flex gap-2 mt-2">
+                          <button
+                            onClick={() => saveEditCourt(court._id)}
+                            className="flex-1 bg-primary text-white py-1.5 rounded-md text-[10px] font-bold hover:bg-primary/90 transition"
+                          >
+                            حفظ التعديل
+                          </button>
+                          <button
+                            onClick={() => setEditCourtId(null)}
+                            className="flex-1 bg-muted text-foreground py-1.5 rounded-md text-[10px] font-bold hover:bg-muted/80 transition"
+                          >
+                            إلغاء
+                          </button>
                         </div>
                       </div>
-                      <select
-                        value={editCourtForm.sportType}
-                        onChange={(e) =>
-                          setEditCourtForm({ ...editCourtForm, sportType: e.target.value })
-                        }
-                        className="w-full rounded-md border px-2 py-1.5 text-xs"
-                      >
-                        <option value="padel">بادل</option>
-                        <option value="football">خماسي</option>
-                        <option value="football_7">سباعي</option>
-                      </select>
-                      <div className="flex items-center gap-2 mt-1">
-                        <label className="flex-1 cursor-pointer bg-muted/50 border border-dashed border-border rounded-md px-2 py-1.5 text-[10px] text-center hover:bg-muted text-muted-foreground transition">
-                          <ImageIcon className="size-3 inline mr-1" />
-                          {editCourtImage ? editCourtImage.name : "تغيير صورة الملعب"}
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => {
-                              if (e.target.files && e.target.files[0])
-                                setEditCourtImage(e.target.files[0]);
-                            }}
-                          />
-                        </label>
-                      </div>
-                      <div className="flex gap-2 mt-2">
-                        <button
-                          onClick={() => saveEditCourt(court._id)}
-                          className="flex-1 bg-primary text-white py-1.5 rounded-md text-[10px] font-bold hover:bg-primary/90 transition"
-                        >
-                          حفظ التعديل
-                        </button>
-                        <button
-                          onClick={() => setEditCourtId(null)}
-                          className="flex-1 bg-muted text-foreground py-1.5 rounded-md text-[10px] font-bold hover:bg-muted/80 transition"
-                        >
-                          إلغاء
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex justify-between items-start">
-                        <span className="font-bold text-sm">{court.name}</span>
-                        <span
-                          className={cn(
-                            "text-[10px] font-bold px-2 py-0.5 rounded-full",
-                            court.sportType === "padel"
-                              ? "bg-blue-500/10 text-blue-500"
+                    ) : (
+                      <>
+                        <div className="flex justify-between items-start">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-sm">{court.name}</span>
+                            {courtImagesCount > 0 && (
+                              <span className="text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded flex items-center gap-1">
+                                <ImageIcon className="size-2.5" /> {courtImagesCount}
+                              </span>
+                            )}
+                          </div>
+                          <span
+                            className={cn(
+                              "text-[10px] font-bold px-2 py-0.5 rounded-full",
+                              court.sportType === "padel"
+                                ? "bg-blue-500/10 text-blue-500"
+                                : court.sportType === "football_7"
+                                  ? "bg-orange-500/10 text-orange-500"
+                                  : "bg-emerald-500/10 text-emerald-500",
+                            )}
+                          >
+                            {court.sportType === "padel"
+                              ? "بادل"
                               : court.sportType === "football_7"
-                                ? "bg-orange-500/10 text-orange-500"
-                                : "bg-emerald-500/10 text-emerald-500",
-                          )}
-                        >
-                          {court.sportType === "padel"
-                            ? "بادل"
-                            : court.sportType === "football_7"
-                              ? "سباعي"
-                              : "خماسي"}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-end mt-3">
-                        <div className="flex flex-col gap-0.5">
-                          <span className="font-black text-primary text-xs flex items-center gap-1">
-                            <Sun className="size-3" /> صباحاً:{" "}
-                            {court.priceMorning || court.pricePerHour}{" "}
-                            <span className="text-[9px] text-muted-foreground">ج/س</span>
-                          </span>
-                          <span className="font-black text-primary text-xs flex items-center gap-1">
-                            <Moon className="size-3" /> مساءً:{" "}
-                            {court.priceEvening || court.pricePerHour}{" "}
-                            <span className="text-[9px] text-muted-foreground">ج/س</span>
+                                ? "سباعي"
+                                : "خماسي"}
                           </span>
                         </div>
-                        <button
-                          onClick={() => startEditCourt(court)}
-                          className="text-muted-foreground hover:text-primary transition bg-muted/50 p-1.5 rounded-lg"
-                        >
-                          <Edit className="size-4" />
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ))}
+                        <div className="flex justify-between items-end mt-3">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-black text-primary text-xs flex items-center gap-1">
+                              <Sun className="size-3" /> صباحاً:{" "}
+                              {court.priceMorning || court.pricePerHour}{" "}
+                              <span className="text-[9px] text-muted-foreground">ج/س</span>
+                            </span>
+                            <span className="font-black text-primary text-xs flex items-center gap-1">
+                              <Moon className="size-3" /> مساءً:{" "}
+                              {court.priceEvening || court.pricePerHour}{" "}
+                              <span className="text-[9px] text-muted-foreground">ج/س</span>
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => startEditCourt(court)}
+                            className="text-muted-foreground hover:text-primary transition bg-muted/50 p-1.5 rounded-lg"
+                          >
+                            <Edit className="size-4" />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>

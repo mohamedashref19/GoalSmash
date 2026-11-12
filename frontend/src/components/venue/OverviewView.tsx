@@ -14,6 +14,10 @@ import { useConfirm } from "../../components/venue/useConfirm";
 interface StatsData {
   todayBookings: number;
   todayRevenue: number;
+  todayOnlineRevenue?: number;
+  todayManualCashRevenue?: number;
+  todayRestCashRevenue?: number;
+  todayCashRevenue?: number;
   activeCourts: number;
   occupancyRate: string;
 }
@@ -141,30 +145,78 @@ export function OverviewView({ venueId }: { venueId: string; onSendCode: (name: 
     );
   }
 
-  const statCards = [
-    { label: "حجوزات النهاردة", value: stats?.todayBookings || 0, icon: CalendarCheck },
-    { label: "إيراد النهاردة", value: `${stats?.todayRevenue || 0} ج`, icon: Wallet },
-    { label: "الملاعب الشغالة", value: stats?.activeCourts || 0, change: "شغال", icon: Users },
-  ];
-
   return (
     <div className="flex flex-col gap-5">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {statCards.map(({ label, value, change, icon: Icon }) => (
-          <div key={label} className="card-surface p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm text-muted-foreground">{label}</p>
-                <p className="mt-2 font-display text-2xl font-extrabold">{value}</p>
-              </div>
-              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-accent text-accent-foreground">
-                <Icon className="h-5 w-5" />
-              </div>
+        {/* 1. كارت حجوزات النهاردة */}
+        <div className="card-surface p-5 flex flex-col justify-between">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm text-muted-foreground">حجوزات النهاردة</p>
+              <p className="mt-2 font-display text-2xl font-extrabold">
+                {stats?.todayBookings || 0}
+              </p>
             </div>
-            <p className="mt-3 text-xs font-semibold text-success">{change}</p>
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-accent text-accent-foreground">
+              <CalendarCheck className="h-5 w-5" />
+            </div>
           </div>
-        ))}
+          <p className="mt-3 text-xs font-semibold text-muted-foreground">مواعيد اللعب اليوم</p>
+        </div>
+
+        {/* 2. كارت إيراد اليوم الفعلي (مقسم 3 خانات: أونلاين عربون، كاش حجز يدوي، كاش باقي الحجز) */}
+        <div className="card-surface p-5 border-b-4 border-b-primary">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-bold text-muted-foreground">إيراد اليوم </p>
+              <p className="mt-1 font-display text-2xl font-black text-primary">
+                {stats?.todayRevenue || 0} ج.م
+              </p>
+            </div>
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
+              <Wallet className="h-5 w-5" />
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border pt-2.5 text-center">
+            <div className="rounded-lg bg-success/10 px-2 py-1">
+              <p className="text-[10px] font-bold text-success">أونلاين (عربون)</p>
+              <p className="text-xs font-extrabold text-success">
+                {stats?.todayOnlineRevenue || 0} ج
+              </p>
+            </div>
+            <div className="rounded-lg bg-info/10 px-2 py-1">
+              <p className="text-[10px] font-bold text-info">كاش (حجز يدوي)</p>
+              <p className="text-xs font-extrabold text-info">
+                {stats?.todayManualCashRevenue || 0} ج
+              </p>
+            </div>
+            <div className="rounded-lg bg-warning/15 px-2 py-1">
+              <p className="text-[10px] font-bold text-warning">كاش (باقي الحجز)</p>
+              <p className="text-xs font-extrabold text-warning">
+                {stats?.todayRestCashRevenue || 0} ج
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* 3. كارت الملاعب الشغالة */}
+        <div className="card-surface p-5 flex flex-col justify-between">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm text-muted-foreground">الملاعب الشغالة</p>
+              <p className="mt-2 font-display text-2xl font-extrabold">
+                {stats?.activeCourts || 0}
+              </p>
+            </div>
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-accent text-accent-foreground">
+              <Users className="h-5 w-5" />
+            </div>
+          </div>
+          <p className="mt-3 text-xs font-semibold text-success">شغال</p>
+        </div>
       </div>
+
       <ConfirmDialog />
       <section className="card-surface overflow-hidden">
         <div className="flex items-center justify-between gap-3 border-b border-border p-5">

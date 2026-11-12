@@ -9,8 +9,11 @@ const courtSchema = new mongoose.Schema(
     },
     image: {
       type: String,
-      default:
-        "https://www.emys.gov.eg/uploads/photos/2025/09/68d583233614a_1758823203.jpg",
+      default: "https://mla3balexandria-api.online/assets/logo.png",
+    },
+    images: {
+      type: [String],
+      default: [],
     },
     sportType: {
       type: String,

@@ -42,19 +42,12 @@ export function useAdminSetup() {
   const [activeTab, setActiveTab] = useState<TabKey>("owner");
 
   const [ownersList, setOwnersList] = useState<Owner[]>([]);
-
   const [employeesList, setEmployeesList] = useState<Employee[]>([]);
-
   const [venuesList, setVenuesList] = useState<Venue[]>([]);
-
   const [customersList, setCustomersList] = useState<Customer[]>([]);
-
   const [accountsList, setAccountsList] = useState<PaymentAccount[]>([]);
-
   const [blocksList, setBlocksList] = useState<CourtBlock[]>([]);
-
   const [expandedBlocks, setExpandedBlocks] = useState<string[]>([]);
-
   const [loading, setLoading] = useState(false);
 
   const { confirm, ConfirmDialog } = useConfirm();
@@ -71,7 +64,6 @@ export function useAdminSetup() {
   });
 
   const [dynamicCourts, setDynamicCourts] = useState<Court[]>([]);
-
   const [isBlocking, setIsBlocking] = useState(false);
 
   const [ownerData, setOwnerData] = useState({
@@ -113,7 +105,8 @@ export function useAdminSetup() {
     priceEvening: "",
   });
 
-  const [courtImage, setCourtImage] = useState<File | null>(null);
+  // +++ دعم عدة صور عند إضافة ملعب جديد (حتى 5 صور) +++
+  const [courtImages, setCourtImages] = useState<File[]>([]);
 
   const [accountData, setAccountData] = useState({
     type: "vodafone_cash",
@@ -122,7 +115,6 @@ export function useAdminSetup() {
   });
 
   const [editAccountId, setEditAccountId] = useState<string | null>(null);
-
   const [editAccountForm, setEditAccountForm] = useState({
     type: "vodafone_cash",
     identifier: "",
@@ -130,7 +122,6 @@ export function useAdminSetup() {
   });
 
   const [editVenueId, setEditVenueId] = useState<string | null>(null);
-
   const [editVenueForm, setEditVenueForm] = useState({
     name: "",
     phone: "",
@@ -146,7 +137,6 @@ export function useAdminSetup() {
   const [editVenueImage, setEditVenueImage] = useState<File | null>(null);
 
   const [editCourtId, setEditCourtId] = useState<string | null>(null);
-
   const [editCourtForm, setEditCourtForm] = useState({
     name: "",
     sportType: "padel",
@@ -154,7 +144,9 @@ export function useAdminSetup() {
     priceEvening: "",
   });
 
-  const [editCourtImage, setEditCourtImage] = useState<File | null>(null);
+  // +++ دعم الصور الحالية + الصور الجديدة عند تعديل ملعب +++
+  const [editCourtExistingImages, setEditCourtExistingImages] = useState<string[]>([]);
+  const [editCourtImages, setEditCourtImages] = useState<File[]>([]);
 
   const loadVenues = async () => {
     try {
@@ -392,6 +384,10 @@ export function useAdminSetup() {
 
   const handleCreateCourt = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (courtImages.length > 5) {
+      toast.error("الحد الأقصى لصور الملعب هو 5 صور");
+      return;
+    }
     setLoading(true);
     try {
       const formData = new FormData();
@@ -400,7 +396,11 @@ export function useAdminSetup() {
       formData.append("priceMorning", courtData.priceMorning);
       formData.append("priceEvening", courtData.priceEvening);
       formData.append("venue", courtData.venueId);
-      if (courtImage) formData.append("image", courtImage);
+
+      courtImages.forEach((file) => {
+        formData.append("images", file);
+      });
+
       await createCourtByAdmin(formData);
       toast.success("تم إضافة الملعب للنادي بنجاح");
       setCourtData({
@@ -410,7 +410,7 @@ export function useAdminSetup() {
         priceMorning: "",
         priceEvening: "",
       });
-      setCourtImage(null);
+      setCourtImages([]);
       loadVenues();
     } catch (err: unknown) {
       toast.error(err as string);
@@ -536,7 +536,12 @@ export function useAdminSetup() {
 
   const startEditCourt = (court: Court) => {
     setEditCourtId(court._id);
-    setEditCourtImage(null);
+    setEditCourtImages([]);
+    // جلب قائمة الصور الحالية للملعب (أو الصورة الواحدة إن وجدت)
+    const currentImgs =
+      court.images && court.images.length > 0 ? court.images : court.image ? [court.image] : [];
+    setEditCourtExistingImages(currentImgs);
+
     setEditCourtForm({
       name: court.name,
       sportType: court.sportType,
@@ -546,17 +551,30 @@ export function useAdminSetup() {
   };
 
   const saveEditCourt = async (id: string) => {
+    if (editCourtExistingImages.length + editCourtImages.length > 5) {
+      toast.error("إجمالي صور الملعب (الحالية + الجديدة) لا يمكن أن يتجاوز 5 صور");
+      return;
+    }
     try {
       const formData = new FormData();
       formData.append("name", editCourtForm.name);
       formData.append("priceMorning", String(editCourtForm.priceMorning));
       formData.append("priceEvening", String(editCourtForm.priceEvening));
       formData.append("sportType", editCourtForm.sportType);
-      if (editCourtImage) formData.append("image", editCourtImage);
+
+      // إرسال الصور القديمة المتبقية كـ JSON
+      formData.append("existingImages", JSON.stringify(editCourtExistingImages));
+
+      // إرسال الصور الجديدة المرفوعة
+      editCourtImages.forEach((file) => {
+        formData.append("images", file);
+      });
+
       await updateCourtByAdmin(id, formData);
-      toast.success("تم تحديث بيانات الملعب بنجاح");
+      toast.success("تم تحديث بيانات وصور الملعب بنجاح");
       setEditCourtId(null);
-      setEditCourtImage(null);
+      setEditCourtImages([]);
+      setEditCourtExistingImages([]);
       loadVenues();
     } catch (err: unknown) {
       toast.error(err as string);
@@ -658,8 +676,8 @@ export function useAdminSetup() {
     setVenueImage,
     courtData,
     setCourtData,
-    courtImage,
-    setCourtImage,
+    courtImages,
+    setCourtImages,
     accountData,
     setAccountData,
     editAccountId,
@@ -676,8 +694,10 @@ export function useAdminSetup() {
     setEditCourtId,
     editCourtForm,
     setEditCourtForm,
-    editCourtImage,
-    setEditCourtImage,
+    editCourtExistingImages,
+    setEditCourtExistingImages,
+    editCourtImages,
+    setEditCourtImages,
     loadVenues,
     loadOwners,
     loadEmployees,

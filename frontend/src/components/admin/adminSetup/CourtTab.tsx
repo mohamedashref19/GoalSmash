@@ -1,16 +1,33 @@
-import { Dribbble, Loader2, Upload } from "lucide-react";
+import { Dribbble, Loader2, Upload, X } from "lucide-react";
+import { toast } from "sonner";
 import type { AdminSetupState } from "./useAdminSetup";
 
 export function CourtTab({ s }: { s: AdminSetupState }) {
   const {
     courtData,
-    courtImage,
+    courtImages,
     handleCreateCourt,
     loading,
     setCourtData,
-    setCourtImage,
+    setCourtImages,
     venuesList,
   } = s;
+
+  const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files || []);
+    if (selected.length === 0) return;
+
+    const combined = [...courtImages, ...selected];
+    if (combined.length > 5) {
+      toast.error("الحد الأقصى هو 5 صور لكل ملعب");
+    }
+    setCourtImages(combined.slice(0, 5));
+    e.target.value = "";
+  };
+
+  const removeImage = (index: number) => {
+    setCourtImages(courtImages.filter((_, i) => i !== index));
+  };
 
   return (
     <form
@@ -72,24 +89,51 @@ export function CourtTab({ s }: { s: AdminSetupState }) {
           dir="ltr"
         />
       </div>
-      <div className="border-2 border-dashed border-border rounded-xl p-6 text-center cursor-pointer hover:bg-muted/50 transition">
-        <input
-          type="file"
-          accept="image/*"
-          id="courtImg"
-          className="hidden"
-          onChange={(e) => setCourtImage(e.target.files?.[0] || null)}
-        />
-        <label
-          htmlFor="courtImg"
-          className="cursor-pointer flex flex-col items-center justify-center gap-2"
-        >
-          <Upload className="size-8 text-muted-foreground" />
-          <span className="text-sm font-bold text-muted-foreground">
-            {courtImage ? courtImage.name : "صورة الملعب (اختياري)"}
-          </span>
-        </label>
+
+      <div className="space-y-2">
+        <div className="border-2 border-dashed border-border rounded-xl p-6 text-center cursor-pointer hover:bg-muted/50 transition">
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            id="courtImg"
+            className="hidden"
+            onChange={handleFilesChange}
+          />
+          <label
+            htmlFor="courtImg"
+            className="cursor-pointer flex flex-col items-center justify-center gap-2"
+          >
+            <Upload className="size-8 text-muted-foreground" />
+            <span className="text-sm font-bold text-muted-foreground">
+              {courtImages.length > 0
+                ? `تم اختيار ${courtImages.length} من 5 صور (اضغط لإضافة المزيد)`
+                : "صور الملعب - حتى 5 صور (اختياري)"}
+            </span>
+          </label>
+        </div>
+
+        {courtImages.length > 0 && (
+          <div className="flex flex-wrap gap-2 pt-1">
+            {courtImages.map((file, idx) => (
+              <div
+                key={idx}
+                className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/60 px-2.5 py-1 text-xs font-bold"
+              >
+                <span className="max-w-[150px] truncate">{file.name}</span>
+                <button
+                  type="button"
+                  onClick={() => removeImage(idx)}
+                  className="text-destructive hover:bg-destructive/10 rounded p-0.5"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
+
       <button
         disabled={loading}
         type="submit"

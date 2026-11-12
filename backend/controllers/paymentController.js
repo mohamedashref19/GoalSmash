@@ -409,24 +409,31 @@ exports.getAllPayments = catchAsync(async (req, res, next) => {
     const endOfDay = new Date(req.query.date);
     endOfDay.setHours(23, 59, 59, 999);
 
-    // 1. نبحث عن كل عمليات الدفع اللي تمت في اليوم ده عشان نجمع أرقام حجوزاتها
-    const paymentsInDate = await Payment.find({
-      createdAt: { $gte: startOfDay, $lte: endOfDay },
-    }).select("booking");
+    const dateCondition = {
+      $or: [
+        { verifiedAt: { $gte: startOfDay, $lte: endOfDay } },
+        {
+          verifiedAt: { $exists: false },
+          createdAt: { $gte: startOfDay, $lte: endOfDay },
+        },
+        {
+          verifiedAt: null,
+          createdAt: { $gte: startOfDay, $lte: endOfDay },
+        },
+      ],
+    };
+
+    // 1. نبحث عن كل عمليات الدفع اللي تمت في اليوم ده (بناءً على verifiedAt ثم createdAt)
+    const paymentsInDate = await Payment.find(dateCondition).select("booking");
 
     // 2. نستخرج الـ IDs الخاصة بالحجوزات دي
     const bookingIds = paymentsInDate.map((p) => p.booking).filter(Boolean);
 
     if (bookingIds.length > 0) {
-      // 3. لو في حجوزات، نرجع "كل" الدفعات الخاصة بيها (العربون القديم + الكاش الجديد)
-      // أو نرجع الدفعات المستقلة اللي تمت النهاردة
-      filter.$or = [
-        { booking: { $in: bookingIds } },
-        { createdAt: { $gte: startOfDay, $lte: endOfDay } },
-      ];
+      // 3. لو في حجوزات، نرجع كل الدفعات الخاصة بيها أو الدفعات المستقلة اللي تمت النهاردة
+      filter.$or = [{ booking: { $in: bookingIds } }, ...dateCondition.$or];
     } else {
-      // لو مفيش أي حركة تمت، بنفلتر باليوم عادي عشان الداتا ترجع فاضية
-      filter.createdAt = { $gte: startOfDay, $lte: endOfDay };
+      filter.$or = dateCondition.$or;
     }
   }
 
@@ -457,7 +464,6 @@ exports.getAllPayments = catchAsync(async (req, res, next) => {
 
   // إذا كان هناك ملاعب مطلوبة الفلترة بها، نبحث عن حجوزاتها أولاً
   if (venueIdsToFilter.length > 0) {
-    const Booking = require("../models/bookingModel"); // جلب الموديل هنا إذا لم يكن بالأعلى
     const validBookings = await Booking.find({
       venue: { $in: venueIdsToFilter },
     }).select("_id");
@@ -946,8 +952,6 @@ exports.getFinancialReports = catchAsync(async (req, res, next) => {
 
   let venueMatch = {};
 
-  // الموظف كان بيمر على venueMatch = {} ويشوف تقارير كل المنصة (إيرادات كل النوادي +
-  // العمولات). دلوقتي النادي بيتحدد من حسابه هو (userModel.venue) مش من الـ query.
   if (!["owner", "admin", "employee"].includes(req.user.role)) {
     return next(new AppError("غير مصرح لك بالتقارير المالية", 403));
   }
@@ -983,9 +987,14 @@ exports.getFinancialReports = catchAsync(async (req, res, next) => {
 
   const pipeline = [
     {
+      $addFields: {
+        effectiveDate: { $ifNull: ["$verifiedAt", "$createdAt"] },
+      },
+    },
+    {
       $match: {
         status: "verified",
-        createdAt: { $gte: start, $lte: end },
+        effectiveDate: { $gte: start, $lte: end },
       },
     },
     {
@@ -997,6 +1006,11 @@ exports.getFinancialReports = catchAsync(async (req, res, next) => {
       },
     },
     { $unwind: "$bookingDetails" },
+    {
+      $match: {
+        "bookingDetails.status": { $nin: ["cancelled", "expired"] },
+      },
+    },
   ];
 
   if (Object.keys(venueMatch).length > 0) {
@@ -1004,7 +1018,7 @@ exports.getFinancialReports = catchAsync(async (req, res, next) => {
   }
 
   pipeline.push(
-    // +++ التعديل الجوهري: تجميع الفواتير المتعددة لنفس الحجز في سطر واحد +++
+    // +++ تجميع الفواتير المتعددة لنفس الحجز في سطر واحد +++
     {
       $group: {
         _id: "$bookingDetails._id",
@@ -1012,12 +1026,20 @@ exports.getFinancialReports = catchAsync(async (req, res, next) => {
         venue: { $first: "$bookingDetails.venue" },
         startTime: { $first: "$bookingDetails.startTime" },
         endTime: { $first: "$bookingDetails.endTime" },
+        totalPrice: { $first: "$bookingDetails.totalPrice" },
         savedCommission: { $first: "$bookingDetails.commission" },
+        // في paymentController.js السطر 617:
         bookingOnlineRevenue: {
           $sum: { $cond: [{ $ne: ["$method", "cash"] }, "$baseAmount", 0] },
         },
         bookingCashRevenue: {
-          $sum: { $cond: [{ $eq: ["$method", "cash"] }, "$baseAmount", 0] },
+          $sum: {
+            $cond: [
+              { $eq: ["$method", "cash"] },
+              { $ifNull: ["$amountReceived", "$baseAmount"] },
+              0,
+            ],
+          },
         },
         hasOnlinePayment: {
           $max: { $cond: [{ $ne: ["$method", "cash"] }, 1, 0] },
@@ -1025,9 +1047,25 @@ exports.getFinancialReports = catchAsync(async (req, res, next) => {
         hasCashPayment: {
           $max: { $cond: [{ $eq: ["$method", "cash"] }, 1, 0] },
         },
+        // +++ التحقق مما إذا كانت الدفعة الأولى للحجز (سواء أونلاين أو حجز يدوي CASH-xxxx) تمت في هذه الفترة +++
+        // فواتير استكمال باقي الكاش فقط تبدأ بـ CASH-REST- أو QR-CASH-
+        hasInitialPaymentInPeriod: {
+          $max: {
+            $cond: [
+              {
+                $regexMatch: {
+                  input: { $ifNull: ["$paymentReference", ""] },
+                  regex: /^(CASH-REST-|QR-CASH-)/,
+                },
+              },
+              0,
+              1,
+            ],
+          },
+        },
       },
     },
-    // +++ حساب مدة الحجز والسعر الإجمالي للحجز بعد جمع فواتيره +++
+    // +++ حساب مدة الحجز والسعر الإجمالي المتحصل في هذه الفترة +++
     {
       $addFields: {
         durationInHours: {
@@ -1038,18 +1076,30 @@ exports.getFinancialReports = catchAsync(async (req, res, next) => {
         },
       },
     },
-    // +++ حساب العمولة (ستحسب مرة واحدة فقط لكل حجز) +++
+    // +++ حساب إجمالي عمولة الحجز (5% للساعة و10% للساعتين على إجمالي سعر الحجز totalPrice) +++
     {
       $addFields: {
-        calculatedCommission: {
+        fullBookingCommission: {
           $ifNull: [
             "$savedCommission",
             {
               $multiply: [
-                "$totalBookingRevenue",
+                "$totalPrice",
                 { $cond: [{ $gte: ["$durationInHours", 2] }, 0.1, 0.05] },
               ],
             },
+          ],
+        },
+      },
+    },
+    // +++ احتساب العمولة مرة واحدة فقط عند الدفعة الأولى (سواء حجز تطبيق أو حجز يدوي بعربون/كامل) +++
+    {
+      $addFields: {
+        calculatedCommission: {
+          $cond: [
+            { $eq: ["$hasInitialPaymentInPeriod", 1] },
+            "$fullBookingCommission",
+            0,
           ],
         },
       },
@@ -1097,12 +1147,17 @@ exports.getFinancialReports = catchAsync(async (req, res, next) => {
               totalOnline: { $sum: "$bookingOnlineRevenue" },
               totalCash: { $sum: "$bookingCashRevenue" },
               totalCommission: { $sum: "$calculatedCommission" },
-              bookingsCount: { $sum: 1 }, // الآن سيعد الحجوزات الفريدة بشكل صحيح
+              bookingsCount: { $sum: "$hasInitialPaymentInPeriod" },
             },
           },
           {
             $addFields: {
-              netAmount: { $subtract: ["$totalOnline", "$totalCommission"] },
+              netAmount: {
+                $round: [
+                  { $subtract: ["$totalOnline", "$totalCommission"] },
+                  2,
+                ],
+              },
             },
           },
           { $sort: { totalRevenue: -1 } },

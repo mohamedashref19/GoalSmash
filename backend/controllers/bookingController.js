@@ -435,7 +435,8 @@ exports.createBooking = catchAsync(async (req, res, next) => {
         paymentData = createdPayment;
       } else if (
         req.user &&
-        (req.user.role === "owner" || req.user.role === "employee")
+        (req.user.role === "owner" || req.user.role === "employee") &&
+        finalManualDeposit > 0 // +++ لا ننشئ فاتورة دفع إلا لو استلم مبلغ فعلي أكبر من صفر +++
       ) {
         const reference = `CASH-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
 
@@ -445,8 +446,8 @@ exports.createBooking = catchAsync(async (req, res, next) => {
               booking: newBooking._id,
               paymentReference: reference,
               method: "cash",
-              baseAmount: calculatedTotalPrice,
-              expectedAmount: calculatedTotalPrice,
+              baseAmount: finalManualDeposit,
+              expectedAmount: finalManualDeposit,
               amountReceived: finalManualDeposit,
               status: "verified",
               verifiedAt: new Date(),
@@ -811,7 +812,7 @@ exports.cancelBooking = catchAsync(async (req, res, next) => {
   await Payment.updateMany(
     {
       booking: booking._id,
-      status: { $in: ["pending", "pending_verification"] },
+      status: { $in: ["pending", "pending_verification", "verified"] },
     },
     { $set: { status: "expired" } },
   );
@@ -920,12 +921,15 @@ exports.updatePayment = catchAsync(async (req, res, next) => {
   }
 
   // إنشاء فاتورة كاش جديدة بالمبلغ المتبقي بدلاً من تغيير القديمة
+  // في دالة updatePayment (السطر 725):
   if (deposit !== undefined && deposit > currentDeposit) {
     const difference = deposit - currentDeposit;
+    // لو كان العربون السابق 0، فهذه أول دفعة فعلية وتأخذ CASH- لتحسب عمولتها اليوم
+    const prefix = currentDeposit === 0 ? "CASH" : "CASH-REST";
 
     await Payment.create({
       booking: booking._id,
-      paymentReference: `CASH-REST-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+      paymentReference: `${prefix}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
       method: "cash",
       baseAmount: difference,
       expectedAmount: difference,
@@ -1214,9 +1218,10 @@ exports.confirmViaQRCode = catchAsync(async (req, res, next) => {
 
   // إذا كان هناك مبلغ متبقي (لم يدفع أونلاين)، نقوم بإنشاء فاتورة كاش توثق استلامه يدوياً
   if (remaining > 0) {
+    const prefix = currentDeposit === 0 ? "CASH" : "QR-CASH";
     await Payment.create({
       booking: booking._id,
-      paymentReference: `QR-CASH-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+      paymentReference: `${prefix}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
       method: "cash",
       baseAmount: remaining,
       expectedAmount: remaining,
