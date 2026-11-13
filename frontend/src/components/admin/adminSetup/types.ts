@@ -13,12 +13,14 @@ export interface Court {
   sportType: string;
   image?: string;
   images?: string[];
+  locationUrl?: string;
 }
 
 export interface Venue {
   _id: string;
   name: string;
   phone: string;
+  locationUrl?: string;
   operatingHours?: number;
   openTime?: string;
   closeTime?: string;

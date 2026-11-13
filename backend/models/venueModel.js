@@ -16,6 +16,11 @@ const venueSchema = new mongoose.Schema(
       type: String,
       required: [true, "يرجى إدخال رقم هاتف للتواصل مع المكان"],
     },
+    locationUrl: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     openTime: {
       type: String,
       default: "08:00",
@@ -30,13 +35,13 @@ const venueSchema = new mongoose.Schema(
       type: Number,
       default: 24,
     },
-    //  الحقل الجديد لتحديد بداية الفترة المسائية
+    // الحقل الجديد لتحديد بداية الفترة المسائية
     eveningStartTime: {
       type: String,
       default: "18:00", // الافتراضي 6 مساءً
       match: [/^([01]?\d|2[0-3]):[0-5]\d$/, "صيغة الوقت يجب أن تكون HH:MM"],
     },
-    //  ا (0 = الأحد، 1 = الإثنين ... 6 = السبت)
+    // (0 = الأحد، 1 = الإثنين ... 6 = السبت)
     workingDays: {
       type: [Number],
       default: [0, 1, 2, 3, 4, 5, 6],
@@ -89,6 +94,7 @@ venueSchema.virtual("courts", {
   foreignField: "venue",
   localField: "_id",
 });
+
 venueSchema.pre(/^find/, function () {
   this.find({ isActive: { $ne: false } });
 });

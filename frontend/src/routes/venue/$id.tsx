@@ -5,6 +5,7 @@ import {
   ChevronRight,
   ChevronLeft,
   MapPin,
+  ExternalLink,
   Star,
   Trophy,
   Car,
@@ -84,6 +85,7 @@ interface CourtType {
   status?: string;
   image?: string;
   images?: string[];
+  locationUrl?: string;
 }
 
 interface VenueType {
@@ -95,6 +97,7 @@ interface VenueType {
   eveningStartTime?: string;
   workingDays?: number[];
   phone?: string;
+  locationUrl?: string;
   address?: {
     city: string;
     area: string;
@@ -227,6 +230,9 @@ function VenueDetailsPage() {
   const days = useMemo(() => getDays(openHour), [openHour]);
   const [selectedCourt, setSelectedCourt] = useState<CourtType | null>(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [touchEndX, setTouchEndX] = useState<number | null>(null);
+
   const [selectedDay, setSelectedDay] = useState(0);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
@@ -634,6 +640,8 @@ function VenueDetailsPage() {
     .filter(Boolean)
     .join("، ");
 
+  const activeLocationUrl = selectedCourt?.locationUrl || venue.locationUrl;
+
   const displayImage = galleryImages[activeImageIndex] || galleryImages[0];
 
   const handlePrevImage = () => {
@@ -644,6 +652,32 @@ function VenueDetailsPage() {
   const handleNextImage = () => {
     if (galleryImages.length <= 1) return;
     setActiveImageIndex((prev) => (prev === galleryImages.length - 1 ? 0 : prev + 1));
+  };
+
+  // +++ دوال السحب باللمس يميناً ويساراً (Touch Swipe) +++
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchEndX(null);
+    setTouchStartX(e.targetTouches[0]?.clientX ?? null);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEndX(e.targetTouches[0]?.clientX ?? null);
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStartX === null || touchEndX === null) return;
+    const distance = touchStartX - touchEndX;
+    const minSwipeDistance = 40;
+
+    if (distance > minSwipeDistance) {
+      // سحب لليسار -> الصورة التالية
+      handleNextImage();
+    } else if (distance < -minSwipeDistance) {
+      // سحب لليمين -> الصورة السابقة
+      handlePrevImage();
+    }
+    setTouchStartX(null);
+    setTouchEndX(null);
   };
 
   return (
@@ -660,75 +694,85 @@ function VenueDetailsPage() {
         </div>
       </header>
 
-      {/* معرض صور الملعب التفاعلي */}
-      <div className="relative flex h-56 items-center justify-center bg-muted overflow-hidden sm:h-80 group">
-        {displayImage ? (
-          <img
-            src={getImageUrl(displayImage)}
-            alt={selectedCourt?.name || venue.name}
-            className="absolute inset-0 h-full w-full object-cover animate-in fade-in duration-300"
-            key={displayImage}
-          />
-        ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/30 to-emerald-900/40" />
-        )}
-        <div className="absolute inset-0 bg-black/25" />
-        {!displayImage && <Trophy className="relative z-10 size-16 text-primary-foreground/40" />}
+      {/* معرض صور الملعب التفاعلي يدعم السحب باللمس (Swipe) والأزرار */}
+      <div className="mx-auto max-w-6xl sm:px-4 sm:pt-4">
+        <div
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          className="relative flex h-60 items-center justify-center bg-muted overflow-hidden sm:h-96 sm:rounded-3xl sm:border sm:border-border sm:shadow-md group touch-pan-y select-none"
+        >
+          {displayImage ? (
+            <img
+              src={getImageUrl(displayImage)}
+              alt={selectedCourt?.name || venue.name}
+              draggable={false}
+              className="absolute inset-0 h-full w-full object-cover animate-in fade-in duration-300 pointer-events-none"
+              key={displayImage}
+            />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/30 to-emerald-900/40" />
+          )}
+          <div className="absolute inset-0 bg-black/25 pointer-events-none" />
+          {!displayImage && <Trophy className="relative z-10 size-16 text-primary-foreground/40" />}
 
-        {selectedCourt && (
-          <span className="absolute right-4 top-4 z-10 rounded-lg bg-background/85 px-3 py-1 text-xs font-bold backdrop-blur shadow-sm">
-            {selectedCourt.sportType === "padel"
-              ? "بادل"
-              : selectedCourt.sportType === "football_7"
-                ? "سباعي"
-                : "خماسي"}
-          </span>
-        )}
-
-        {/* عداد الصور وأزرار التقليب لو فيه أكتر من صورة للملعب */}
-        {galleryImages.length > 1 && (
-          <>
-            <span
-              dir="ltr"
-              className="absolute left-4 top-4 z-10 rounded-lg bg-black/60 px-2.5 py-1 text-xs font-bold text-white backdrop-blur"
-            >
-              {activeImageIndex + 1} / {galleryImages.length}
+          {selectedCourt && (
+            <span className="absolute right-4 top-4 z-10 rounded-lg bg-background/85 px-3 py-1 text-xs font-bold backdrop-blur shadow-sm">
+              {selectedCourt.sportType === "padel"
+                ? "بادل"
+                : selectedCourt.sportType === "football_7"
+                  ? "سباعي"
+                  : "خماسي"}
             </span>
+          )}
 
-            <button
-              type="button"
-              onClick={handlePrevImage}
-              aria-label="الصورة السابقة"
-              className="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white backdrop-blur transition hover:bg-black/75 active:scale-95"
-            >
-              <ChevronRight className="size-5" />
-            </button>
+          {/* عداد الصور وأزرار التقليب لو فيه أكتر من صورة للملعب */}
+          {galleryImages.length > 1 && (
+            <>
+              <span
+                dir="ltr"
+                className="absolute left-4 top-4 z-10 rounded-lg bg-black/60 px-2.5 py-1 text-xs font-bold text-white backdrop-blur"
+              >
+                {activeImageIndex + 1} / {galleryImages.length}
+              </span>
 
-            <button
-              type="button"
-              onClick={handleNextImage}
-              aria-label="الصورة التالية"
-              className="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white backdrop-blur transition hover:bg-black/75 active:scale-95"
-            >
-              <ChevronLeft className="size-5" />
-            </button>
+              <button
+                type="button"
+                onClick={handlePrevImage}
+                aria-label="الصورة السابقة"
+                className="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white backdrop-blur transition hover:bg-black/75 active:scale-95"
+              >
+                <ChevronRight className="size-5" />
+              </button>
 
-            {/* نقاط التنقل السفلية */}
-            <div className="absolute bottom-3 inset-x-0 z-10 flex justify-center gap-1.5">
-              {galleryImages.map((_, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => setActiveImageIndex(idx)}
-                  className={cn(
-                    "h-2 rounded-full transition-all",
-                    activeImageIndex === idx ? "w-6 bg-primary" : "w-2 bg-white/70 hover:bg-white",
-                  )}
-                />
-              ))}
-            </div>
-          </>
-        )}
+              <button
+                type="button"
+                onClick={handleNextImage}
+                aria-label="الصورة التالية"
+                className="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white backdrop-blur transition hover:bg-black/75 active:scale-95"
+              >
+                <ChevronLeft className="size-5" />
+              </button>
+
+              {/* نقاط التنقل السفلية */}
+              <div className="absolute bottom-3 inset-x-0 z-10 flex justify-center gap-1.5">
+                {galleryImages.map((_, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setActiveImageIndex(idx)}
+                    className={cn(
+                      "h-2 rounded-full transition-all",
+                      activeImageIndex === idx
+                        ? "w-6 bg-primary"
+                        : "w-2 bg-white/70 hover:bg-white",
+                    )}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* شريط الصور المصغرة (Thumbnails) يظهر تحت البانر عند وجود أكثر من صورة */}
@@ -777,11 +821,28 @@ function VenueDetailsPage() {
             <p className="flex items-start gap-1.5 text-sm text-muted-foreground">
               <MapPin className="size-4 mt-0.5 shrink-0" /> <span>{locationText}</span>
             </p>
+
             {venue.phone && (
               <p className="flex items-center gap-1.5 text-sm font-bold text-primary">
                 <Phone className="size-4 shrink-0" />
                 <a href={`tel:${venue.phone}`} dir="ltr" className="hover:underline">
                   {venue.phone}
+                </a>
+              </p>
+            )}
+
+            {/* +++ رابط اللوكيشن على الخريطة تحت رقم التليفون مباشرة +++ */}
+            {activeLocationUrl && (
+              <p className="flex items-center gap-1.5 text-sm font-bold text-primary">
+                <MapPin className="size-4 shrink-0" />
+                <a
+                  href={activeLocationUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 hover:underline"
+                >
+                  <span>لوكيشن الملعب على الخريطة</span>
+                  <ExternalLink className="size-3.5" />
                 </a>
               </p>
             )}

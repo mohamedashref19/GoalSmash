@@ -406,10 +406,8 @@ function CustomerMobileMenu({ open, onClose }: { open: boolean; onClose: () => v
           </Link>
           <button
             onClick={() => {
-              localStorage.removeItem("token");
-              localStorage.removeItem("userData");
               onClose();
-              navigate({ to: "/login" });
+              logoutUser();
             }}
             className="mt-4 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-destructive transition hover:bg-destructive/10"
           >

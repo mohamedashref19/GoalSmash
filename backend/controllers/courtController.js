@@ -10,6 +10,7 @@ const COURT_FIELDS = [
   "status",
   "priceMorning",
   "priceEvening",
+  "locationUrl",
 ];
 
 const pick = (obj, fields) =>

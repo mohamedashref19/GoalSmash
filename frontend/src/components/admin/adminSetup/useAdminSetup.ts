@@ -88,6 +88,7 @@ export function useAdminSetup() {
     phone: "",
     city: "Alexandria",
     area: "",
+    locationUrl: "",
     ownerId: "",
     openTime: "08:00",
     closeTime: "02:00",
@@ -103,9 +104,9 @@ export function useAdminSetup() {
     sportType: "padel",
     priceMorning: "",
     priceEvening: "",
+    locationUrl: "",
   });
 
-  // +++ دعم عدة صور عند إضافة ملعب جديد (حتى 5 صور) +++
   const [courtImages, setCourtImages] = useState<File[]>([]);
 
   const [accountData, setAccountData] = useState({
@@ -127,6 +128,7 @@ export function useAdminSetup() {
     phone: "",
     area: "",
     details: "",
+    locationUrl: "",
     ownerId: "",
     openTime: "08:00",
     closeTime: "02:00",
@@ -142,9 +144,9 @@ export function useAdminSetup() {
     sportType: "padel",
     priceMorning: "",
     priceEvening: "",
+    locationUrl: "",
   });
 
-  // +++ دعم الصور الحالية + الصور الجديدة عند تعديل ملعب +++
   const [editCourtExistingImages, setEditCourtExistingImages] = useState<string[]>([]);
   const [editCourtImages, setEditCourtImages] = useState<File[]>([]);
 
@@ -324,6 +326,7 @@ export function useAdminSetup() {
       formData.append("phone", venueData.phone);
       formData.append("address[city]", venueData.city);
       formData.append("address[area]", venueData.area);
+      formData.append("locationUrl", venueData.locationUrl.trim());
       formData.append("owner", venueData.ownerId);
 
       formData.append("openTime", venueData.openTime);
@@ -341,6 +344,7 @@ export function useAdminSetup() {
         phone: "",
         city: "Alexandria",
         area: "",
+        locationUrl: "",
         ownerId: "",
         openTime: "08:00",
         closeTime: "02:00",
@@ -395,6 +399,7 @@ export function useAdminSetup() {
       formData.append("sportType", courtData.sportType);
       formData.append("priceMorning", courtData.priceMorning);
       formData.append("priceEvening", courtData.priceEvening);
+      formData.append("locationUrl", courtData.locationUrl.trim());
       formData.append("venue", courtData.venueId);
 
       courtImages.forEach((file) => {
@@ -409,6 +414,7 @@ export function useAdminSetup() {
         sportType: "padel",
         priceMorning: "",
         priceEvening: "",
+        locationUrl: "",
       });
       setCourtImages([]);
       loadVenues();
@@ -487,6 +493,7 @@ export function useAdminSetup() {
       phone: venue.phone,
       area: venue.address?.area || "",
       details: venue.address?.details || "",
+      locationUrl: venue.locationUrl || "",
       ownerId: venue.owner?._id || "",
       openTime: venue.openTime || "08:00",
       closeTime: venue.closeTime || "02:00",
@@ -513,6 +520,7 @@ export function useAdminSetup() {
       formData.append("phone", editVenueForm.phone);
       formData.append("address[city]", "Alexandria");
       formData.append("address[area]", editVenueForm.area);
+      formData.append("locationUrl", editVenueForm.locationUrl.trim());
 
       formData.append("openTime", editVenueForm.openTime);
       formData.append("closeTime", editVenueForm.closeTime);
@@ -537,7 +545,6 @@ export function useAdminSetup() {
   const startEditCourt = (court: Court) => {
     setEditCourtId(court._id);
     setEditCourtImages([]);
-    // جلب قائمة الصور الحالية للملعب (أو الصورة الواحدة إن وجدت)
     const currentImgs =
       court.images && court.images.length > 0 ? court.images : court.image ? [court.image] : [];
     setEditCourtExistingImages(currentImgs);
@@ -547,6 +554,7 @@ export function useAdminSetup() {
       sportType: court.sportType,
       priceMorning: String(court.priceMorning || court.pricePerHour || 0),
       priceEvening: String(court.priceEvening || court.pricePerHour || 0),
+      locationUrl: court.locationUrl || "",
     });
   };
 
@@ -561,11 +569,10 @@ export function useAdminSetup() {
       formData.append("priceMorning", String(editCourtForm.priceMorning));
       formData.append("priceEvening", String(editCourtForm.priceEvening));
       formData.append("sportType", editCourtForm.sportType);
+      formData.append("locationUrl", editCourtForm.locationUrl.trim());
 
-      // إرسال الصور القديمة المتبقية كـ JSON
       formData.append("existingImages", JSON.stringify(editCourtExistingImages));
 
-      // إرسال الصور الجديدة المرفوعة
       editCourtImages.forEach((file) => {
         formData.append("images", file);
       });

@@ -13,6 +13,7 @@ const VENUE_FIELDS = [
   "eveningStartTime",
   "workingDays",
   "address",
+  "locationUrl",
 ];
 
 const pick = (obj, fields) =>

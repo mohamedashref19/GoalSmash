@@ -1,8 +1,10 @@
+import { useEffect, useState } from "react";
 import {
   Building2,
   CalendarDays,
   Clock,
   Edit,
+  ExternalLink,
   ImageIcon,
   MapPin,
   Moon,
@@ -39,6 +41,27 @@ export function ManageTab({ s }: { s: AdminSetupState }) {
     venuesList,
   } = s;
 
+  const [venuePreviewUrl, setVenuePreviewUrl] = useState<string | null>(null);
+  const [newCourtPreviewUrls, setNewCourtPreviewUrls] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!editVenueImage) {
+      setVenuePreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(editVenueImage);
+    setVenuePreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [editVenueImage]);
+
+  useEffect(() => {
+    const urls = editCourtImages.map((file) => URL.createObjectURL(file));
+    setNewCourtPreviewUrls(urls);
+    return () => {
+      urls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [editCourtImages]);
+
   const handleEditCourtFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(e.target.files || []);
     if (selected.length === 0) return;
@@ -51,6 +74,17 @@ export function ManageTab({ s }: { s: AdminSetupState }) {
     }
     setEditCourtImages(combinedNew.slice(0, maxAllowedNew));
     e.target.value = "";
+  };
+
+  const makeExistingImageCover = (idx: number) => {
+    if (idx === 0) return;
+    const copy = [...editCourtExistingImages];
+    const [picked] = copy.splice(idx, 1);
+    if (picked) {
+      copy.unshift(picked);
+      setEditCourtExistingImages(copy);
+      toast.success("تم تعيين الصورة كغلاف رئيسي للملعب");
+    }
   };
 
   return (
@@ -202,9 +236,19 @@ export function ManageTab({ s }: { s: AdminSetupState }) {
                     className="flex-1 rounded-lg border px-3 py-2 text-sm"
                     placeholder="العنوان التفصيلي"
                   />
-                  <label className="md:w-1/3 cursor-pointer bg-muted/50 border border-dashed border-border rounded-lg px-2 py-2 text-[11px] text-center hover:bg-muted text-muted-foreground transition flex items-center justify-center">
+                  <input
+                    type="url"
+                    value={editVenueForm.locationUrl}
+                    onChange={(e) =>
+                      setEditVenueForm({ ...editVenueForm, locationUrl: e.target.value })
+                    }
+                    className="flex-1 rounded-lg border px-3 py-2 text-sm"
+                    placeholder="رابط اللوكيشن (Google Maps)"
+                    dir="ltr"
+                  />
+                  <label className="md:w-1/4 cursor-pointer bg-muted/50 border border-dashed border-border rounded-lg px-2 py-2 text-[11px] text-center hover:bg-muted text-muted-foreground transition flex items-center justify-center">
                     <ImageIcon className="size-3.5 inline mr-1" />
-                    {editVenueImage ? editVenueImage.name : "تغيير الصورة"}
+                    {editVenueImage ? "تغيير الصورة" : "صورة النادي"}
                     <input
                       type="file"
                       accept="image/*"
@@ -216,6 +260,31 @@ export function ManageTab({ s }: { s: AdminSetupState }) {
                     />
                   </label>
                 </div>
+
+                {venuePreviewUrl && (
+                  <div className="md:col-span-2 rounded-xl border border-primary/30 bg-primary/5 p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-bold text-primary">
+                        👁️ معاينة صورة كارت النادي الجديدة:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setEditVenueImage(null)}
+                        className="text-[11px] font-bold text-destructive hover:underline"
+                      >
+                        إلغاء الصورة
+                      </button>
+                    </div>
+                    <div className="h-40 w-64 overflow-hidden rounded-xl border border-border bg-muted shadow-sm">
+                      <img
+                        src={venuePreviewUrl}
+                        alt="معاينة النادي"
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <div className="md:col-span-2 flex gap-2 mt-1">
                   <button
                     onClick={() => saveEditVenue(venue._id)}
@@ -245,6 +314,16 @@ export function ManageTab({ s }: { s: AdminSetupState }) {
                     <p className="flex items-center gap-1.5">
                       <MapPin className="size-3" /> المنطقة:{" "}
                       <span className="font-bold text-foreground">{venue.address?.area}</span>
+                      {venue.locationUrl && (
+                        <a
+                          href={venue.locationUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-0.5 text-primary hover:underline mr-2"
+                        >
+                          <ExternalLink className="size-3" /> الخريطة
+                        </a>
+                      )}
                     </p>
                     <p className="flex items-center gap-1.5">
                       <Clock className="size-3" /> المواعيد:{" "}
@@ -282,12 +361,15 @@ export function ManageTab({ s }: { s: AdminSetupState }) {
             </h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {venue.courts?.map((court) => {
-                const courtImagesCount =
+                const courtImagesList =
                   court.images && court.images.length > 0
-                    ? court.images.length
+                    ? court.images
                     : court.image
-                      ? 1
-                      : 0;
+                      ? [court.image]
+                      : [];
+
+                const activeBannerPreview =
+                  editCourtExistingImages[0] || newCourtPreviewUrls[0] || null;
 
                 return (
                   <div
@@ -295,7 +377,7 @@ export function ManageTab({ s }: { s: AdminSetupState }) {
                     className="border border-border/60 bg-background rounded-xl p-3 flex flex-col justify-between"
                   >
                     {editCourtId === court._id ? (
-                      <div className="space-y-2 animate-in fade-in">
+                      <div className="space-y-2.5 animate-in fade-in">
                         <input
                           type="text"
                           value={editCourtForm.name}
@@ -353,31 +435,74 @@ export function ManageTab({ s }: { s: AdminSetupState }) {
                           <option value="football_7">سباعي</option>
                         </select>
 
-                        {/* عرض الصور الحالية للملعب مع زر حذف لكل صورة */}
+                        {/* حقل تعديل رابط لوكيشن الملعب */}
+                        <input
+                          type="url"
+                          value={editCourtForm.locationUrl}
+                          onChange={(e) =>
+                            setEditCourtForm({ ...editCourtForm, locationUrl: e.target.value })
+                          }
+                          className="w-full rounded-md border px-2 py-1.5 text-xs"
+                          placeholder="رابط اللوكيشن على Google Maps (اختياري)"
+                          dir="ltr"
+                        />
+
+                        {activeBannerPreview && (
+                          <div className="space-y-1 pt-1">
+                            <p className="text-[10px] font-extrabold text-primary">
+                              👁️ معاينة الغلاف في صفحة الملعب:
+                            </p>
+                            <div className="relative h-36 w-full overflow-hidden rounded-xl border border-border bg-muted">
+                              <img
+                                src={activeBannerPreview}
+                                alt="معاينة البانر"
+                                className="h-full w-full object-cover"
+                              />
+                              <span className="absolute right-2 top-2 rounded-md bg-background/90 px-2 py-0.5 text-[10px] font-bold">
+                                {editCourtForm.name}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
                         {editCourtExistingImages.length > 0 && (
                           <div className="space-y-1 pt-1">
                             <p className="text-[10px] font-bold text-muted-foreground">
-                              الصور الحالية ({editCourtExistingImages.length}/5):
+                              الصور المحفوظة ({editCourtExistingImages.length}/5) — اضغط على أي صورة
+                              لجعلها الغلاف:
                             </p>
                             <div className="flex flex-wrap gap-2">
                               {editCourtExistingImages.map((imgUrl, idx) => (
                                 <div
                                   key={idx}
-                                  className="relative h-12 w-16 overflow-hidden rounded-lg border border-border group"
+                                  onClick={() => makeExistingImageCover(idx)}
+                                  className={cn(
+                                    "relative h-14 w-20 cursor-pointer overflow-hidden rounded-lg border-2 group transition",
+                                    idx === 0
+                                      ? "border-primary"
+                                      : "border-border opacity-80 hover:opacity-100",
+                                  )}
+                                  title={idx === 0 ? "الغلاف الرئيسي" : "اضغط لتعيينها كغلاف رئيسي"}
                                 >
                                   <img
                                     src={imgUrl}
                                     alt={`صورة ${idx + 1}`}
                                     className="h-full w-full object-cover"
                                   />
+                                  {idx === 0 && (
+                                    <span className="absolute bottom-0 inset-x-0 bg-primary/90 text-center text-[8px] font-bold text-white">
+                                      الغلاف ⭐
+                                    </span>
+                                  )}
                                   <button
                                     type="button"
-                                    onClick={() =>
+                                    onClick={(e) => {
+                                      e.stopPropagation();
                                       setEditCourtExistingImages(
                                         editCourtExistingImages.filter((_, i) => i !== idx),
-                                      )
-                                    }
-                                    className="absolute right-0.5 top-0.5 rounded-full bg-destructive p-0.5 text-white shadow"
+                                      );
+                                    }}
+                                    className="absolute left-0.5 top-0.5 rounded-full bg-destructive p-0.5 text-white shadow"
                                     title="حذف الصورة"
                                   >
                                     <X className="size-3" />
@@ -388,11 +513,43 @@ export function ManageTab({ s }: { s: AdminSetupState }) {
                           </div>
                         )}
 
-                        {/* زر إضافة صور جديدة */}
+                        {newCourtPreviewUrls.length > 0 && (
+                          <div className="space-y-1 pt-1">
+                            <p className="text-[10px] font-bold text-primary">
+                              صور جديدة سيتم إضافتها ({newCourtPreviewUrls.length}):
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {newCourtPreviewUrls.map((url, idx) => (
+                                <div
+                                  key={idx}
+                                  className="relative h-14 w-20 overflow-hidden rounded-lg border-2 border-dashed border-primary"
+                                >
+                                  <img
+                                    src={url}
+                                    alt={`جديدة ${idx + 1}`}
+                                    className="h-full w-full object-cover"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setEditCourtImages(
+                                        editCourtImages.filter((_, i) => i !== idx),
+                                      )
+                                    }
+                                    className="absolute left-0.5 top-0.5 rounded-full bg-destructive p-0.5 text-white shadow"
+                                  >
+                                    <X className="size-3" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         {editCourtExistingImages.length + editCourtImages.length < 5 && (
                           <div className="flex items-center gap-2 mt-1">
-                            <label className="flex-1 cursor-pointer bg-muted/50 border border-dashed border-border rounded-md px-2 py-1.5 text-[10px] text-center hover:bg-muted text-muted-foreground transition">
-                              <ImageIcon className="size-3 inline mr-1" />
+                            <label className="flex-1 cursor-pointer bg-muted/50 border border-dashed border-border rounded-md px-2 py-2 text-[10px] font-bold text-center hover:bg-muted text-muted-foreground transition">
+                              <ImageIcon className="size-3.5 inline mr-1 text-primary" />
                               إضافة صور للملعب (متاح{" "}
                               {5 - (editCourtExistingImages.length + editCourtImages.length)} صور)
                               <input
@@ -403,29 +560,6 @@ export function ManageTab({ s }: { s: AdminSetupState }) {
                                 onChange={handleEditCourtFilesChange}
                               />
                             </label>
-                          </div>
-                        )}
-
-                        {/* عرض أسماء الصور الجديدة المختارة */}
-                        {editCourtImages.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 pt-1">
-                            {editCourtImages.map((file, idx) => (
-                              <div
-                                key={idx}
-                                className="flex items-center gap-1 rounded bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary"
-                              >
-                                <span className="max-w-[110px] truncate">{file.name}</span>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setEditCourtImages(editCourtImages.filter((_, i) => i !== idx))
-                                  }
-                                  className="text-destructive hover:bg-destructive/10 rounded"
-                                >
-                                  <X className="size-3" />
-                                </button>
-                              </div>
-                            ))}
                           </div>
                         )}
 
@@ -446,13 +580,38 @@ export function ManageTab({ s }: { s: AdminSetupState }) {
                       </div>
                     ) : (
                       <>
+                        {courtImagesList[0] && (
+                          <div className="relative mb-2.5 h-28 w-full overflow-hidden rounded-lg bg-muted border border-border/50">
+                            <img
+                              src={courtImagesList[0]}
+                              alt={court.name}
+                              className="h-full w-full object-cover"
+                            />
+                            {courtImagesList.length > 1 && (
+                              <span className="absolute bottom-1.5 left-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                                +{courtImagesList.length - 1} صور
+                              </span>
+                            )}
+                          </div>
+                        )}
+
                         <div className="flex justify-between items-start">
                           <div className="flex items-center gap-1.5">
                             <span className="font-bold text-sm">{court.name}</span>
-                            {courtImagesCount > 0 && (
+                            {courtImagesList.length > 0 && (
                               <span className="text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded flex items-center gap-1">
-                                <ImageIcon className="size-2.5" /> {courtImagesCount}
+                                <ImageIcon className="size-2.5" /> {courtImagesList.length}
                               </span>
+                            )}
+                            {court.locationUrl && (
+                              <a
+                                href={court.locationUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[10px] font-bold text-primary hover:underline flex items-center gap-0.5"
+                              >
+                                <MapPin className="size-2.5" /> لوكيشن
+                              </a>
                             )}
                           </div>
                           <span

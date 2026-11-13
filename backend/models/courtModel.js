@@ -15,6 +15,11 @@ const courtSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    locationUrl: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     sportType: {
       type: String,
       enum: {
@@ -36,7 +41,6 @@ const courtSchema = new mongoose.Schema(
       },
       default: "active",
     },
-    // +++ التعديل هنا: استبدال السعر الموحد بسعرين للفترات +++
     priceMorning: {
       type: Number,
       required: [true, "يرجى تحديد سعر الحجز الصباحي للملعب"],
@@ -57,7 +61,7 @@ courtSchema.pre(/^find/, function () {
   this.find({ status: { $ne: "inactive" } });
   this.populate({
     path: "venue",
-    select: "name address phone eveningStartTime openTime",
+    select: "name address phone eveningStartTime openTime locationUrl",
   });
 });
 
