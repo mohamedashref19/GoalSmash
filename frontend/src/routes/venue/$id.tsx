@@ -654,7 +654,7 @@ function VenueDetailsPage() {
     setActiveImageIndex((prev) => (prev === galleryImages.length - 1 ? 0 : prev + 1));
   };
 
-  // +++ دوال السحب باللمس يميناً ويساراً (Touch Swipe) +++
+  // +++ دوال السحب باللمس متوافقة مع اتجاه الـ RTL والأزرار +++
   const handleTouchStart = (e: React.TouchEvent) => {
     setTouchEndX(null);
     setTouchStartX(e.targetTouches[0]?.clientX ?? null);
@@ -670,11 +670,11 @@ function VenueDetailsPage() {
     const minSwipeDistance = 40;
 
     if (distance > minSwipeDistance) {
-      // سحب لليسار -> الصورة التالية
-      handleNextImage();
-    } else if (distance < -minSwipeDistance) {
-      // سحب لليمين -> الصورة السابقة
+      // سحب لليسار -> الصورة السابقة
       handlePrevImage();
+    } else if (distance < -minSwipeDistance) {
+      // سحب لليمين -> الصورة التالية
+      handleNextImage();
     }
     setTouchStartX(null);
     setTouchEndX(null);
