@@ -28,7 +28,6 @@ exports.getPlatformOverview = catchAsync(async (req, res, next) => {
   const currentCairoHour = getCairoHour(now);
 
   const logicalToday = new Date(now);
-  // نظرة عامة على المنصة كلها: اليوم المحاسبي بيبدأ من الساعة الافتراضية للمنصة
   if (currentCairoHour < DEFAULT_OPEN_HOUR) {
     logicalToday.setDate(logicalToday.getDate() - 1);
   }
@@ -182,6 +181,8 @@ exports.getVenuesPerformance = catchAsync(async (req, res, next) => {
             name: "$courtDetails.name",
             sportType: "$courtDetails.sportType",
             bookingsCount: "$courtTotalBookings",
+            appBookingsCount: "$courtAppBookings",
+            manualBookingsCount: "$courtManualBookings",
             revenue: "$courtTotalRevenue",
             commissionGenerated: "$courtCommission",
           },
@@ -298,6 +299,9 @@ exports.getAllCustomers = catchAsync(async (req, res, next) => {
   });
 });
 
+// ============================================================================
+// +++ دالة تقفيل اليومية الشاملة (تفصيل الكاش، الحجوزات، العمولات، وسجل العمليات لكل نادي) +++
+// ============================================================================
 exports.getDailyClosing = catchAsync(async (req, res, next) => {
   const { date, venue } = req.query;
 
@@ -306,7 +310,7 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
     return next(new AppError("صيغة التاريخ غير صحيحة", 400));
   }
 
-  let openHour = DEFAULT_OPEN_HOUR; // لو بنستعلم عن كل الأندية مع بعض
+  let openHour = DEFAULT_OPEN_HOUR;
   let venueMatch = {};
 
   if (venue && venue !== "all") {
@@ -314,12 +318,11 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
       return next(new AppError("معرف النادي غير صالح", 400));
     venueMatch = { "bookingDetails.venue": new mongoose.Types.ObjectId(venue) };
 
-    // +++ ميعاد فتح النادي هو بداية اليوم المحاسبي +++
     const venueDoc = await Venue.findById(venue).select("openTime");
     if (venueDoc) openHour = parseOpenHour(venueDoc.openTime);
   }
 
-  // +++ اليوم المحاسبي: من ميعاد الفتح لحد قبله بملي ثانية في اليوم التالي +++
+  // اليوم المحاسبي: من ميعاد الفتح لحد قبله بملي ثانية في اليوم التالي
   const startOfDay = new Date(targetDate);
   startOfDay.setHours(openHour, 0, 0, 0);
 
@@ -350,7 +353,7 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
     { $unwind: "$bookingDetails" },
     {
       $match: {
-        "bookingDetails.status": { $nin: ["cancelled", "expired"] },
+        "bookingDetails.status": { $nin: ["cancelled", "expired", "blocked"] },
       },
     },
   ];
@@ -359,41 +362,159 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
 
   pipeline.push(
     {
+      $lookup: {
+        from: "users",
+        localField: "bookingDetails.user",
+        foreignField: "_id",
+        as: "userDetails",
+      },
+    },
+    { $unwind: { path: "$userDetails", preserveNullAndEmptyArrays: true } },
+    {
+      $addFields: {
+        isRestCashPayment: {
+          $regexMatch: {
+            input: { $ifNull: ["$paymentReference", ""] },
+            regex: /^(CASH-REST-|QR-CASH-)/,
+          },
+        },
+        actualAmount: {
+          $cond: [
+            { $eq: ["$method", "cash"] },
+            { $ifNull: ["$amountReceived", "$baseAmount"] },
+            "$baseAmount",
+          ],
+        },
+      },
+    },
+    {
       $group: {
         _id: "$bookingDetails._id",
         court: { $first: "$bookingDetails.court" },
         venue: { $first: "$bookingDetails.venue" },
+        bookingType: { $first: "$bookingDetails.bookingType" },
         startTime: { $first: "$bookingDetails.startTime" },
         endTime: { $first: "$bookingDetails.endTime" },
         totalPrice: { $first: "$bookingDetails.totalPrice" },
+        currentDeposit: { $first: "$bookingDetails.deposit" },
         savedCommission: { $first: "$bookingDetails.commission" },
-        // إجمالي ما دخل أونلاين اليوم لهذا الحجز
-        bookingOnlineRevenue: {
-          $sum: { $cond: [{ $ne: ["$method", "cash"] }, "$baseAmount", 0] },
+        customerName: {
+          $first: {
+            $ifNull: [
+              "$bookingDetails.guestData.name",
+              "$userDetails.name",
+              "عميل",
+            ],
+          },
         },
-        // إجمالي ما دخل كاش اليوم لهذا الحجز (سواء حجز يدوي أو تكملة مبلغ)
-        bookingCashRevenue: {
+        customerPhone: {
+          $first: {
+            $ifNull: [
+              "$bookingDetails.guestData.phone",
+              "$userDetails.phone",
+              "بدون رقم",
+            ],
+          },
+        },
+        bookingOnlineRevenue: {
+          $sum: { $cond: [{ $ne: ["$method", "cash"] }, "$actualAmount", 0] },
+        },
+        bookingManualCashRevenue: {
           $sum: {
             $cond: [
-              { $eq: ["$method", "cash"] },
-              { $ifNull: ["$amountReceived", "$baseAmount"] },
+              {
+                $and: [
+                  { $eq: ["$method", "cash"] },
+                  { $eq: ["$isRestCashPayment", false] },
+                ],
+              },
+              "$actualAmount",
               0,
             ],
           },
         },
-        // هل هذه هي الدفعة الأساسية للحجز (عربون أونلاين أو حجز يدوي جديد) أم مجرد تكملة كاش؟
-        hasInitialPaymentToday: {
-          $max: {
+        bookingRestCashRevenue: {
+          $sum: {
             $cond: [
               {
-                $regexMatch: {
-                  input: { $ifNull: ["$paymentReference", ""] },
-                  regex: /^(CASH-REST-|QR-CASH-)/,
-                },
+                $and: [
+                  { $eq: ["$method", "cash"] },
+                  { $eq: ["$isRestCashPayment", true] },
+                ],
               },
+              "$actualAmount",
               0,
-              1,
             ],
+          },
+        },
+        bookingCashRevenue: {
+          $sum: {
+            $cond: [{ $eq: ["$method", "cash"] }, "$actualAmount", 0],
+          },
+        },
+        onlinePaymentsCount: {
+          $sum: { $cond: [{ $ne: ["$method", "cash"] }, 1, 0] },
+        },
+        manualCashPaymentsCount: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ["$method", "cash"] },
+                  { $eq: ["$isRestCashPayment", false] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+        restCashPaymentsCount: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ["$method", "cash"] },
+                  { $eq: ["$isRestCashPayment", true] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+        cashPaymentsCount: {
+          $sum: { $cond: [{ $eq: ["$method", "cash"] }, 1, 0] },
+        },
+        hasInitialPaymentToday: {
+          $max: { $cond: ["$isRestCashPayment", 0, 1] },
+        },
+        hasRestPaymentToday: {
+          $max: { $cond: ["$isRestCashPayment", 1, 0] },
+        },
+        latestPaymentDate: { $max: "$effectiveDate" },
+        payments: {
+          $push: {
+            _id: "$_id",
+            amount: "$actualAmount",
+            method: "$method",
+            isRestCash: "$isRestCashPayment",
+            typeLabel: {
+              $cond: [
+                { $ne: ["$method", "cash"] },
+                "عربون أونلاين",
+                {
+                  $cond: [
+                    "$isRestCashPayment",
+                    "كاش (باقي الحجز)",
+                    "كاش (حجز يدوي)",
+                  ],
+                },
+              ],
+            },
+            date: "$effectiveDate",
+            reference: "$paymentReference",
+            notes: "$verificationNotes",
           },
         },
       },
@@ -405,6 +526,41 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
         },
         totalBookingRevenue: {
           $add: ["$bookingOnlineRevenue", "$bookingCashRevenue"],
+        },
+        remainingAmount: {
+          $max: [
+            {
+              $subtract: [
+                { $ifNull: ["$totalPrice", 0] },
+                { $ifNull: ["$currentDeposit", 0] },
+              ],
+            },
+            0,
+          ],
+        },
+        isAppBookingToday: {
+          $cond: [
+            {
+              $and: [
+                { $eq: ["$hasInitialPaymentToday", 1] },
+                { $eq: ["$bookingType", "app"] },
+              ],
+            },
+            1,
+            0,
+          ],
+        },
+        isManualBookingToday: {
+          $cond: [
+            {
+              $and: [
+                { $eq: ["$hasInitialPaymentToday", 1] },
+                { $eq: ["$bookingType", "manual"] },
+              ],
+            },
+            1,
+            0,
+          ],
         },
       },
     },
@@ -425,7 +581,7 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
     },
     {
       $addFields: {
-        // العمولة تُخصم مرة واحدة فقط في يوم الدفعة الأولى (يوم تحويل العربون أو إنشاء الحجز اليدوي)
+        // العمولة تُخصم مرة واحدة فقط في يوم الدفعة الأولى
         calculatedCommission: {
           $cond: [
             { $eq: ["$hasInitialPaymentToday", 1] },
@@ -453,16 +609,57 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
       },
     },
     { $unwind: { path: "$venueDetails", preserveNullAndEmptyArrays: true } },
+    { $sort: { latestPaymentDate: -1 } },
     {
       $group: {
         _id: { venue: "$venue", court: "$court" },
         venueName: { $first: "$venueDetails.name" },
         courtName: { $first: "$courtDetails.name" },
         totalOnline: { $sum: "$bookingOnlineRevenue" },
+        totalManualCash: { $sum: "$bookingManualCashRevenue" },
+        totalRestCash: { $sum: "$bookingRestCashRevenue" },
         totalCash: { $sum: "$bookingCashRevenue" },
         totalRevenue: { $sum: "$totalBookingRevenue" },
         totalCommission: { $sum: "$calculatedCommission" },
+        totalRemaining: { $sum: "$remainingAmount" },
+        onlineTransactionsCount: { $sum: "$onlinePaymentsCount" },
+        cashTransactionsCount: { $sum: "$cashPaymentsCount" },
         bookingsCount: { $sum: "$hasInitialPaymentToday" },
+        appBookingsCount: { $sum: "$isAppBookingToday" },
+        manualBookingsCount: { $sum: "$isManualBookingToday" },
+        restCollectionsCount: { $sum: "$hasRestPaymentToday" },
+        courtBookingsDetails: {
+          $push: {
+            _id: "$_id",
+            venueName: "$venueDetails.name",
+            courtName: "$courtDetails.name",
+            customerName: "$customerName",
+            customerPhone: "$customerPhone",
+            bookingType: "$bookingType",
+            bookingTypeLabel: {
+              $cond: [
+                { $eq: ["$bookingType", "manual"] },
+                "حجز يدوي",
+                "حجز تطبيق",
+              ],
+            },
+            startTime: "$startTime",
+            endTime: "$endTime",
+            durationInHours: "$durationInHours",
+            totalPrice: "$totalPrice",
+            totalPaidSoFar: "$currentDeposit",
+            remainingAmount: "$remainingAmount",
+            paidTodayOnline: "$bookingOnlineRevenue",
+            paidTodayManualCash: "$bookingManualCashRevenue",
+            paidTodayRestCash: "$bookingRestCashRevenue",
+            paidTodayTotal: "$totalBookingRevenue",
+            calculatedCommission: "$calculatedCommission",
+            hasInitialPaymentToday: "$hasInitialPaymentToday",
+            hasRestPaymentToday: "$hasRestPaymentToday",
+            latestPaymentDate: "$latestPaymentDate",
+            payments: "$payments",
+          },
+        },
       },
     },
     {
@@ -470,24 +667,39 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
         _id: "$_id.venue",
         venueName: { $first: "$venueName" },
         venueTotalOnline: { $sum: "$totalOnline" },
+        venueTotalManualCash: { $sum: "$totalManualCash" },
+        venueTotalRestCash: { $sum: "$totalRestCash" },
         venueTotalCash: { $sum: "$totalCash" },
         venueTotalRevenue: { $sum: "$totalRevenue" },
         venueTotalCommission: { $sum: "$totalCommission" },
+        venueTotalRemaining: { $sum: "$totalRemaining" },
+        venueOnlineTransactionsCount: { $sum: "$onlineTransactionsCount" },
+        venueCashTransactionsCount: { $sum: "$cashTransactionsCount" },
         venueBookingsCount: { $sum: "$bookingsCount" },
+        venueAppBookingsCount: { $sum: "$appBookingsCount" },
+        venueManualBookingsCount: { $sum: "$manualBookingsCount" },
+        venueRestCollectionsCount: { $sum: "$restCollectionsCount" },
         courts: {
           $push: {
             courtId: "$_id.court",
             courtName: "$courtName",
             totalOnline: "$totalOnline",
+            totalManualCash: "$totalManualCash",
+            totalRestCash: "$totalRestCash",
             totalCash: "$totalCash",
             totalRevenue: "$totalRevenue",
             totalCommission: "$totalCommission",
+            totalRemaining: "$totalRemaining",
             bookingsCount: "$bookingsCount",
+            appBookingsCount: "$appBookingsCount",
+            manualBookingsCount: "$manualBookingsCount",
+            restCollectionsCount: "$restCollectionsCount",
             netAmount: {
               $round: [{ $subtract: ["$totalOnline", "$totalCommission"] }, 2],
             },
           },
         },
+        allCourtBookingsNested: { $push: "$courtBookingsDetails" },
       },
     },
     {
@@ -513,8 +725,17 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
     settlementMap[s.venue.toString()] = s.isSettled;
   });
 
-  dailyClosing.forEach((venue) => {
-    venue.isSettled = settlementMap[venue._id.toString()] || false;
+  dailyClosing.forEach((v) => {
+    v.isSettled = settlementMap[v._id.toString()] || false;
+    // فرد مصفوفة الحجوزات التفصيلية وترتيبها بالأحدث لكل نادي
+    const flatBookings = (v.allCourtBookingsNested || []).flat();
+    flatBookings.sort(
+      (a, b) =>
+        new Date(b.latestPaymentDate).getTime() -
+        new Date(a.latestPaymentDate).getTime(),
+    );
+    v.bookingsDetails = flatBookings;
+    delete v.allCourtBookingsNested;
   });
 
   const platformTotals = dailyClosing.reduce(
@@ -526,15 +747,42 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
         (acc.totalCommission + curr.venueTotalCommission).toFixed(2),
       ),
       totalOnline: Number((acc.totalOnline + curr.venueTotalOnline).toFixed(2)),
+      totalManualCash: Number(
+        (acc.totalManualCash + (curr.venueTotalManualCash || 0)).toFixed(2),
+      ),
+      totalRestCash: Number(
+        (acc.totalRestCash + (curr.venueTotalRestCash || 0)).toFixed(2),
+      ),
       totalCash: Number((acc.totalCash + curr.venueTotalCash).toFixed(2)),
+      totalRemaining: Number(
+        (acc.totalRemaining + (curr.venueTotalRemaining || 0)).toFixed(2),
+      ),
+      onlineTransactionsCount:
+        acc.onlineTransactionsCount + (curr.venueOnlineTransactionsCount || 0),
+      cashTransactionsCount:
+        acc.cashTransactionsCount + (curr.venueCashTransactionsCount || 0),
       totalBookings: acc.totalBookings + curr.venueBookingsCount,
+      appBookingsCount:
+        acc.appBookingsCount + (curr.venueAppBookingsCount || 0),
+      manualBookingsCount:
+        acc.manualBookingsCount + (curr.venueManualBookingsCount || 0),
+      restCollectionsCount:
+        acc.restCollectionsCount + (curr.venueRestCollectionsCount || 0),
     }),
     {
       totalRevenue: 0,
       totalCommission: 0,
       totalOnline: 0,
+      totalManualCash: 0,
+      totalRestCash: 0,
       totalCash: 0,
+      totalRemaining: 0,
+      onlineTransactionsCount: 0,
+      cashTransactionsCount: 0,
       totalBookings: 0,
+      appBookingsCount: 0,
+      manualBookingsCount: 0,
+      restCollectionsCount: 0,
     },
   );
 

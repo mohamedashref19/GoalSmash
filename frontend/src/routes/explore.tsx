@@ -16,10 +16,14 @@ import {
   ChevronLeft,
   ShoppingBag,
   Dumbbell,
+  Building2,
+  Plus,
 } from "lucide-react";
 import { requireRole, RoleGuard } from "../components/RoleGuard";
 
 import { Header } from "@/components/venue/Header";
+import { SuggestVenueModal } from "@/components/venue/SuggestVenueModal";
+import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 // @ts-expect-error - venueApi module type definitions not available
 import { fetchAllVenues } from "@/api/venueApi";
@@ -58,7 +62,6 @@ export const Route = createFileRoute("/explore")({
     meta: [{ title: "اختار ملعبك | Tigi-Hagz" }],
   }),
   beforeLoad: () => requireRole([]),
-  //component: ExplorePage,
   component: () => (
     <RoleGuard allowedRoles={[]}>
       <ExplorePage />
@@ -265,6 +268,7 @@ function ExplorePage() {
   const [activeFilter, setActiveFilter] = useState("all");
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [showSuggestModal, setShowSuggestModal] = useState(false);
 
   useEffect(() => {
     const getVenues = async () => {
@@ -393,15 +397,23 @@ function ExplorePage() {
               <div className="grid place-items-center rounded-2xl border border-dashed p-12 text-center text-muted-foreground">
                 <Search className="h-10 w-10 opacity-20" />
                 <p className="mt-4 font-semibold">مفيش ملاعب بنفس المواصفات دي حالياً</p>
-                <button
-                  onClick={() => {
-                    setSearchQuery("");
-                    setActiveFilter("all");
-                  }}
-                  className="mt-2 font-bold text-primary hover:underline"
-                >
-                  عرض كل الملاعب
-                </button>
+                <div className="mt-4 flex flex-wrap justify-center gap-3">
+                  <button
+                    onClick={() => {
+                      setSearchQuery("");
+                      setActiveFilter("all");
+                    }}
+                    className="rounded-xl border border-border bg-card px-4 py-2 text-xs font-bold text-foreground hover:bg-muted"
+                  >
+                    عرض كل الملاعب
+                  </button>
+                  <button
+                    onClick={() => setShowSuggestModal(true)}
+                    className="gradient-primary flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold text-primary-foreground"
+                  >
+                    <Plus className="size-4" /> رشّح ملعب في منطقتك
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -482,9 +494,36 @@ function ExplorePage() {
                 })}
               </div>
             )}
+
+            {/* كارت أسفل صفحة الملاعب لدعوة اللاعبين وأصحاب الملاعب لإضافة ملاعبهم */}
+            <div className="mt-8 rounded-3xl border border-dashed border-primary/40 bg-primary/5 p-5 sm:p-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-right">
+              <div className="flex flex-col sm:flex-row items-center gap-3.5">
+                <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary/15 text-primary">
+                  <Building2 className="size-6" />
+                </div>
+                <div>
+                  <h3 className="font-display text-base font-extrabold text-foreground">
+                    ملقتش الملعب اللي بتلعب فيه؟ أو عندك ملعب عايز تضيفه؟ 🏟️
+                  </h3>
+                  <p className="mt-1 text-xs font-bold text-muted-foreground">
+                    ابعتلنا اسم الملعب ومنطقته ورقم التليفون وهنضيفه فوراً على Tigi-Hagz
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSuggestModal(true)}
+                className="gradient-primary shrink-0 rounded-2xl px-5 py-3 text-xs sm:text-sm font-extrabold text-primary-foreground shadow-sm transition hover:opacity-95"
+              >
+                + اقترح أو ضيف ملعب
+              </button>
+            </div>
           </>
         )}
       </main>
+
+      <SuggestVenueModal isOpen={showSuggestModal} onClose={() => setShowSuggestModal(false)} />
+      <Toaster position="top-center" />
     </div>
   );
 }

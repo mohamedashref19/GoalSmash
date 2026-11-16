@@ -24,8 +24,10 @@ import {
   Pencil,
   ReceiptText,
   Trophy,
+  Building2,
 } from "lucide-react";
 import { Header } from "@/components/venue/Header";
+import { SuggestVenueModal } from "@/components/venue/SuggestVenueModal";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -52,9 +54,6 @@ const roundedField =
 const roundedPasswordField =
   "w-full rounded-2xl border border-border bg-background/60 py-3 pr-10 pl-10 text-sm font-bold text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20";
 
-// =========================================
-// +++ مكونات القوائم الجانبية +++
-// =========================================
 function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
     <div className={cn("lg:hidden", open ? "" : "pointer-events-none")} dir="rtl">
@@ -196,9 +195,6 @@ const TiktokIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
-// =========================================
-// +++ مكون التحذير لحذف الحساب +++
-// =========================================
 function DeleteAccountModal({
   isOpen,
   isDeleting,
@@ -264,7 +260,6 @@ function ProfilePage() {
   const [roleLabel, setRoleLabel] = useState("");
   const [rawRole, setRawRole] = useState("");
 
-  // حالة فتح وإغلاق وضع التعديل عند الضغط على علامة القلم
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -278,6 +273,9 @@ function ProfilePage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // +++ حالة نافذة اقتراح / إضافة ملعب +++
+  const [showSuggestModal, setShowSuggestModal] = useState(false);
+
   useEffect(() => {
     const userData = localStorage.getItem("userData") || sessionStorage.getItem("userData");
     if (userData) {
@@ -288,7 +286,6 @@ function ProfilePage() {
         setPhone(user.phone || "");
         setEmail(user.email || "");
         setRawRole(user.role || "customer");
-        // +++ تحويل كلمة "عميل" إلى "لاعب" +++
         setRoleLabel(
           user.role === "customer"
             ? "لاعب"
@@ -304,7 +301,6 @@ function ProfilePage() {
     }
   }, [navigate]);
 
-  // دالة حفظ موحدة تحفظ الاسم و/أو كلمة المرور عند الضغط على "حفظ التعديلات"
   const handleSaveAll = async (e: FormEvent) => {
     e.preventDefault();
 
@@ -405,12 +401,8 @@ function ProfilePage() {
       <Header title="الملف الشخصي" onMenu={() => setIsMobileMenuOpen(true)} />
 
       <main className="mx-auto w-full max-w-md flex-1 p-4 sm:p-6 pb-24 flex flex-col justify-center">
-        {/* ======================================================= */}
-        {/* 1. وضع العرض الأساسي (الاسم + الرقم + القلم + الأزرار) */}
-        {/* ======================================================= */}
         {!isEditing ? (
           <div className="card-surface relative rounded-3xl border border-border/80 p-6 sm:p-8 shadow-xl animate-in fade-in zoom-in-95">
-            {/* زر القلم في الزاوية لفتح التعديل والبيانات الكاملة وتسجيل الخروج */}
             <button
               type="button"
               onClick={() => setIsEditing(true)}
@@ -420,7 +412,6 @@ function ProfilePage() {
               <Pencil className="size-5" />
             </button>
 
-            {/* الصورة الرمزية ومعلومات المستخدم */}
             <div className="flex flex-col items-center text-center mt-2">
               <div className="grid h-20 w-20 place-items-center rounded-full border border-primary/30 bg-primary/10 text-primary shadow-inner">
                 <User className="size-9" />
@@ -439,7 +430,6 @@ function ProfilePage() {
               </span>
             </div>
 
-            {/* أزرار التنقل الرئيسية داخل الكارت */}
             <div className="mt-8 flex flex-col gap-3">
               {isAdmin && (
                 <Link
@@ -479,7 +469,24 @@ function ProfilePage() {
                     <ReceiptText className="size-5 text-muted-foreground" />
                   </Link>
 
-                  {/* +++ زر إحصائيات اللاعب (معطل حالياً + بادج قريباً) +++ */}
+                  {/* +++ زر اقتراح أو إضافة ملعب جديد +++ */}
+                  <button
+                    type="button"
+                    onClick={() => setShowSuggestModal(true)}
+                    className="flex items-center justify-between rounded-2xl border border-primary/30 bg-primary/5 px-5 py-3 text-right transition hover:bg-primary/10"
+                  >
+                    <div className="flex flex-col">
+                      <span className="text-sm font-extrabold text-primary">
+                        عندك ملعب أو بترشح ملعب؟ 🏟️
+                      </span>
+                      <span className="text-[10px] font-bold text-muted-foreground mt-0.5">
+                        ابعتلنا اسمه ورقمه وهنضيفه في الأبليكشن
+                      </span>
+                    </div>
+                    <Building2 className="size-5 text-primary shrink-0" />
+                  </button>
+
+                  {/* زر إحصائيات اللاعب (معطل حالياً + بادج قريباً) */}
                   <div className="relative mt-1">
                     <span className="absolute -top-2.5 left-4 z-10 rounded-full bg-warning px-2.5 py-0.5 text-[10px] font-black text-warning-foreground shadow-sm border border-warning/40">
                       قريباً 🔥
@@ -505,11 +512,7 @@ function ProfilePage() {
             </div>
           </div>
         ) : (
-          /* ======================================================= */
-          /* 2. وضع التعديل الكامل (عند الضغط على علامة القلم)        */
-          /* ======================================================= */
           <div className="card-surface relative rounded-3xl border border-border/80 p-6 sm:p-7 shadow-xl animate-in fade-in zoom-in-95">
-            {/* زر الإغلاق (X) للعودة للكارت المصغر */}
             <button
               type="button"
               onClick={() => {
@@ -573,7 +576,6 @@ function ProfilePage() {
                 />
               </div>
 
-              {/* قسم تغيير كلمة المرور */}
               <div className="border-t border-border pt-4 mt-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-extrabold text-primary">تغيير كلمة المرور</h3>
@@ -651,7 +653,6 @@ function ProfilePage() {
               </button>
             </form>
 
-            {/* خيارات الخصوصية وتسجيل الخروج وحذف الحساب داخل نافذة التعديل فقط */}
             <div className="border-t border-border mt-6 pt-4 space-y-2.5">
               <Link
                 to="/privacy-policy"
@@ -683,7 +684,6 @@ function ProfilePage() {
           </div>
         )}
 
-        {/* قسم تواصل مع دعم الأبليكشن */}
         <div className="card-surface mt-5 rounded-3xl p-5 space-y-3 border border-border/60">
           <h3 className="flex items-center gap-2 font-display text-sm font-extrabold">
             <MessageCircle className="h-4 w-4 text-primary" /> تواصل مع دعم الابليكشن
@@ -728,6 +728,8 @@ function ProfilePage() {
           </div>
         </div>
       </main>
+
+      <SuggestVenueModal isOpen={showSuggestModal} onClose={() => setShowSuggestModal(false)} />
 
       <DeleteAccountModal
         isOpen={showDeleteModal}

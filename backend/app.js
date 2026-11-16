@@ -23,6 +23,7 @@ const notificationRouter = require("./routes/notificationRoutes");
 const paymentRouter = require("./routes/paymentRoutes");
 const adminRouter = require("./routes/adminRoutes");
 const reviewRoutes = require("./routes/reviewRoutes");
+const venueRequestRouter = require("./routes/venueRequestRoutes");
 
 const app = express();
 
@@ -153,6 +154,7 @@ app.use("/api/v1/notifications", notificationRouter);
 app.use("/api/v1/payments", paymentRouter);
 app.use("/api/v1/admin", adminRouter);
 app.use("/api/v1/review", reviewRoutes);
+app.use("/api/v1/venue-requests", venueRequestRouter);
 
 // Undefined Routes
 app.all(/(.*)/, (req, res, next) => {

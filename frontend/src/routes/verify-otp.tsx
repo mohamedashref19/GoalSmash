@@ -6,8 +6,7 @@ import {
   type KeyboardEvent,
   type ClipboardEvent,
 } from "react";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { ShieldCheck, ArrowRight } from "lucide-react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 // @ts-expect-error: authApi is a JavaScript module without TypeScript declarations
@@ -30,7 +29,6 @@ function VerifyOtpPage() {
   const [email, setEmail] = useState("");
   const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
 
-  // سحب الإيميل من المتصفح أول ما الصفحة تفتح
   useEffect(() => {
     const savedEmail = sessionStorage.getItem("verifyEmail");
     if (!savedEmail) {
@@ -75,10 +73,8 @@ function VerifyOtpPage() {
       const isResetFlow = sessionStorage.getItem("isResetFlow");
 
       if (isResetFlow) {
-        // لو المستخدم جاي من نسيت كلمة السر، نبعت كود الاسترجاع تاني
         await forgetPassword(email);
       } else {
-        // لو المستخدم بيعمل حساب جديد، نبعت كود التفعيل
         await resendUserOTP(email);
       }
 
@@ -104,15 +100,13 @@ function VerifyOtpPage() {
       const isResetFlow = sessionStorage.getItem("isResetFlow");
 
       if (isResetFlow) {
-        // مسار استرجاع كلمة المرور: نحفظ الكود في المتصفح وننتقل لصفحة كتابة الباسورد الجديد
         sessionStorage.setItem("resetOTP", otpCode);
         toast.success("تم تأكيد الكود، يرجى إدخال كلمة المرور الجديدة");
         navigate({ to: "/reset-password" });
         setLoading(false);
-        return; // بنوقف تنفيذ الدالة هنا عشان ميكلمش الـ API
+        return;
       }
 
-      // مسار إنشاء حساب جديد: نكلم الباك إند عشان نفعل الحساب ونعمل Login
       const response = await verifyUserOTP(email, otpCode);
 
       localStorage.setItem("token", response.token);
@@ -148,9 +142,14 @@ function VerifyOtpPage() {
 
       <div className="relative z-10 w-full max-w-md">
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="gradient-primary grid h-14 w-14 place-items-center rounded-2xl text-primary-foreground shadow-[var(--shadow-soft)]">
-            <ShieldCheck className="h-7 w-7" />
-          </div>
+          <img
+            src="/logo.png"
+            onError={(e) => {
+              e.currentTarget.src = "https://mla3balexandria-api.online/assets/logo.png";
+            }}
+            alt="Tigi-Hagz"
+            className="h-16 w-16 rounded-2xl object-contain shadow-[var(--shadow-soft)]"
+          />
           <h1 className="mt-4 font-display text-2xl font-extrabold">التحقق من الرمز</h1>
           <p className="mt-1 text-sm text-muted-foreground">أدخل الرمز المرسل إلى {email}</p>
         </div>

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Trophy, Lock, Eye, EyeOff } from "lucide-react";
+import { Lock, Eye, EyeOff } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 // @ts-expect-error: authApi is a JavaScript module without TypeScript declarations
@@ -36,11 +36,9 @@ function ResetPasswordPage() {
 
     setLoading(true);
     try {
-      // سحب الإيميل والكود من المتصفح
       const email = sessionStorage.getItem("verifyEmail");
       const otp = sessionStorage.getItem("resetOTP");
 
-      // إرسال البيانات كاملة للباك إند
       await resetUserPassword({
         email,
         otp,
@@ -48,7 +46,6 @@ function ResetPasswordPage() {
         passwordConfirm: confirm,
       });
 
-      // تنظيف المتصفح بعد النجاح
       sessionStorage.removeItem("verifyEmail");
       sessionStorage.removeItem("isResetFlow");
       sessionStorage.removeItem("resetOTP");
@@ -82,9 +79,14 @@ function ResetPasswordPage() {
 
       <div className="relative z-10 w-full max-w-md">
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="gradient-primary grid h-14 w-14 place-items-center rounded-2xl text-primary-foreground shadow-[var(--shadow-soft)]">
-            <Trophy className="h-7 w-7" />
-          </div>
+          <img
+            src="/logo.png"
+            onError={(e) => {
+              e.currentTarget.src = "https://mla3balexandria-api.online/assets/logo.png";
+            }}
+            alt="Tigi-Hagz"
+            className="h-16 w-16 rounded-2xl object-contain shadow-[var(--shadow-soft)]"
+          />
           <h1 className="mt-4 font-display text-2xl font-extrabold">إعادة تعيين كلمة المرور</h1>
           <p className="mt-1 text-sm text-muted-foreground">اختر كلمة مرور جديدة قوية لحسابك</p>
         </div>

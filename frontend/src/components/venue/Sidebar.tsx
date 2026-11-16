@@ -2,7 +2,6 @@ import {
   LayoutDashboard,
   CalendarDays,
   Settings,
-  Trophy,
   X,
   Wallet,
   FileText,
@@ -36,9 +35,14 @@ export function SidebarContent({ activeView, onNavigate, onClose }: Props) {
     <div className="flex h-full flex-col gap-6 bg-card p-5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="gradient-primary grid h-11 w-11 shrink-0 place-items-center rounded-2xl text-primary-foreground">
-            <Trophy className="h-5 w-5" />
-          </div>
+          <img
+            src="/logo.png"
+            onError={(e) => {
+              e.currentTarget.src = "https://mla3balexandria-api.online/assets/logo.png";
+            }}
+            alt="Tigi-Hagz"
+            className="h-11 w-11 shrink-0 rounded-2xl object-contain shadow-sm"
+          />
           <div className="min-w-0">
             <p className="truncate font-display text-base font-extrabold">Tigi-Hagz</p>
             <p className="truncate text-xs text-muted-foreground">لوحة إدارة الملعب</p>
@@ -97,12 +101,6 @@ export function MobileSidebar({ open, ...props }: Props & { open: boolean; onClo
         className={cn(
           "fixed inset-0 z-40 bg-foreground/40 backdrop-blur-sm transition-opacity duration-300",
           open ? "visible opacity-100" : "invisible opacity-0",
-        )}
-      />
-      <div
-        className={cn(
-          "fixed inset-y-0 right-0 z-50 w-72 max-w-[85vw] shadow-2xl transition-transform duration-300 ease-out",
-          open ? "visible translate-x-0" : "invisible translate-x-full",
         )}
       />
       <div

@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
-import { Menu, Bell, LogIn, LogOut, CalendarDays, CheckCheck, Clock } from "lucide-react";
+import { Menu, Bell, LogIn, CalendarDays, CheckCheck, Clock } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { LiveClock } from "@/components/venue/LiveClock";
-// @ts-expect-error authApi is untyped module
-import { logoutUser } from "@/api/authApi";
 // @ts-expect-error apiClient is untyped
 import apiClient from "@/api/axiosConfig";
 import { toast } from "sonner";
@@ -11,6 +9,7 @@ import { io, Socket } from "socket.io-client";
 import { cn } from "@/lib/utils";
 // @ts-expect-error BACKEND_URL is untyped
 import { BACKEND_URL } from "@/api/axiosConfig";
+
 interface UserData {
   id?: string;
   _id?: string;
@@ -46,14 +45,12 @@ export function Header({ title, onMenu }: { title: string; onMenu: () => void })
 
         const userId = parsedUser._id || parsedUser.id;
 
-        // 1. جلب الإشعارات القديمة من الداتا بيز
         const fetchOldNotifications = async () => {
           try {
             setLoadingNotifs(true);
-            const res = await apiClient.get("/notifications"); // طلب الإشعارات من الباك إند
+            const res = await apiClient.get("/notifications");
             setNotifications(res.data?.data?.notifications || []);
 
-            // لو الباك إند رجع إن فيه إشعارات مش مقروءة، ننوّر الجرس
             if (res.data?.unreadCount > 0) {
               setHasNewNotification(true);
             }
@@ -68,9 +65,6 @@ export function Header({ title, onMenu }: { title: string; onMenu: () => void })
           fetchOldNotifications();
         }
 
-        // 2. الاتصال بالسوكيت للإشعارات اللحظية الجديدة
-        // التوكن عشان السيرفر يدخّل الاتصال في غرفة المستخدم ويبعتله إشعاراته هو بس
-        // (دالة: بتتقرأ تاني عند كل إعادة اتصال)
         socket = io(BACKEND_URL, {
           auth: (cb) =>
             cb({ token: localStorage.getItem("token") || sessionStorage.getItem("token") }),
@@ -81,7 +75,6 @@ export function Header({ title, onMenu }: { title: string; onMenu: () => void })
               description: notification.message,
               duration: 6000,
             });
-            // إضافة الإشعار الجديد في أول القائمة
             setNotifications((prev) => [notification, ...prev]);
             setHasNewNotification(true);
           });
@@ -98,16 +91,14 @@ export function Header({ title, onMenu }: { title: string; onMenu: () => void })
     };
   }, []);
 
-  // دالة فتح القائمة وتحديد الإشعارات كمقروءة
   const handleToggleNotifications = async () => {
     const willOpen = !showNotifications;
     setShowNotifications(willOpen);
 
-    // لو فتحنا القائمة والجرس منوّر، نطفي الجرس ونكلم الباك إند
     if (willOpen && hasNewNotification) {
       setHasNewNotification(false);
       try {
-        await apiClient.patch("/notifications/read-all"); // نبلغ الباك إند إننا قريناهم
+        await apiClient.patch("/notifications/read-all");
         setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
       } catch (err) {
         console.error("خطأ في تحديث حالة الإشعارات", err);
@@ -127,6 +118,17 @@ export function Header({ title, onMenu }: { title: string; onMenu: () => void })
           >
             <Menu className="h-4 w-4" />
           </button>
+
+          <Link to={homeLink} className="shrink-0">
+            <img
+              src="/logo.png"
+              onError={(e) => {
+                e.currentTarget.src = "https://mla3balexandria-api.online/assets/logo.png";
+              }}
+              alt="Tigi-Hagz"
+              className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl object-contain"
+            />
+          </Link>
 
           <div className="min-w-0 flex-1">
             <Link

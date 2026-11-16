@@ -10,16 +10,19 @@ import {
   deleteCourtBlockSeries,
   deleteEmployeeAccount,
   deletePaymentAccount,
+  deleteVenueRequest,
   fetchAllCustomers,
   fetchAllEmployees,
   fetchAllOwners,
   fetchAllVenues,
   fetchCourtBlocks,
   fetchPaymentAccounts,
+  fetchVenueRequests,
   togglePaymentAccount,
   updateCourtByAdmin,
   updatePaymentAccount,
   updateVenueByAdmin,
+  updateVenueRequestStatus,
   // @ts-expect-error: API lacks TypeScript definitions
 } from "@/api/adminApi";
 // @ts-expect-error: API lacks TypeScript definitions
@@ -35,6 +38,7 @@ import type {
   PaymentAccount,
   TabKey,
   Venue,
+  VenueRequest,
 } from "./types";
 import { calculateHours, getScheduleError } from "./helpers";
 
@@ -47,6 +51,7 @@ export function useAdminSetup() {
   const [customersList, setCustomersList] = useState<Customer[]>([]);
   const [accountsList, setAccountsList] = useState<PaymentAccount[]>([]);
   const [blocksList, setBlocksList] = useState<CourtBlock[]>([]);
+  const [venueRequestsList, setVenueRequestsList] = useState<VenueRequest[]>([]);
   const [expandedBlocks, setExpandedBlocks] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -196,6 +201,17 @@ export function useAdminSetup() {
     }
   };
 
+  const loadVenueRequests = async () => {
+    setLoading(true);
+    try {
+      setVenueRequestsList(await fetchVenueRequests());
+    } catch (err: unknown) {
+      toast.error(err as string);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (
       (activeTab === "venue" || activeTab === "manage" || activeTab === "block") &&
@@ -224,6 +240,7 @@ export function useAdminSetup() {
         .finally(() => setLoading(false));
     }
     if (activeTab === "accounts" && accountsList.length === 0) loadAccounts();
+    if (activeTab === "requests" && venueRequestsList.length === 0) loadVenueRequests();
   }, [
     activeTab,
     customersList.length,
@@ -232,6 +249,7 @@ export function useAdminSetup() {
     venuesList.length,
     accountsList.length,
     blocksList.length,
+    venueRequestsList.length,
   ]);
 
   useEffect(() => {
@@ -646,6 +664,29 @@ export function useAdminSetup() {
     }
   };
 
+  const handleUpdateVenueRequestStatus = async (id: string, status: string) => {
+    try {
+      await updateVenueRequestStatus(id, status);
+      toast.success("تم تحديث حالة الطلب");
+      loadVenueRequests();
+    } catch (err: unknown) {
+      toast.error(err as string);
+    }
+  };
+
+  const handleDeleteVenueRequest = async (id: string) => {
+    const isConfirmed = await confirm("هل أنت متأكد من حذف هذا الطلب؟");
+    if (isConfirmed) {
+      try {
+        await deleteVenueRequest(id);
+        toast.success("تم حذف الطلب بنجاح");
+        loadVenueRequests();
+      } catch (err: unknown) {
+        toast.error(err as string);
+      }
+    }
+  };
+
   return {
     activeTab,
     setActiveTab,
@@ -661,6 +702,8 @@ export function useAdminSetup() {
     setAccountsList,
     blocksList,
     setBlocksList,
+    venueRequestsList,
+    setVenueRequestsList,
     expandedBlocks,
     setExpandedBlocks,
     loading,
@@ -710,6 +753,7 @@ export function useAdminSetup() {
     loadEmployees,
     loadAccounts,
     loadBlocks,
+    loadVenueRequests,
     handleCreateOwner,
     handleCreateEmployee,
     handleDeleteEmployee,
@@ -727,6 +771,8 @@ export function useAdminSetup() {
     startEditCourt,
     saveEditCourt,
     handleBlockSlots,
+    handleUpdateVenueRequestStatus,
+    handleDeleteVenueRequest,
   };
 }
 

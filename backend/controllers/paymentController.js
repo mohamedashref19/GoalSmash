@@ -73,8 +73,6 @@ const parsePaymentSMS = (sender, message) => {
 };
 
 // 🚀 1. الـ Webhook Controller (يعمل آلياً - Production Ready)
-// مقارنة الـ secret بزمن ثابت. لو SMS_WEBHOOK_SECRET مش متضبط نرفض كل الطلبات
-// (قبل كده الهيدر "Bearer undefined" كان بيعدّي لو المتغير ناقص من .env)
 const isValidWebhookSecret = (authHeader) => {
   const secret = process.env.SMS_WEBHOOK_SECRET;
   if (!secret || typeof authHeader !== "string") return false;
@@ -87,7 +85,6 @@ const isValidWebhookSecret = (authHeader) => {
 };
 
 exports.receivePaymentSms = catchAsync(async (req, res, next) => {
-  // الـ auth الأول، قبل أي قراءة من الـ body
   if (!isValidWebhookSecret(req.headers.authorization)) {
     return next(new AppError("Unauthorized - غير مصرح لك", 401));
   }
@@ -111,9 +108,6 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
   }
   const safeSender = typeof sender === "string" ? sender.slice(0, 100) : "";
 
-  // مرسلين معتمدين (اختياري): SMS_ALLOWED_SENDERS=InstaPay,VF-Cash
-  // بيمنع أي حد يبعت SMS عادية للموبايل بنص شبه تحويل ويأكد حجز من غير ما يدفع.
-  // لو المتغير فاضي مفيش فلترة (عشان تعرف أسماء المرسلين الحقيقية من اللوج الأول).
   const allowedSenders = (process.env.SMS_ALLOWED_SENDERS || "")
     .split(",")
     .map((s) => s.trim().toLowerCase())
@@ -129,7 +123,6 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
       .json({ status: "ignored", message: "مرسل غير معتمد" });
   }
 
-  // تاريخ استلام غير صالح كان بيكسر إنشاء السجل (Invalid Date)
   const receivedAtDate =
     receivedAt && !Number.isNaN(new Date(receivedAt).getTime())
       ? new Date(receivedAt)
@@ -170,7 +163,6 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
     }
   }
 
-  // +++ التعديل الأهم: التحديث الذري (Atomic Update) في خطوة واحدة +++
   let payment;
   try {
     payment = await Payment.findOneAndUpdate(
@@ -185,7 +177,6 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
           amountReceived: parsedPayment.amount,
           senderPhone: parsedPayment.senderPhone,
           senderName: parsedPayment.senderName,
-          // لو اتحط null على حقل unique فالـ SMS التاني من غير رقم معاملة بيفشل بـ E11000
           ...(parsedPayment.transactionId
             ? { transactionId: parsedPayment.transactionId }
             : {}),
@@ -198,12 +189,9 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
           verificationNotes: "تم التأكيد آلياً عبر رسائل البنك",
         },
       },
-      // sort: لو أكتر من دفعة بنفس المبلغ، الأقدم هي اللي تتأكد (FIFO)
       { returnDocument: "after", sort: { createdAt: 1 } },
     );
   } catch (err) {
-    // نفس الرسالة وصلت مرتين في نفس اللحظة: التانية بتفشل بـ unique index، ونرد 200
-    // عشان Macrodroid ما يعيدش المحاولة
     if (err && err.code === 11000) {
       return res
         .status(200)
@@ -211,7 +199,7 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
     }
     throw err;
   }
-  // +++ تحديث إحصائيات حساب الدفع الفعلي (إضافة المبلغ وتاريخ آخر استلام) +++
+
   if (payment && payment.paymentAccount) {
     await PaymentAccount.findByIdAndUpdate(payment.paymentAccount, {
       lastTransferReceivedAt: new Date(),
@@ -219,7 +207,6 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
     });
   }
 
-  // لو ملقاش حجز يطابق الفلوس دي، هيسجلها كفلوس معلقة (Unmatched)
   if (!payment) {
     await UnmatchedPayment.create({
       sender: safeSender,
@@ -235,7 +222,6 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
       .json({ status: "success", message: "تم تسجيل المعاملة كغير مطابقة" });
   }
 
-  // تأكيد الحجز فقط لو لسه منتظر الدفع (حجز اتلغى/انتهى ماينفعش يتحيّا بسبب SMS)
   const updatedBooking = await Booking.findOneAndUpdate(
     { _id: payment.booking, status: "pending_payment" },
     {
@@ -247,7 +233,6 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
   ).populate([{ path: "user", select: "name email phone" }, "court", "venue"]);
 
   if (!updatedBooking) {
-    // الفلوس وصلت لكن الحجز مش منتظر دفع: نسجلها للأدمن بدل ما تضيع
     await UnmatchedPayment.create({
       sender: safeSender,
       message: message,
@@ -274,15 +259,12 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
         { hour: "2-digit", minute: "2-digit" },
       );
 
-      // إشعار العميل
       if (updatedBooking.user) {
-        // +++ ضمان استخراج معرف المستخدم كنص صحيح +++
         const userId =
           typeof updatedBooking.user === "object" && updatedBooking.user._id
             ? updatedBooking.user._id.toString()
             : updatedBooking.user.toString();
 
-        // +++ تم التعديل: إزالة كلمة 'آلياً' لتوحيد الرسالة وتجنب كشف طريقة المعالجة +++
         const customerMsg = `تم تأكيد الدفع وتأكيد حجزك في ${updatedBooking.venue.name} يوم ${bDate} الساعة ${bTime}.`;
         const customerNotif = await Notification.create({
           recipient: userId,
@@ -294,8 +276,6 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
 
         emitToUser(io, userId, `notification-${userId}`, customerNotif);
 
-        // +++ هذا هو سطر إغلاق الشاشة الآلي +++
-        // بدون بيانات العميل (الاسم/الإيميل/التليفون): الحدث بيروح لغرفة العميل بس، ومنها نقلل البيانات للأدنى
         const { user: _omitUser, ...bookingForSocket } =
           updatedBooking.toObject();
         emitToUser(io, userId, `booking-confirmed-${userId}`, {
@@ -303,7 +283,7 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
           paymentStatus: "paid",
           status: "confirmed",
         });
-        // +++++++++++++++++++++++++++++++++++++++
+
         if (updatedBooking.user && updatedBooking.user.email) {
           try {
             const Email = require("../utils/email");
@@ -311,7 +291,6 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
               updatedBooking.user,
               process.env.FRONTEND_URL,
             );
-            // من غير await: الرد ما يستناش الـ SMTP (كان بياخد ثواني)
             customerEmail
               .sendBookingTicket(updatedBooking)
               .catch((emailErr) => {
@@ -323,7 +302,6 @@ exports.receivePaymentSms = catchAsync(async (req, res, next) => {
         }
       }
 
-      // إشعار المالك
       if (updatedBooking.venue.owner) {
         const ownerMsg = `تأكيد آلي: حجز جديد (${payment.method}) في ${updatedBooking.court.name} يوم ${bDate} الساعة ${bTime}.`;
         const ownerNotif = await Notification.create({
@@ -423,28 +401,22 @@ exports.getAllPayments = catchAsync(async (req, res, next) => {
       ],
     };
 
-    // 1. نبحث عن كل عمليات الدفع اللي تمت في اليوم ده (بناءً على verifiedAt ثم createdAt)
     const paymentsInDate = await Payment.find(dateCondition).select("booking");
-
-    // 2. نستخرج الـ IDs الخاصة بالحجوزات دي
     const bookingIds = paymentsInDate.map((p) => p.booking).filter(Boolean);
 
     if (bookingIds.length > 0) {
-      // 3. لو في حجوزات، نرجع كل الدفعات الخاصة بيها أو الدفعات المستقلة اللي تمت النهاردة
       filter.$or = [{ booking: { $in: bookingIds } }, ...dateCondition.$or];
     } else {
       filter.$or = dateCondition.$or;
     }
   }
 
-  // +++ التعديل الهندسي: فلترة الملاعب برمجياً في الداتابيز بدلاً من الجافاسكربت +++
   let venueIdsToFilter = [];
 
   if (req.user && req.user.role === "owner") {
     const myVenues = await Venue.find({ owner: req.user.id }).select("_id");
     venueIdsToFilter = myVenues.map((v) => v._id.toString());
 
-    // إذا كان المالك يبحث عن ملعب معين، نتأكد أولاً أنه يملكه
     if (req.query.venue) {
       if (!venueIdsToFilter.includes(req.query.venue)) {
         return next(new AppError("غير مصرح لك بعرض مدفوعات هذا الملعب", 403));
@@ -452,28 +424,23 @@ exports.getAllPayments = catchAsync(async (req, res, next) => {
       venueIdsToFilter = [req.query.venue];
     }
   } else if (req.user && req.user.role === "employee") {
-    // الموظف يشوف مدفوعات ناديه بس
     if (!req.user.venue) {
       return next(new AppError("حسابك غير مرتبط بنادي، تواصل مع الإدارة", 403));
     }
     venueIdsToFilter = [req.user.venue.toString()];
   } else if (req.query.venue) {
-    // إذا كان أدمن ويبحث عن ملعب
     venueIdsToFilter = [req.query.venue];
   }
 
-  // إذا كان هناك ملاعب مطلوبة الفلترة بها، نبحث عن حجوزاتها أولاً
   if (venueIdsToFilter.length > 0) {
     const validBookings = await Booking.find({
       venue: { $in: venueIdsToFilter },
     }).select("_id");
     const validBookingIds = validBookings.map((b) => b._id);
 
-    // إجبار استعلام المدفوعات على إرجاع المدفوعات المرتبطة بهذه الحجوزات فقط
     filter.booking = { $in: validBookingIds };
   }
 
-  // +++ تطبيق الـ Pagination +++
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
   const skip = (page - 1) * limit;
@@ -481,14 +448,12 @@ exports.getAllPayments = catchAsync(async (req, res, next) => {
   const totalDocuments = await Payment.countDocuments(filter);
   const totalPages = Math.ceil(totalDocuments / limit);
 
-  // rawPaymentData = نص رسالة الـ SMS كامل (اسم المرسل ورقمه وممكن رصيد المحفظة)
-  // مايتبعتش للملاك والموظفين
   const payments = await Payment.find(filter)
     .select(req.user.role === "admin" ? "-__v +rawPaymentData" : "-__v")
     .populate({
       path: "booking",
       select:
-        "startTime endTime status venue user court guestData deposit totalPrice",
+        "startTime endTime status venue user court guestData deposit totalPrice bookingType",
       populate: [
         { path: "user", select: "name phone" },
         { path: "court", select: "name" },
@@ -514,7 +479,6 @@ exports.getAllPayments = catchAsync(async (req, res, next) => {
   });
 });
 
-// +++ قفل الأمان 2: الأموال المعلقة للـ Admin حصراً +++
 exports.getUnmatchedPayments = catchAsync(async (req, res, next) => {
   if (req.user && req.user.role !== "admin") {
     return next(
@@ -580,8 +544,6 @@ exports.manuallyVerifyPayment = catchAsync(async (req, res, next) => {
     if (isOtherVenueEmployee(req.user, payment.booking.venue)) {
       return next(new AppError("غير مصرح لك بتأكيد مدفوعات هذا الملعب", 403));
     }
-    // التحويلات الإلكترونية للأدمن فقط. القيد كان على المالك بس، فالموظف كان يقدر
-    // يأكد أي تحويل فودافون/انستاباي بدون ما فلوس توصل = حجز مجاني.
     if (payment.method !== "cash") {
       return next(
         new AppError(
@@ -611,7 +573,6 @@ exports.manuallyVerifyPayment = catchAsync(async (req, res, next) => {
       ],
     });
 
-    // + إغلاقات الإدارة (الصيانة/الأكاديمية): كانت مش بتتفحص قبل إحياء الحجز
     const conflictingBlock = await CourtBlock.findOne({
       court: payment.booking.court._id || payment.booking.court,
       startTime: { $lt: payment.booking.endTime },
@@ -628,8 +589,6 @@ exports.manuallyVerifyPayment = catchAsync(async (req, res, next) => {
     }
   }
 
-  // "حجز" الدفعة بشكل ذري: ضغطتين متزامنتين (أو SMS وصل في نفس اللحظة) = واحدة بس
-  // تكمّل. قبل كده كان بيتحسب totalMoneyCollected مرتين.
   const verificationNotes =
     typeof req.body.notes === "string" && req.body.notes.trim()
       ? req.body.notes.trim().slice(0, 500)
@@ -649,12 +608,11 @@ exports.manuallyVerifyPayment = catchAsync(async (req, res, next) => {
   );
   if (!claimed) return next(new AppError("هذا الدفع مؤكد مسبقاً", 400));
 
-  // نعكس التحديث على الـ document اللي هيترجع في الرد
   payment.status = claimed.status;
   payment.verifiedAt = claimed.verifiedAt;
   payment.verificationMethod = claimed.verificationMethod;
   payment.verificationNotes = claimed.verificationNotes;
-  // +++ تحديث إحصائيات الحساب عند التأكيد اليدوي من الإدارة +++
+
   if (payment.paymentAccount) {
     await PaymentAccount.findByIdAndUpdate(payment.paymentAccount, {
       lastTransferReceivedAt: new Date(),
@@ -683,9 +641,7 @@ exports.manuallyVerifyPayment = catchAsync(async (req, res, next) => {
         { hour: "2-digit", minute: "2-digit" },
       );
 
-      // إشعار للعميل
       if (updatedBooking.user) {
-        // +++ ضمان استخراج معرف المستخدم كنص صحيح +++
         const userId =
           typeof updatedBooking.user === "object" && updatedBooking.user._id
             ? updatedBooking.user._id.toString()
@@ -702,8 +658,6 @@ exports.manuallyVerifyPayment = catchAsync(async (req, res, next) => {
 
         emitToUser(io, userId, `notification-${userId}`, customerNotif);
 
-        // +++ هذا هو سطر إغلاق الشاشة الآلي +++
-        // بدون بيانات العميل (الاسم/الإيميل/التليفون): الحدث بيروح لغرفة العميل بس، ومنها نقلل البيانات للأدنى
         const { user: _omitUser, ...bookingForSocket } =
           updatedBooking.toObject();
         emitToUser(io, userId, `booking-confirmed-${userId}`, {
@@ -711,15 +665,14 @@ exports.manuallyVerifyPayment = catchAsync(async (req, res, next) => {
           paymentStatus: "paid",
           status: "confirmed",
         });
-        // +++++++++++++++++++++++++++++++++++++++
+
         if (updatedBooking.user && updatedBooking.user.email) {
           try {
-            const Email = require("../utils/email"); // تأكد من مسار ملف email.js
+            const Email = require("../utils/email");
             const customerEmail = new Email(
               updatedBooking.user,
               process.env.FRONTEND_URL,
             );
-            // من غير await: الرد ما يستناش الـ SMTP (كان بياخد ثواني)
             customerEmail
               .sendBookingTicket(updatedBooking)
               .catch((emailErr) => {
@@ -731,7 +684,6 @@ exports.manuallyVerifyPayment = catchAsync(async (req, res, next) => {
         }
       }
 
-      // +++ إضافة: إشعار لصاحب الملعب (لو شخص آخر غير اللي داس على الزرار هو اللي أكد) +++
       const venueOwnerId = updatedBooking.venue.owner
         ? updatedBooking.venue.owner.toString()
         : null;
@@ -764,8 +716,6 @@ exports.manuallyVerifyPayment = catchAsync(async (req, res, next) => {
 });
 
 // 📸 3. دوال العميل (إثبات الدفع اليدوي)
-// الأنواع المسموحة فقط (image/svg+xml كان بيعدّي من startsWith("image") وملف SVG
-// بيشغّل سكريبت لما يتفتح من الرابط = XSS على دومين الـ API)
 const ALLOWED_PROOF_TYPES = {
   "image/jpeg": "jpg",
   "image/jpg": "jpg",
@@ -776,16 +726,12 @@ const ALLOWED_PROOF_TYPES = {
 const multerStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadPath = "public/uploads/payments";
-
-    // +++ إنشاء المجلد تلقائياً إذا لم يكن موجوداً لمنع خطأ ENOENT +++
     if (!fs.existsSync(uploadPath)) {
       fs.mkdirSync(uploadPath, { recursive: true });
     }
-
     cb(null, uploadPath);
   },
   filename: (req, file, cb) => {
-    // اسم عشوائي مايتخمنش (الإثباتات فيها أسماء وأرقام) وامتداد من القائمة المسموحة
     const ext = ALLOWED_PROOF_TYPES[file.mimetype];
     cb(null, `payment-${crypto.randomBytes(16).toString("hex")}.${ext}`);
   },
@@ -793,7 +739,6 @@ const multerStorage = multer.diskStorage({
 
 const upload = multer({
   storage: multerStorage,
-  // من غير limits أي مستخدم يقدر يرفع ملفات ضخمة ويملا الهارد (18GB)
   limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 5, fieldSize: 2048 },
   fileFilter: (req, file, cb) =>
     ALLOWED_PROOF_TYPES[file.mimetype]
@@ -801,7 +746,6 @@ const upload = multer({
       : cb(new AppError("الصور المسموحة: JPG أو PNG أو WebP فقط", 400), false),
 });
 
-// لو الطلب اترفض بعد ما الصورة اتحفظت، نمسحها (وإلا بتتراكم على الهارد)
 const discardUpload = (req) => {
   if (req.file) fs.unlink(req.file.path, () => {});
 };
@@ -823,8 +767,6 @@ exports.submitPaymentProof = catchAsync(async (req, res, next) => {
     payment.booking?.user?._id || payment.booking?.user
   )?.toString();
 
-  // رفع الإثبات إجراء للعميل صاحب الحجز فقط (القيد كان على role العميل بس،
-  // فأي مالك أو موظف كان يقدر يرفع إثبات على دفعة أي حجز)
   if (bookingUserId !== req.user.id) {
     discardUpload(req);
     return next(new AppError("ليس لديك صلاحية", 403));
@@ -838,7 +780,6 @@ exports.submitPaymentProof = catchAsync(async (req, res, next) => {
   if (typeof req.body.manualTransactionId === "string")
     payment.manualTransactionId = req.body.manualTransactionId.slice(0, 100);
 
-  // +++ السطر اللي كان ناقص عشان يحفظ رقم التليفون اللي العميل كتبه +++
   if (typeof req.body.senderPhone === "string" && req.body.senderPhone)
     payment.senderPhone = req.body.senderPhone.slice(0, 20);
 
@@ -921,9 +862,9 @@ exports.addPaymentNote = catchAsync(async (req, res, next) => {
   });
 });
 
-// +++ دالة تصفية الحسابات والتقارير للمالك (محدثة بتفاصيل الملاعب) +++
-// +++ دالة تصفية الحسابات والتقارير (تدعم المالك والأدمن وتصلح مشكلة الكسور) +++
-// +++ دالة تصفية الحسابات والتقارير (تدعم المالك والأدمن وتصلح مشكلة الحجوزات القديمة) +++
+// ============================================================================
+// +++ دالة التقارير المالية الشاملة (تفصيل الأونلاين، الكاش اليدوي، باقي الحجوزات، وسجل الحجوزات الكامل) +++
+// ============================================================================
 exports.getFinancialReports = catchAsync(async (req, res, next) => {
   const { startDate, endDate, venue } = req.query;
 
@@ -1008,7 +949,7 @@ exports.getFinancialReports = catchAsync(async (req, res, next) => {
     { $unwind: "$bookingDetails" },
     {
       $match: {
-        "bookingDetails.status": { $nin: ["cancelled", "expired"] },
+        "bookingDetails.status": { $nin: ["cancelled", "expired", "blocked"] },
       },
     },
   ];
@@ -1018,54 +959,161 @@ exports.getFinancialReports = catchAsync(async (req, res, next) => {
   }
 
   pipeline.push(
-    // +++ تجميع الفواتير المتعددة لنفس الحجز في سطر واحد +++
+    {
+      $lookup: {
+        from: "users",
+        localField: "bookingDetails.user",
+        foreignField: "_id",
+        as: "userDetails",
+      },
+    },
+    { $unwind: { path: "$userDetails", preserveNullAndEmptyArrays: true } },
+    {
+      $addFields: {
+        isRestCash: {
+          $regexMatch: {
+            input: { $ifNull: ["$paymentReference", ""] },
+            regex: /^(CASH-REST-|QR-CASH-)/,
+          },
+        },
+        actualAmount: {
+          $cond: [
+            { $eq: ["$method", "cash"] },
+            { $ifNull: ["$amountReceived", "$baseAmount"] },
+            "$baseAmount",
+          ],
+        },
+      },
+    },
+    // تجميع المدفوعات لكل حجز مع الحفاظ على تفاصيل كل عملية دفع بداخلها
     {
       $group: {
         _id: "$bookingDetails._id",
         court: { $first: "$bookingDetails.court" },
         venue: { $first: "$bookingDetails.venue" },
+        bookingType: { $first: "$bookingDetails.bookingType" },
         startTime: { $first: "$bookingDetails.startTime" },
         endTime: { $first: "$bookingDetails.endTime" },
         totalPrice: { $first: "$bookingDetails.totalPrice" },
+        currentDeposit: { $first: "$bookingDetails.deposit" },
         savedCommission: { $first: "$bookingDetails.commission" },
-        // في paymentController.js السطر 617:
-        bookingOnlineRevenue: {
-          $sum: { $cond: [{ $ne: ["$method", "cash"] }, "$baseAmount", 0] },
+        customerName: {
+          $first: {
+            $ifNull: [
+              "$bookingDetails.guestData.name",
+              "$userDetails.name",
+              "عميل",
+            ],
+          },
         },
-        bookingCashRevenue: {
+        customerPhone: {
+          $first: {
+            $ifNull: [
+              "$bookingDetails.guestData.phone",
+              "$userDetails.phone",
+              "بدون رقم",
+            ],
+          },
+        },
+        bookingOnlineRevenue: {
+          $sum: { $cond: [{ $ne: ["$method", "cash"] }, "$actualAmount", 0] },
+        },
+        bookingManualCashRevenue: {
           $sum: {
             $cond: [
-              { $eq: ["$method", "cash"] },
-              { $ifNull: ["$amountReceived", "$baseAmount"] },
+              {
+                $and: [
+                  { $eq: ["$method", "cash"] },
+                  { $eq: ["$isRestCash", false] },
+                ],
+              },
+              "$actualAmount",
               0,
             ],
           },
         },
-        hasOnlinePayment: {
-          $max: { $cond: [{ $ne: ["$method", "cash"] }, 1, 0] },
-        },
-        hasCashPayment: {
-          $max: { $cond: [{ $eq: ["$method", "cash"] }, 1, 0] },
-        },
-        // +++ التحقق مما إذا كانت الدفعة الأولى للحجز (سواء أونلاين أو حجز يدوي CASH-xxxx) تمت في هذه الفترة +++
-        // فواتير استكمال باقي الكاش فقط تبدأ بـ CASH-REST- أو QR-CASH-
-        hasInitialPaymentInPeriod: {
-          $max: {
+        bookingRestCashRevenue: {
+          $sum: {
             $cond: [
               {
-                $regexMatch: {
-                  input: { $ifNull: ["$paymentReference", ""] },
-                  regex: /^(CASH-REST-|QR-CASH-)/,
-                },
+                $and: [
+                  { $eq: ["$method", "cash"] },
+                  { $eq: ["$isRestCash", true] },
+                ],
               },
+              "$actualAmount",
               0,
-              1,
             ],
+          },
+        },
+        bookingCashRevenue: {
+          $sum: {
+            $cond: [{ $eq: ["$method", "cash"] }, "$actualAmount", 0],
+          },
+        },
+        onlinePaymentsCount: {
+          $sum: { $cond: [{ $ne: ["$method", "cash"] }, 1, 0] },
+        },
+        manualCashPaymentsCount: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ["$method", "cash"] },
+                  { $eq: ["$isRestCash", false] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+        restCashPaymentsCount: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ["$method", "cash"] },
+                  { $eq: ["$isRestCash", true] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+        cashPaymentsCount: {
+          $sum: { $cond: [{ $eq: ["$method", "cash"] }, 1, 0] },
+        },
+        hasInitialPaymentInPeriod: {
+          $max: { $cond: ["$isRestCash", 0, 1] },
+        },
+        hasRestPaymentInPeriod: {
+          $max: { $cond: ["$isRestCash", 1, 0] },
+        },
+        latestPaymentDate: { $max: "$effectiveDate" },
+        payments: {
+          $push: {
+            _id: "$_id",
+            amount: "$actualAmount",
+            method: "$method",
+            isRestCash: "$isRestCash",
+            typeLabel: {
+              $cond: [
+                { $ne: ["$method", "cash"] },
+                "عربون أونلاين",
+                {
+                  $cond: ["$isRestCash", "كاش (باقي الحجز)", "كاش (حجز يدوي)"],
+                },
+              ],
+            },
+            date: "$effectiveDate",
+            reference: "$paymentReference",
+            notes: "$verificationNotes",
           },
         },
       },
     },
-    // +++ حساب مدة الحجز والسعر الإجمالي المتحصل في هذه الفترة +++
     {
       $addFields: {
         durationInHours: {
@@ -1074,9 +1122,43 @@ exports.getFinancialReports = catchAsync(async (req, res, next) => {
         totalBookingRevenue: {
           $add: ["$bookingOnlineRevenue", "$bookingCashRevenue"],
         },
+        remainingAmount: {
+          $max: [
+            {
+              $subtract: [
+                { $ifNull: ["$totalPrice", 0] },
+                { $ifNull: ["$currentDeposit", 0] },
+              ],
+            },
+            0,
+          ],
+        },
+        isAppBookingInPeriod: {
+          $cond: [
+            {
+              $and: [
+                { $eq: ["$hasInitialPaymentInPeriod", 1] },
+                { $eq: ["$bookingType", "app"] },
+              ],
+            },
+            1,
+            0,
+          ],
+        },
+        isManualBookingInPeriod: {
+          $cond: [
+            {
+              $and: [
+                { $eq: ["$hasInitialPaymentInPeriod", 1] },
+                { $eq: ["$bookingType", "manual"] },
+              ],
+            },
+            1,
+            0,
+          ],
+        },
       },
     },
-    // +++ حساب إجمالي عمولة الحجز (5% للساعة و10% للساعتين على إجمالي سعر الحجز totalPrice) +++
     {
       $addFields: {
         fullBookingCommission: {
@@ -1092,7 +1174,6 @@ exports.getFinancialReports = catchAsync(async (req, res, next) => {
         },
       },
     },
-    // +++ احتساب العمولة مرة واحدة فقط عند الدفعة الأولى (سواء حجز تطبيق أو حجز يدوي بعربون/كامل) +++
     {
       $addFields: {
         calculatedCommission: {
@@ -1122,7 +1203,6 @@ exports.getFinancialReports = catchAsync(async (req, res, next) => {
       },
     },
     { $unwind: { path: "$venueDetails", preserveNullAndEmptyArrays: true } },
-
     {
       $facet: {
         overall: [
@@ -1130,10 +1210,20 @@ exports.getFinancialReports = catchAsync(async (req, res, next) => {
             $group: {
               _id: null,
               totalOnline: { $sum: "$bookingOnlineRevenue" },
+              totalManualCash: { $sum: "$bookingManualCashRevenue" },
+              totalRestCash: { $sum: "$bookingRestCashRevenue" },
               totalCash: { $sum: "$bookingCashRevenue" },
               totalCommission: { $sum: "$calculatedCommission" },
-              onlineCount: { $sum: "$hasOnlinePayment" },
-              cashCount: { $sum: "$hasCashPayment" },
+              onlineCount: { $sum: "$onlinePaymentsCount" },
+              manualCashCount: { $sum: "$manualCashPaymentsCount" },
+              restCashCount: { $sum: "$restCashPaymentsCount" },
+              cashCount: { $sum: "$cashPaymentsCount" },
+              newBookingsCount: { $sum: "$hasInitialPaymentInPeriod" },
+              appBookingsCount: { $sum: "$isAppBookingInPeriod" },
+              manualBookingsCount: { $sum: "$isManualBookingInPeriod" },
+              restCollectionsCount: { $sum: "$hasRestPaymentInPeriod" },
+              totalTouchedBookings: { $sum: 1 },
+              totalRemainingInVenue: { $sum: "$remainingAmount" },
             },
           },
         ],
@@ -1145,9 +1235,16 @@ exports.getFinancialReports = catchAsync(async (req, res, next) => {
               venueName: { $first: "$venueDetails.name" },
               totalRevenue: { $sum: "$totalBookingRevenue" },
               totalOnline: { $sum: "$bookingOnlineRevenue" },
+              totalManualCash: { $sum: "$bookingManualCashRevenue" },
+              totalRestCash: { $sum: "$bookingRestCashRevenue" },
               totalCash: { $sum: "$bookingCashRevenue" },
               totalCommission: { $sum: "$calculatedCommission" },
               bookingsCount: { $sum: "$hasInitialPaymentInPeriod" },
+              appBookingsCount: { $sum: "$isAppBookingInPeriod" },
+              manualBookingsCount: { $sum: "$isManualBookingInPeriod" },
+              restCollectionsCount: { $sum: "$hasRestPaymentInPeriod" },
+              totalTouchedBookings: { $sum: 1 },
+              totalRemaining: { $sum: "$remainingAmount" },
             },
           },
           {
@@ -1162,6 +1259,41 @@ exports.getFinancialReports = catchAsync(async (req, res, next) => {
           },
           { $sort: { totalRevenue: -1 } },
         ],
+        bookingsDetails: [
+          { $sort: { latestPaymentDate: -1 } },
+          {
+            $project: {
+              _id: 1,
+              venueName: "$venueDetails.name",
+              courtName: "$courtDetails.name",
+              customerName: 1,
+              customerPhone: 1,
+              bookingType: 1,
+              bookingTypeLabel: {
+                $cond: [
+                  { $eq: ["$bookingType", "manual"] },
+                  "حجز يدوي",
+                  "حجز تطبيق",
+                ],
+              },
+              startTime: 1,
+              endTime: 1,
+              durationInHours: 1,
+              totalPrice: 1,
+              totalPaidSoFar: "$currentDeposit",
+              remainingAmount: 1,
+              paidInPeriodOnline: "$bookingOnlineRevenue",
+              paidInPeriodManualCash: "$bookingManualCashRevenue",
+              paidInPeriodRestCash: "$bookingRestCashRevenue",
+              paidInPeriodTotal: "$totalBookingRevenue",
+              calculatedCommission: 1,
+              hasInitialPaymentInPeriod: 1,
+              hasRestPaymentInPeriod: 1,
+              latestPaymentDate: 1,
+              payments: 1,
+            },
+          },
+        ],
       },
     },
   );
@@ -1170,13 +1302,24 @@ exports.getFinancialReports = catchAsync(async (req, res, next) => {
 
   const stats = reportStats[0].overall[0] || {
     totalOnline: 0,
+    totalManualCash: 0,
+    totalRestCash: 0,
     totalCash: 0,
     totalCommission: 0,
     onlineCount: 0,
+    manualCashCount: 0,
+    restCashCount: 0,
     cashCount: 0,
+    newBookingsCount: 0,
+    appBookingsCount: 0,
+    manualBookingsCount: 0,
+    restCollectionsCount: 0,
+    totalTouchedBookings: 0,
+    totalRemainingInVenue: 0,
   };
 
   const courtsBreakdown = reportStats[0].courtsBreakdown || [];
+  const bookingsDetails = reportStats[0].bookingsDetails || [];
   const totalOverall = stats.totalOnline + stats.totalCash;
 
   res.status(200).json({
@@ -1185,15 +1328,30 @@ exports.getFinancialReports = catchAsync(async (req, res, next) => {
       report: {
         dateRange: { from: start, to: end },
         totalOnline: Number(stats.totalOnline.toFixed(2)),
+        totalManualCash: Number((stats.totalManualCash || 0).toFixed(2)),
+        totalRestCash: Number((stats.totalRestCash || 0).toFixed(2)),
         totalCash: Number(stats.totalCash.toFixed(2)),
         totalOverall: Number(totalOverall.toFixed(2)),
         totalCommission: Number((stats.totalCommission || 0).toFixed(2)),
+        totalRemainingInVenue: Number(
+          (stats.totalRemainingInVenue || 0).toFixed(2),
+        ),
         transactionsCount: {
           online: stats.onlineCount,
+          manualCash: stats.manualCashCount || 0,
+          restCash: stats.restCashCount || 0,
           cash: stats.cashCount,
           total: stats.onlineCount + stats.cashCount,
         },
+        bookingsSummary: {
+          newBookingsCount: stats.newBookingsCount || 0,
+          appBookingsCount: stats.appBookingsCount || 0,
+          manualBookingsCount: stats.manualBookingsCount || 0,
+          restCollectionsCount: stats.restCollectionsCount || 0,
+          totalTouchedBookings: stats.totalTouchedBookings || 0,
+        },
         courtsBreakdown,
+        bookingsDetails,
       },
     },
   });

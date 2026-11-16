@@ -8,7 +8,7 @@ import {
   Sun,
   Moon,
   Loader2,
-  CheckCircle2, // +++ أيقونة الخالص +++
+  CheckCircle2,
   User,
   Phone,
   Hourglass,
@@ -61,7 +61,6 @@ const kindClass: Record<string, string> = {
   manual: "bg-info/20 border-info/50 text-blue-950",
 };
 
-// "14:00" -> 14، ولو القيمة ناقصة أو غلط نرجع للافتراضي (نفس قيم الباك إند)
 const parseHour = (time: string | undefined, fallback: number) => {
   const h = parseInt(String(time || "").split(":")[0] ?? "", 10);
   return Number.isInteger(h) && h >= 0 && h <= 24 ? h % 24 : fallback;
@@ -69,7 +68,6 @@ const parseHour = (time: string | undefined, fallback: number) => {
 
 const formatHour12 = (h: number) => `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? "ص" : "م"}`;
 
-// الساعات من start لحد end (مش شاملة end) مع اللف بعد منتصف الليل
 const hoursBetween = (start: number, end: number) => {
   const hours: number[] = [];
   let current = start;
@@ -239,7 +237,6 @@ function AdminBookingDetailsDialog({
     </div>
   );
 }
-// =========================================
 
 export function AdminScheduleView() {
   const [venues, setVenues] = useState<VenueData[]>([]);
@@ -251,7 +248,6 @@ export function AdminScheduleView() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [timeTab, setTimeTab] = useState<"morning" | "evening">("morning");
 
-  // +++ إضافة حالة لفتح نافذة التفاصيل +++
   const [viewBooking, setViewBooking] = useState<BookingData | null>(null);
   const [selectedCourtIdForMobile, setSelectedCourtIdForMobile] = useState<string>("");
 
@@ -309,7 +305,6 @@ export function AdminScheduleView() {
     }
   }, [selectedVenueId, selectedDate, loadScheduleData]);
 
-  // مواعيد النادي المختار: الصباحي من الفتح لبداية المسائي، والمسائي لحد الإغلاق
   const selectedVenue = venues.find((v) => v._id === selectedVenueId);
   const openHour = parseHour(selectedVenue?.openTime, 8);
   const eveningStartHour = parseHour(selectedVenue?.eveningStartTime, 18);
@@ -324,32 +319,59 @@ export function AdminScheduleView() {
     [eveningStartHour, closeHour],
   );
 
-  // نادي مفيهوش فترة صباحية (بيفتح مساءً): نفتح تاب المسائي تلقائياً
   useEffect(() => {
     if (morningHours.length === 0) setTimeTab("evening");
   }, [morningHours.length]);
 
-  const getBookingForCell = (courtId: string, hour: number) => {
-    return bookings.find((b) => {
-      if (!b || !b.startTime || !b.endTime) return false;
-      const bDate = new Date(b.startTime);
-      const eDate = new Date(b.endTime);
-      const bCourtId = typeof b.court === "object" ? b.court?._id : b.court;
+  const getBookingForCell = useCallback(
+    (courtId: string, hour: number) => {
+      return bookings.find((b) => {
+        if (!b || !b.startTime || !b.endTime) return false;
+        const bDate = new Date(b.startTime);
+        const eDate = new Date(b.endTime);
+        const bCourtId = typeof b.court === "object" ? b.court?._id : b.court;
 
-      const cellDateTime = new Date(selectedDate);
-      cellDateTime.setHours(hour, 0, 0, 0);
+        const cellDateTime = new Date(selectedDate);
+        cellDateTime.setHours(hour, 0, 0, 0);
 
-      // الساعات قبل ميعاد فتح النادي (بعد منتصف الليل) تابعة لنفس اليوم المنطقي
-      if (hour < openHour) {
-        cellDateTime.setDate(cellDateTime.getDate() + 1);
-      }
+        if (hour < openHour) {
+          cellDateTime.setDate(cellDateTime.getDate() + 1);
+        }
 
-      const isTimeInRange = cellDateTime >= bDate && cellDateTime < eDate;
-      const isBooked = ["confirmed", "pending_payment", "blocked"].includes(b.status);
+        const isTimeInRange = cellDateTime >= bDate && cellDateTime < eDate;
+        const isBooked = ["confirmed", "pending_payment", "blocked"].includes(b.status);
 
-      return bCourtId === courtId && isTimeInRange && isBooked;
+        return bCourtId === courtId && isTimeInRange && isBooked;
+      });
+    },
+    [bookings, selectedDate, openHour],
+  );
+
+  // +++ حساب عدد الحجوزات الفعلية في الصباح والمساء (مع استبعاد إغلاقات الصيانة blocked) +++
+  const { morningCount, eveningCount } = useMemo(() => {
+    const morningIds = new Set<string>();
+    const eveningIds = new Set<string>();
+
+    courts.forEach((court) => {
+      morningHours.forEach((hr) => {
+        const b = getBookingForCell(court._id, hr);
+        if (b && (b.status === "confirmed" || b.status === "pending_payment")) {
+          morningIds.add(b._id);
+        }
+      });
+      eveningHours.forEach((hr) => {
+        const b = getBookingForCell(court._id, hr);
+        if (b && (b.status === "confirmed" || b.status === "pending_payment")) {
+          eveningIds.add(b._id);
+        }
+      });
     });
-  };
+
+    return {
+      morningCount: morningIds.size,
+      eveningCount: eveningIds.size,
+    };
+  }, [courts, morningHours, eveningHours, getBookingForCell]);
 
   const activeHours = timeTab === "morning" ? morningHours : eveningHours;
 
@@ -405,30 +427,60 @@ export function AdminScheduleView() {
         </div>
       </div>
 
-      <div className="flex gap-2 rounded-xl border border-border bg-muted/50 p-1 max-w-sm">
+      {/* أزرار التبديل بين الصباح والمساء مع عداد الحجوزات لكل فترة */}
+      <div className="flex gap-2 rounded-xl border border-border bg-muted/50 p-1 max-w-md">
         <button
           onClick={() => setTimeTab("morning")}
           className={cn(
-            "flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-bold transition",
+            "flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 px-2 text-xs sm:text-sm font-bold transition",
             timeTab === "morning"
               ? "bg-background text-primary shadow-sm"
               : "text-muted-foreground hover:text-foreground",
           )}
         >
-          <Sun className="h-4 w-4" /> الصباح ({formatHour12(openHour)} -{" "}
-          {formatHour12(eveningStartHour)})
+          <Sun className="h-4 w-4 shrink-0" />
+          <span>
+            الصباح ({formatHour12(openHour)} - {formatHour12(eveningStartHour)})
+          </span>
+          <span
+            className={cn(
+              "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-black transition",
+              morningCount > 0
+                ? timeTab === "morning"
+                  ? "bg-primary/15 text-primary"
+                  : "bg-primary text-primary-foreground shadow-sm"
+                : "bg-muted-foreground/15 text-muted-foreground",
+            )}
+          >
+            {morningCount}
+          </span>
         </button>
+
         <button
           onClick={() => setTimeTab("evening")}
           className={cn(
-            "flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-bold transition",
+            "flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 px-2 text-xs sm:text-sm font-bold transition",
             timeTab === "evening"
               ? "bg-background text-primary shadow-sm"
               : "text-muted-foreground hover:text-foreground",
           )}
         >
-          <Moon className="h-4 w-4" /> المساء ({formatHour12(eveningStartHour)} -{" "}
-          {formatHour12(closeHour)})
+          <Moon className="h-4 w-4 shrink-0" />
+          <span>
+            المساء ({formatHour12(eveningStartHour)} - {formatHour12(closeHour)})
+          </span>
+          <span
+            className={cn(
+              "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-black transition",
+              eveningCount > 0
+                ? timeTab === "evening"
+                  ? "bg-primary/15 text-primary"
+                  : "bg-primary text-primary-foreground shadow-sm"
+                : "bg-muted-foreground/15 text-muted-foreground",
+            )}
+          >
+            {eveningCount}
+          </span>
         </button>
       </div>
 
@@ -513,7 +565,7 @@ export function AdminScheduleView() {
                       return (
                         <div
                           key={hour}
-                          onClick={() => setViewBooking(b)} // +++ جعل الخلية قابلة للضغط +++
+                          onClick={() => setViewBooking(b)}
                           className={cn(
                             "m-1 overflow-hidden rounded-xl border p-1.5 text-right relative cursor-pointer hover:scale-[1.02] transition-transform flex flex-col justify-center",
                             kindClass[kind],
@@ -523,7 +575,6 @@ export function AdminScheduleView() {
                           <p className="truncate text-[10px] font-extrabold pr-1">
                             {b.guestData?.name || b.user?.name || "بدون اسم"}
                           </p>
-                          {/* +++ التعديل هنا: إظهار المتبقي أو خالص +++ */}
                           {remaining > 0 ? (
                             <p className="truncate text-[10px] font-bold text-destructive mt-0.5 bg-destructive/10 px-1 rounded-sm self-start">
                               باقي: {remaining} ج
@@ -554,7 +605,7 @@ export function AdminScheduleView() {
           </div>
         </div>
 
-        {/* --- نسخة الموبايل (مضافة حديثاً) --- */}
+        {/* --- نسخة الموبايل --- */}
         <div className="mt-5 md:hidden">
           <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-2 scrollbar-hide">
             {courts.map((c) => (
@@ -606,7 +657,7 @@ export function AdminScheduleView() {
                       </div>
                     ) : (
                       <div
-                        onClick={() => setViewBooking(b)} // +++ جعل الخلية قابلة للضغط +++
+                        onClick={() => setViewBooking(b)}
                         className={cn(
                           "min-w-0 rounded-xl border p-3 cursor-pointer transition hover:opacity-90 flex justify-between items-center",
                           kindClass[b.bookingType || "app"],
@@ -621,7 +672,6 @@ export function AdminScheduleView() {
                           </p>
                         </div>
 
-                        {/* +++ التعديل هنا للموبايل +++ */}
                         {(b.totalPrice || 0) - (b.deposit || 0) > 0 ? (
                           <div className="bg-destructive/10 text-destructive px-2 py-1 rounded-md text-[10px] font-bold shrink-0 border border-destructive/20">
                             باقي: {(b.totalPrice || 0) - (b.deposit || 0)} ج
@@ -645,7 +695,6 @@ export function AdminScheduleView() {
         </div>
       </div>
 
-      {/* +++ إضافة نافذة التفاصيل الخاصة بالآدمن +++ */}
       <AdminBookingDetailsDialog booking={viewBooking} onClose={() => setViewBooking(null)} />
     </div>
   );

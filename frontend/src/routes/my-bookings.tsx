@@ -1,9 +1,9 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
-import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import {
   CalendarDays,
   Clock,
-  Trophy,
+  QrCode,
   Wallet,
   AlertCircle,
   UploadCloud,
@@ -43,7 +43,6 @@ export const Route = createFileRoute("/my-bookings")({
     meta: [{ title: "حجوزاتي | Tigi-Hagz" }],
   }),
   beforeLoad: () => requireRole(["customer"]),
-  //component: MyBookingsPage,
   component: () => (
     <RoleGuard allowedRoles={["customer"]}>
       <MyBookingsPage />
@@ -214,7 +213,7 @@ function BookingTicketModal({
           >
             <X size={18} />
           </button>
-          <div className="mx-auto bg-white p-3 rounded-xl w-fit mb-3">
+          <div className="mx-auto bg-white p-3 rounded-xl w-fit mb-3 shadow-md">
             <QRCodeSVG value={booking._id} size={150} level="M" includeMargin={false} />
           </div>
           <h3 className="font-bold text-xl">{venueName}</h3>
@@ -270,7 +269,6 @@ function BookingTicketModal({
 }
 
 function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const navigate = useNavigate();
   return (
     <div className={cn("lg:hidden", open ? "" : "pointer-events-none")} dir="rtl">
       <div
@@ -347,7 +345,7 @@ function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void
           <button
             onClick={() => {
               onClose();
-              logoutUser(); // بيمسح الأربعة ويحوّل على /login
+              logoutUser();
             }}
             className="mt-4 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-destructive transition hover:bg-destructive/10"
           >
@@ -360,7 +358,6 @@ function AdminMobileMenu({ open, onClose }: { open: boolean; onClose: () => void
 }
 
 function CustomerMobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const navigate = useNavigate();
   return (
     <div className={cn("lg:hidden", open ? "" : "pointer-events-none")} dir="rtl">
       <div
@@ -908,9 +905,30 @@ function MyBookingsPage() {
                   }}
                 >
                   <div className="flex items-start gap-3">
-                    <span className="gradient-primary flex size-12 shrink-0 items-center justify-center rounded-xl text-primary-foreground">
-                      <Trophy className="size-6" />
-                    </span>
+                    {b.status === "confirmed" ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTicketBooking(b);
+                        }}
+                        title="اضغط لفتح كود الـ QR ومسحه في الملعب"
+                        className="gradient-primary flex flex-col size-14 shrink-0 items-center justify-center rounded-2xl text-primary-foreground shadow-sm transition-transform hover:scale-105 active:scale-95"
+                      >
+                        <QrCode className="size-6" />
+                        <span className="text-[9px] font-black mt-1 leading-none"> QR Ticket</span>
+                      </button>
+                    ) : (
+                      <img
+                        src="/logo.png"
+                        onError={(e) => {
+                          e.currentTarget.src =
+                            "https://mla3balexandria-api.online/assets/logo.png";
+                        }}
+                        alt="Tigi-Hagz"
+                        className="size-12 shrink-0 rounded-xl object-contain"
+                      />
+                    )}
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-sm font-bold sm:text-base">
@@ -973,7 +991,20 @@ function MyBookingsPage() {
                       )}
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {b.status === "confirmed" && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTicketBooking(b);
+                          }}
+                          className="flex items-center gap-1.5 rounded-xl bg-primary/10 border border-primary/25 px-3 py-1.5 text-[11px] font-extrabold text-primary transition hover:bg-primary hover:text-primary-foreground"
+                        >
+                          <QrCode className="size-3.5" /> افتح الـ QR
+                        </button>
+                      )}
+
                       {b.paymentId &&
                         b.status === "pending_payment" &&
                         b.actualPaymentStatus === "pending" && (

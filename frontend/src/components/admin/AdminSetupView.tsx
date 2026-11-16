@@ -1,4 +1,14 @@
-import { Settings2, UserPlus, Building2, Dribbble, Edit, Lock, Users, Wallet } from "lucide-react";
+import {
+  Settings2,
+  UserPlus,
+  Building2,
+  Dribbble,
+  Edit,
+  Lock,
+  Users,
+  Wallet,
+  MessageSquarePlus,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAdminSetup } from "./adminSetup/useAdminSetup";
 import type { TabKey } from "./adminSetup/types";
@@ -10,6 +20,7 @@ import { ManageTab } from "./adminSetup/ManageTab";
 import { BlockTab } from "./adminSetup/BlockTab";
 import { AccountsTab } from "./adminSetup/AccountsTab";
 import { CustomersTab } from "./adminSetup/CustomersTab";
+import { RequestsTab } from "./adminSetup/RequestsTab";
 
 const TABS: { id: TabKey; icon: typeof Users; label: string }[] = [
   { id: "owner", icon: UserPlus, label: "إضافة مالك" },
@@ -17,6 +28,7 @@ const TABS: { id: TabKey; icon: typeof Users; label: string }[] = [
   { id: "venue", icon: Building2, label: "إنشاء نادي" },
   { id: "court", icon: Dribbble, label: "إضافة ملعب" },
   { id: "manage", icon: Edit, label: "إدارة الملاعب" },
+  { id: "requests", icon: MessageSquarePlus, label: "طلبات الملاعب" },
   { id: "block", icon: Lock, label: "إغلاق وصيانة" },
   { id: "customers", icon: Users, label: "العملاء" },
   { id: "accounts", icon: Wallet, label: "حسابات الدفع" },
@@ -56,6 +68,7 @@ export function AdminSetupView() {
       {activeTab === "venue" && <VenueTab s={s} />}
       {activeTab === "court" && <CourtTab s={s} />}
       {activeTab === "manage" && <ManageTab s={s} />}
+      {activeTab === "requests" && <RequestsTab s={s} />}
       {activeTab === "block" && <BlockTab s={s} />}
       {activeTab === "accounts" && <AccountsTab s={s} />}
       {activeTab === "customers" && <CustomersTab s={s} />}

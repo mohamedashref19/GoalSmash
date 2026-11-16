@@ -285,3 +285,31 @@ export const deleteEmployeeAccount = async (id) => {
     throw error.response?.data?.message || "حدث خطأ أثناء حذف حساب الموظف";
   }
 };
+
+// +++ دوال إدارة طلبات وترشيحات إضافة الملاعب الجديدة +++
+export const fetchVenueRequests = async () => {
+  try {
+    const response = await apiClient.get("/venue-requests");
+    return response.data.data.requests;
+  } catch (error) {
+    throw error.response?.data?.message || "حدث خطأ أثناء جلب طلبات إضافة الملاعب";
+  }
+};
+
+export const updateVenueRequestStatus = async (id, status) => {
+  try {
+    const response = await apiClient.patch(`/venue-requests/${id}/status`, { status });
+    return response.data.data.request;
+  } catch (error) {
+    throw error.response?.data?.message || "حدث خطأ أثناء تحديث حالة الطلب";
+  }
+};
+
+export const deleteVenueRequest = async (id) => {
+  try {
+    await apiClient.delete(`/venue-requests/${id}`);
+    return true;
+  } catch (error) {
+    throw error.response?.data?.message || "حدث خطأ أثناء حذف الطلب";
+  }
+};

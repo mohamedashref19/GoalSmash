@@ -84,5 +84,26 @@ export interface Employee {
   createdAt: string;
 }
 
+export interface VenueRequest {
+  _id: string;
+  venueName: string;
+  area: string;
+  venuePhone?: string;
+  requesterRole: "player" | "owner";
+  notes?: string;
+  status: "pending" | "contacted" | "added";
+  submitterName?: string;
+  submitterPhone?: string;
+  createdAt: string;
+}
+
 export type TabKey =
-  "owner" | "employees" | "venue" | "court" | "manage" | "block" | "customers" | "accounts";
+  | "owner"
+  | "employees"
+  | "venue"
+  | "court"
+  | "manage"
+  | "block"
+  | "customers"
+  | "accounts"
+  | "requests";

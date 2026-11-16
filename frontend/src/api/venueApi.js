@@ -19,3 +19,12 @@ export const fetchVenueById = async (id) => {
     throw error.response?.data?.message || "تعذر تحميل تفاصيل الملعب";
   }
 };
+
+export const submitVenueRequest = async (requestData) => {
+  try {
+    const response = await apiClient.post("/venue-requests", requestData);
+    return response.data.data.request;
+  } catch (error) {
+    throw error.response?.data?.message || "حدث خطأ أثناء إرسال طلب إضافة الملعب";
+  }
+};

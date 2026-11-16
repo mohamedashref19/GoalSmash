@@ -64,6 +64,19 @@ const kindClass: Record<string, string> = {
   maintenance: "bg-muted border-border text-muted-foreground",
 };
 
+// دالة مساعدة لتوليد الساعات بين وقتين مع دعم عبور منتصف الليل
+const getHoursBetween = (start: number, end: number) => {
+  const hours: number[] = [];
+  let current = start;
+  let iters = 0;
+  while (current !== end && iters < 24) {
+    hours.push(current);
+    current = (current + 1) % 24;
+    iters++;
+  }
+  return hours;
+};
+
 // =========================================
 // +++ نافذة تفاصيل الحجز +++
 // =========================================
@@ -385,40 +398,67 @@ export function ScheduleView({ venueId }: { venueId: string }) {
     }
   }, [venueId, selectedDate, loadData]);
 
-  const activeHours = useMemo(() => {
-    const hours = [];
-    let current = timeTab === "morning" ? venueOpenHour : eveningStartHour;
-    const endLimit = timeTab === "morning" ? eveningStartHour : venueCloseHour;
+  const morningHours = useMemo(
+    () => getHoursBetween(venueOpenHour, eveningStartHour),
+    [venueOpenHour, eveningStartHour],
+  );
 
-    let iters = 0;
-    while (current !== endLimit && iters < 24) {
-      hours.push(current);
-      current = (current + 1) % 24;
-      iters++;
-    }
-    return hours;
-  }, [venueOpenHour, venueCloseHour, eveningStartHour, timeTab]);
+  const eveningHours = useMemo(
+    () => getHoursBetween(eveningStartHour, venueCloseHour),
+    [eveningStartHour, venueCloseHour],
+  );
 
-  const getBookingForCell = (courtId: string, hour: number) => {
-    return bookings.find((b) => {
-      if (!b || !b.startTime || !b.endTime) return false;
-      const bDate = new Date(b.startTime);
-      const eDate = new Date(b.endTime);
-      const bCourtId = typeof b.court === "object" ? b.court?._id : b.court;
+  const activeHours = timeTab === "morning" ? morningHours : eveningHours;
 
-      const cellDateTime = new Date(selectedDate);
-      cellDateTime.setHours(hour, 0, 0, 0);
+  const getBookingForCell = useCallback(
+    (courtId: string, hour: number) => {
+      return bookings.find((b) => {
+        if (!b || !b.startTime || !b.endTime) return false;
+        const bDate = new Date(b.startTime);
+        const eDate = new Date(b.endTime);
+        const bCourtId = typeof b.court === "object" ? b.court?._id : b.court;
 
-      // الساعات اللي قبل ميعاد فتح الملعب (بعد منتصف الليل) تابعة لنفس اليوم المنطقي
-      if (hour < venueOpenHour) {
-        cellDateTime.setDate(cellDateTime.getDate() + 1);
-      }
+        const cellDateTime = new Date(selectedDate);
+        cellDateTime.setHours(hour, 0, 0, 0);
 
-      const isTimeInRange = cellDateTime >= bDate && cellDateTime < eDate;
+        // الساعات اللي قبل ميعاد فتح الملعب (بعد منتصف الليل) تابعة لنفس اليوم المنطقي
+        if (hour < venueOpenHour) {
+          cellDateTime.setDate(cellDateTime.getDate() + 1);
+        }
 
-      return bCourtId === courtId && isTimeInRange && b.status === "confirmed";
+        const isTimeInRange = cellDateTime >= bDate && cellDateTime < eDate;
+
+        return bCourtId === courtId && isTimeInRange && b.status === "confirmed";
+      });
+    },
+    [bookings, selectedDate, venueOpenHour],
+  );
+
+  // +++ حساب عدد الحجوزات الفعلية في فترتي الصباح والمساء لليوم المختار +++
+  const { morningCount, eveningCount } = useMemo(() => {
+    const morningIds = new Set<string>();
+    const eveningIds = new Set<string>();
+
+    courts.forEach((court) => {
+      morningHours.forEach((hr) => {
+        const b = getBookingForCell(court._id, hr);
+        if (b && b.status === "confirmed") {
+          morningIds.add(b._id);
+        }
+      });
+      eveningHours.forEach((hr) => {
+        const b = getBookingForCell(court._id, hr);
+        if (b && b.status === "confirmed") {
+          eveningIds.add(b._id);
+        }
+      });
     });
-  };
+
+    return {
+      morningCount: morningIds.size,
+      eveningCount: eveningIds.size,
+    };
+  }, [courts, morningHours, eveningHours, getBookingForCell]);
 
   const handleQuickBookClick = (
     courtId: string,
@@ -560,30 +600,71 @@ export function ScheduleView({ venueId }: { venueId: string }) {
           </div>
         </div>
         <ConfirmDialog />
-        <div className="mt-5 flex gap-2 rounded-xl border border-border bg-muted/50 p-1 md:max-w-sm">
+
+        {/* أزرار التبديل بين الصباح والمساء مع عداد الحجوزات لكل فترة */}
+        <div className="mt-5 flex gap-2 rounded-xl border border-border bg-muted/50 p-1 md:max-w-md">
           <button
             onClick={() => setTimeTab("morning")}
             className={cn(
-              "flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-xs sm:text-sm font-bold transition",
+              "flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 px-2 text-xs sm:text-sm font-bold transition",
               timeTab === "morning"
                 ? "bg-background text-primary shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
-            <Sun className="h-4 w-4" />
-            الصباح ({formatHour12Short(venueOpenHour)} - {formatHour12Short(eveningStartHour)})
+            <Sun className="h-4 w-4 shrink-0" />
+            <span>
+              الصباح ({formatHour12Short(venueOpenHour)} - {formatHour12Short(eveningStartHour)})
+            </span>
+            <span
+              className={cn(
+                "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-black transition",
+                morningCount > 0
+                  ? timeTab === "morning"
+                    ? "bg-primary/15 text-primary"
+                    : "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-muted-foreground/15 text-muted-foreground",
+              )}
+              title={
+                morningCount > 0
+                  ? `يوجد ${morningCount} حجز في الفترة الصباحية`
+                  : "لا توجد حجوزات صباحية"
+              }
+            >
+              {morningCount}
+            </span>
           </button>
+
           <button
             onClick={() => setTimeTab("evening")}
             className={cn(
-              "flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-xs sm:text-sm font-bold transition",
+              "flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 px-2 text-xs sm:text-sm font-bold transition",
               timeTab === "evening"
                 ? "bg-background text-primary shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
-            <Moon className="h-4 w-4" />
-            المساء ({formatHour12Short(eveningStartHour)} - {formatHour12Short(venueCloseHour)})
+            <Moon className="h-4 w-4 shrink-0" />
+            <span>
+              المساء ({formatHour12Short(eveningStartHour)} - {formatHour12Short(venueCloseHour)})
+            </span>
+            <span
+              className={cn(
+                "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-black transition",
+                eveningCount > 0
+                  ? timeTab === "evening"
+                    ? "bg-primary/15 text-primary"
+                    : "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-muted-foreground/15 text-muted-foreground",
+              )}
+              title={
+                eveningCount > 0
+                  ? `يوجد ${eveningCount} حجز في الفترة المسائية`
+                  : "لا توجد حجوزات مسائية"
+              }
+            >
+              {eveningCount}
+            </span>
           </button>
         </div>
 
