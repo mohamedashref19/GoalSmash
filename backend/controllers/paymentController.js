@@ -12,6 +12,7 @@ const AppError = require("../utils/appError");
 const { emitToUser } = require("../utils/socketEmit");
 const PaymentAccount = require("../models/paymentAccountModel");
 const CourtBlock = require("../models/courtBlockModel");
+const { getCairoCalendarDayRange } = require("../utils/accountingDay");
 
 const idOf = (v) => ((v && v._id) || v)?.toString();
 
@@ -382,10 +383,10 @@ exports.getAllPayments = catchAsync(async (req, res, next) => {
   if (req.query.method) filter.method = req.query.method;
 
   if (req.query.date) {
-    const startOfDay = new Date(req.query.date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(req.query.date);
-    endOfDay.setHours(23, 59, 59, 999);
+    if (Number.isNaN(new Date(req.query.date).getTime())) {
+      return next(new AppError("صيغة التاريخ غير صحيحة", 400));
+    }
+    const { startOfDay, endOfDay } = getCairoCalendarDayRange(req.query.date);
 
     const dateCondition = {
       $or: [
@@ -488,10 +489,10 @@ exports.getUnmatchedPayments = catchAsync(async (req, res, next) => {
 
   let filter = {};
   if (req.query.date) {
-    const startOfDay = new Date(req.query.date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(req.query.date);
-    endOfDay.setHours(23, 59, 59, 999);
+    if (Number.isNaN(new Date(req.query.date).getTime())) {
+      return next(new AppError("صيغة التاريخ غير صحيحة", 400));
+    }
+    const { startOfDay, endOfDay } = getCairoCalendarDayRange(req.query.date);
     filter.receivedAt = { $gte: startOfDay, $lte: endOfDay };
   }
 
@@ -863,7 +864,7 @@ exports.addPaymentNote = catchAsync(async (req, res, next) => {
 });
 
 // ============================================================================
-// +++ دالة التقارير المالية الشاملة (تفصيل الأونلاين، الكاش اليدوي، باقي الحجوزات، وسجل الحجوزات الكامل) +++
+// +++ دالة التقارير المالية الشاملة (موحدة على اليوم التقويمي بتوقيت القاهرة 12:00 ص -> 11:59 م) +++
 // ============================================================================
 exports.getFinancialReports = catchAsync(async (req, res, next) => {
   const { startDate, endDate, venue } = req.query;
@@ -872,15 +873,15 @@ exports.getFinancialReports = catchAsync(async (req, res, next) => {
     return next(new AppError("يرجى تحديد تاريخ البداية والنهاية", 400));
   }
 
-  const start = new Date(startDate);
-  start.setHours(0, 0, 0, 0);
-
-  const end = new Date(endDate);
-  end.setHours(23, 59, 59, 999);
-
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+  if (
+    Number.isNaN(new Date(startDate).getTime()) ||
+    Number.isNaN(new Date(endDate).getTime())
+  ) {
     return next(new AppError("صيغة التاريخ غير صحيحة", 400));
   }
+
+  const { startOfDay: start } = getCairoCalendarDayRange(startDate);
+  const { endOfDay: end } = getCairoCalendarDayRange(endDate);
 
   const diffTime = Math.abs(end - start);
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));

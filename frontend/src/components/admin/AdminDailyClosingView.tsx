@@ -29,6 +29,21 @@ import { cn } from "@/lib/utils";
 import { fetchAllVenues, fetchDailyClosing, toggleVenueSettlement } from "@/api/adminApi";
 import { useConfirm } from "../../components/venue/useConfirm";
 
+const getCairoTodayDate = () => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Africa/Cairo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const map: Record<string, string> = {};
+  for (const p of parts) {
+    map[p.type] = p.value;
+  }
+  return `${map["year"]}-${map["month"]}-${map["day"]}`;
+};
+
 interface PaymentEntry {
   _id: string;
   amount: number;
@@ -125,7 +140,7 @@ interface ClosingData {
 }
 
 export function AdminDailyClosingView() {
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(getCairoTodayDate);
   const [selectedVenue, setSelectedVenue] = useState<string>("all");
   const [venuesList, setVenuesList] = useState<{ _id: string; name: string }[]>([]);
 
@@ -161,6 +176,7 @@ export function AdminDailyClosingView() {
   };
 
   const handleToggleSettlement = async (venueId: string, currentStatus: boolean) => {
+    const targetDate = closingData?.date || date;
     const newStatus = !currentStatus;
     const confirmMsg = newStatus
       ? "هل أنت متأكد من تصفية حساب هذا النادي لليوم المحدد؟"
@@ -171,7 +187,7 @@ export function AdminDailyClosingView() {
 
     setSettlingVenueId(venueId);
     try {
-      await toggleVenueSettlement(venueId, date, newStatus);
+      await toggleVenueSettlement(venueId, targetDate, newStatus);
       toast.success(newStatus ? "تم تأكيد التصفية بنجاح" : "تم إلغاء التصفية");
 
       setClosingData((prev) => {
@@ -189,6 +205,8 @@ export function AdminDailyClosingView() {
       setSettlingVenueId(null);
     }
   };
+
+  const activeReportDate = closingData?.date || date;
 
   const handlePrint = async () => {
     if (!Capacitor.isNativePlatform()) {
@@ -218,7 +236,7 @@ export function AdminDailyClosingView() {
         throw new Error("تعذر تجهيز بيانات ملف PDF");
       }
 
-      const fileName = `Daily_Closing_${date}.pdf`;
+      const fileName = `Daily_Closing_${activeReportDate}.pdf`;
       const { Filesystem, Directory } = await import("@capacitor/filesystem");
       const { Share } = await import("@capacitor/share");
 
@@ -247,7 +265,7 @@ export function AdminDailyClosingView() {
         backgroundColor: "#ffffff",
         scale: 2,
       });
-      const fileName = `Daily_Closing_${date}.png`;
+      const fileName = `Daily_Closing_${activeReportDate}.png`;
 
       if (Capacitor.isNativePlatform()) {
         const base64Data = dataUrl.split(",")[1];
@@ -288,7 +306,7 @@ export function AdminDailyClosingView() {
     const venueNetTotal = Number((pt.totalRevenue - pt.totalCommission).toFixed(2));
 
     let csvContent = "\uFEFF";
-    csvContent += `تقرير تقفيل اليومية الشامل - تاريخ: ${date}\n\n`;
+    csvContent += `تقرير تقفيل اليومية الشامل - تاريخ: ${activeReportDate}\n\n`;
 
     csvContent += "--- خلاصة اليومية للمنصة ---\n";
     csvContent +=
@@ -338,7 +356,7 @@ export function AdminDailyClosingView() {
       csvContent += "\n";
     });
 
-    const fileName = `Daily_Closing_${date}.csv`;
+    const fileName = `Daily_Closing_${activeReportDate}.csv`;
 
     if (Capacitor.isNativePlatform()) {
       try {
@@ -424,7 +442,7 @@ export function AdminDailyClosingView() {
             <ClipboardList className="size-6 text-primary" /> تقفيل اليومية الشامل
           </h2>
           <p className="text-sm text-muted-foreground font-bold bg-muted px-3 py-1.5 rounded-lg border border-border">
-            إيرادات وتصفية حسابات اليوم المحاسبي
+            إيرادات وتصفية حسابات اليوم (12:00 ص - 11:59 م بتوقيت مصر)
           </p>
         </div>
         <ConfirmDialog />
@@ -512,7 +530,7 @@ export function AdminDailyClosingView() {
                     تقرير اليومية الشامل وتصفية المستحقات
                   </h3>
                   <p className="text-sm text-muted-foreground print:text-gray-600 mt-1">
-                    تاريخ اليومية: <span className="font-bold">{date}</span>
+                    تاريخ اليومية: <span className="font-bold">{activeReportDate}</span>
                   </p>
                 </div>
                 <span className="text-xs font-extrabold text-primary bg-primary/10 px-3 py-1.5 rounded-xl w-fit">

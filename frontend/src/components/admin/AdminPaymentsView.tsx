@@ -12,8 +12,6 @@ import {
   TrendingUp,
   ArchiveRestore,
   Ban,
-  Info,
-  AlertCircle,
   Banknote,
   XOctagon,
 } from "lucide-react";
@@ -29,8 +27,11 @@ import {
 // @ts-expect-error: until axiosConfig.js is migrated to TypeScript or has typings.
 import { BACKEND_URL } from "@/api/axiosConfig";
 import { useConfirm } from "../../components/venue/useConfirm";
+
 interface Payment {
   _id: string;
+  paymentReference?: string;
+  baseAmount?: number;
   expectedAmount: number;
   amountReceived?: number;
   method: string;
@@ -69,9 +70,29 @@ interface UnmatchedPayment {
 
 type TabKey = "pending" | "verified" | "unmatched" | "processed" | "expired" | "cancelled" | "all";
 
+const CAIRO_TZ = "Africa/Cairo";
+
+const getCairoDateString = (dateInput: Date | string = new Date()) => {
+  const d = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  if (Number.isNaN(d.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: CAIRO_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(d);
+
+  const map: Record<string, string> = {};
+  for (const p of parts) {
+    map[p.type] = p.value;
+  }
+  return `${map["year"]}-${map["month"]}-${map["day"]}`;
+};
+
 const formatDateTime = (dateString: string | undefined) => {
   if (!dateString) return "---";
   return new Date(dateString).toLocaleString("ar-EG", {
+    timeZone: CAIRO_TZ,
     month: "short",
     day: "numeric",
     hour: "2-digit",
@@ -79,30 +100,25 @@ const formatDateTime = (dateString: string | undefined) => {
   });
 };
 
+const isRestCashPayment = (p: Payment) =>
+  Boolean(p.paymentReference && /^(CASH-REST-|QR-CASH-)/.test(p.paymentReference));
+
 export function AdminPaymentsView() {
   const [activeTab, setActiveTab] = useState<TabKey>("unmatched");
   const [payments, setPayments] = useState<Payment[]>([]);
   const [unmatched, setUnmatched] = useState<UnmatchedPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [selectedDate, setSelectedDate] = useState<string>(() => getCairoDateString());
   const [unmatchedNotes, setUnmatchedNotes] = useState<Record<string, string>>({});
   const { confirm, ConfirmDialog } = useConfirm();
-
-  const formatDateForInput = (d: Date) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  };
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const dateStr = formatDateForInput(selectedDate);
       const [paymentsData, unmatchedData] = await Promise.all([
-        fetchAllPayments({ date: dateStr }),
-        fetchUnmatchedPayments({ date: dateStr }),
+        fetchAllPayments({ date: selectedDate }),
+        fetchUnmatchedPayments({ date: selectedDate }),
       ]);
       setPayments(paymentsData || []);
       setUnmatched(unmatchedData || []);
@@ -118,36 +134,39 @@ export function AdminPaymentsView() {
   }, [loadData]);
 
   const summary = useMemo(() => {
-    const validPayments = payments.filter((p) => p.booking?.status !== "cancelled");
+    const validPayments = payments.filter(
+      (p) => p.booking?.status !== "cancelled" && p.booking?.status !== "expired",
+    );
 
-    // +++ التعديل هنا: تحديد تاريخ اليوم المختار وفلترة الدفعات بناءً عليه +++
-    const selectedDateString = formatDateForInput(selectedDate);
-
+    // الفلترة بتاريخ التأكيد الفعلي (verifiedAt ثم createdAt) بتوقيت القاهرة ليتطابق مع تقفيل اليومية والتقارير
     const paymentsForSelectedDate = validPayments.filter((p) => {
-      if (!p.createdAt) return false;
-      const paymentDateString = formatDateForInput(new Date(p.createdAt));
-      return paymentDateString === selectedDateString;
+      const effectiveDate = p.verifiedAt || p.createdAt;
+      if (!effectiveDate) return false;
+      return getCairoDateString(effectiveDate) === selectedDate;
     });
 
-    // +++ حساب الإيرادات من الدفعات الخاصة باليوم المختار فقط +++
+    // حساب الأونلاين بالمبلغ الأساسي (baseAmount) بدون الكسور العشوائية ليتطابق مع التقارير وتقفيل اليومية
     const totalOnlineConfirmed = paymentsForSelectedDate
       .filter((p) => p.status === "verified" && p.method !== "cash")
-      .reduce((sum, p) => sum + (p.amountReceived || p.expectedAmount), 0);
+      .reduce((sum, p) => sum + (p.baseAmount ?? p.amountReceived ?? p.expectedAmount), 0);
 
-    const totalCashConfirmed = paymentsForSelectedDate
-      .filter((p) => p.status === "verified" && p.method === "cash")
-      .reduce((sum, p) => sum + (p.amountReceived || p.expectedAmount), 0);
+    const totalManualCashConfirmed = paymentsForSelectedDate
+      .filter((p) => p.status === "verified" && p.method === "cash" && !isRestCashPayment(p))
+      .reduce((sum, p) => sum + (p.amountReceived ?? p.baseAmount ?? p.expectedAmount), 0);
+
+    const totalRestCashConfirmed = paymentsForSelectedDate
+      .filter((p) => p.status === "verified" && p.method === "cash" && isRestCashPayment(p))
+      .reduce((sum, p) => sum + (p.amountReceived ?? p.baseAmount ?? p.expectedAmount), 0);
+
+    const totalCashConfirmed = totalManualCashConfirmed + totalRestCashConfirmed;
 
     const totalPending = paymentsForSelectedDate
       .filter((p) => p.status === "pending" || p.status === "pending_verification")
-      .reduce((sum, p) => sum + p.expectedAmount, 0);
+      .reduce((sum, p) => sum + (p.baseAmount ?? p.expectedAmount), 0);
 
-    // +++ الأموال المعلقة بنسيبها زي ما هي أو بنفلترها برضه حسب التاريخ لو حابب +++
-    // هنا بفلترها حسب تاريخ استلامها الفعلي عشان تكون دقيقة مع اليوم المختار
     const unmatchedForSelectedDate = unmatched.filter((u) => {
       if (!u.receivedAt) return false;
-      const unmatchedDateString = formatDateForInput(new Date(u.receivedAt));
-      return unmatchedDateString === selectedDateString;
+      return getCairoDateString(u.receivedAt) === selectedDate;
     });
 
     const totalUnmatched = unmatchedForSelectedDate
@@ -156,17 +175,18 @@ export function AdminPaymentsView() {
 
     return {
       totalOnlineConfirmed: Number(totalOnlineConfirmed.toFixed(2)),
+      totalManualCashConfirmed: Number(totalManualCashConfirmed.toFixed(2)),
+      totalRestCashConfirmed: Number(totalRestCashConfirmed.toFixed(2)),
       totalCashConfirmed: Number(totalCashConfirmed.toFixed(2)),
       totalPending: Number(totalPending.toFixed(2)),
       totalUnmatched: Number(totalUnmatched.toFixed(2)),
     };
-  }, [payments, unmatched, selectedDate]); // +++ selectedDate ضرورية هنا عشان الأرقام تتحدث فوراً +++
+  }, [payments, unmatched, selectedDate]);
 
   const handleVerify = async (id: string, isExpired: boolean = false) => {
     const msg = isExpired
       ? "إحياء الحجز وتأكيد التحويل البنكي؟"
       : "تأكيد استلام التحويل البنكي يدوياً؟";
-    //if (!window.confirm(msg)) return;
     const isConfirmed = await confirm(msg);
     if (!isConfirmed) return;
     try {
@@ -212,10 +232,15 @@ export function AdminPaymentsView() {
       if (activeTab === "expired" && p.status !== "expired") return false;
     }
 
-    const term = search.toLowerCase();
+    const term = search.trim().toLowerCase();
+    if (!term) return true;
     return (
       p.expectedAmount?.toString().includes(term) ||
+      p.baseAmount?.toString().includes(term) ||
+      p.senderPhone?.includes(term) ||
+      p.booking?.user?.name?.toLowerCase().includes(term) ||
       p.booking?.user?.phone?.includes(term) ||
+      p.booking?.guestData?.name?.toLowerCase().includes(term) ||
       p.booking?.guestData?.phone?.includes(term) ||
       p.booking?.venue?.name?.toLowerCase().includes(term)
     );
@@ -232,9 +257,20 @@ export function AdminPaymentsView() {
     });
 
     return Object.values(groups).sort(
-      (a, b) => new Date(b[0]?.createdAt ?? 0).getTime() - new Date(a[0]?.createdAt ?? 0).getTime(),
+      (a, b) =>
+        new Date(b[0]?.verifiedAt || b[0]?.createdAt || 0).getTime() -
+        new Date(a[0]?.verifiedAt || a[0]?.createdAt || 0).getTime(),
     );
   }, [filteredPayments]);
+
+  const getMethodLabel = (p: Payment) => {
+    if (p.method === "cash") {
+      return isRestCashPayment(p) ? "كاش (باقي الحجز)" : "كاش (حجز يدوي)";
+    }
+    if (p.method === "vodafone_cash") return "فودافون كاش (عربون)";
+    if (p.method === "instapay") return "إنستا باي (عربون)";
+    return p.method;
+  };
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in pb-10">
@@ -246,9 +282,9 @@ export function AdminPaymentsView() {
           <CalendarDays className="size-5 text-muted-foreground ml-2" />
           <input
             type="date"
-            value={formatDateForInput(selectedDate)}
+            value={selectedDate}
             onChange={(e) => {
-              if (e.target.value) setSelectedDate(new Date(e.target.value));
+              if (e.target.value) setSelectedDate(e.target.value);
             }}
             className="bg-transparent text-sm font-bold outline-none cursor-pointer"
           />
@@ -258,7 +294,7 @@ export function AdminPaymentsView() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card-surface p-4 border-b-4 border-b-success">
           <p className="text-xs font-bold text-muted-foreground mb-1 flex items-center gap-1">
-            <TrendingUp className="size-3.5" /> إيرادات إلكترونية
+            <TrendingUp className="size-3.5" /> إيرادات إلكترونية (صافي العربون)
           </p>
           <p className="font-display text-xl lg:text-2xl font-black text-success">
             {summary.totalOnlineConfirmed}{" "}
@@ -274,6 +310,14 @@ export function AdminPaymentsView() {
             {summary.totalCashConfirmed}{" "}
             <span className="text-sm font-bold text-muted-foreground">ج.م</span>
           </p>
+          <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-bold">
+            <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-blue-600">
+              يدوي: {summary.totalManualCashConfirmed} ج
+            </span>
+            <span className="rounded bg-warning/15 px-1.5 py-0.5 text-amber-700 dark:text-warning">
+              باقي حجز: {summary.totalRestCashConfirmed} ج
+            </span>
+          </div>
         </div>
 
         <div className="card-surface p-4 border-b-4 border-b-warning">
@@ -429,7 +473,6 @@ export function AdminPaymentsView() {
             const isCancelled = booking?.status === "cancelled";
             const isExpired = firstPayment?.status === "expired";
 
-            // +++ استخدام بيانات الحجز الأصلية للحصول على السعر والمتبقي بدقة +++
             const totalDisplayAmt =
               booking?.totalPrice ||
               group.reduce((sum, p) => sum + (p.amountReceived || p.expectedAmount), 0);
@@ -470,7 +513,6 @@ export function AdminPaymentsView() {
                           <span className="text-xs text-muted-foreground">ج.م</span>
                         </p>
                       </div>
-                      {/* +++ مؤشر دقيق للمتبقي أو الخالص يعتمد على الحجز وليس التبويب +++ */}
                       {!isCancelled && !isExpired && booking && remaining > 0 && (
                         <span className="text-[10px] font-bold text-destructive bg-destructive/10 px-2 py-0.5 rounded-md border border-destructive/20 self-start mt-1">
                           يُدفع في الملعب: {remaining} ج.م
@@ -570,33 +612,29 @@ export function AdminPaymentsView() {
                                 isPaymentCancelled
                                   ? "text-muted-foreground line-through"
                                   : p.method === "cash"
-                                    ? "text-info"
+                                    ? isRestCashPayment(p)
+                                      ? "text-amber-600"
+                                      : "text-info"
                                     : "text-success",
                               )}
                             >
                               {displayedAmount} ج.م
                             </span>
                             <span className="text-[10px] font-bold text-muted-foreground bg-background px-1.5 py-0.5 rounded border border-border">
-                              {p.method === "cash"
-                                ? "كاش (باقي)"
-                                : p.method === "vodafone_cash"
-                                  ? "فودافون كاش (عربون)"
-                                  : p.method === "instapay"
-                                    ? "إنستا باي (عربون)"
-                                    : p.method}
+                              {getMethodLabel(p)}
                             </span>
                           </div>
                           <span
                             className={cn(
                               "text-[10px] font-bold px-2 py-0.5 rounded",
-                              p.status === "verified"
+                              p.status === "verified" && !isPaymentCancelled
                                 ? "bg-success/15 text-success"
                                 : p.status === "expired" || isPaymentCancelled
                                   ? "bg-destructive/15 text-destructive"
                                   : "bg-warning/15 text-warning",
                             )}
                           >
-                            {p.status === "verified"
+                            {p.status === "verified" && !isPaymentCancelled
                               ? "مؤكد"
                               : p.status === "expired" || isPaymentCancelled
                                 ? "غير صالح"
@@ -609,7 +647,7 @@ export function AdminPaymentsView() {
                             <Clock className="size-3" /> وقت الحركة:
                           </span>
                           <span className="font-bold text-foreground" dir="ltr">
-                            {formatDateTime(p.createdAt)}
+                            {formatDateTime(p.verifiedAt || p.createdAt)}
                           </span>
                         </div>
 

@@ -5,7 +5,11 @@ const User = require("../models/userModel");
 const DailySettlement = require("../models/dailySettlementModel");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
-const { DEFAULT_OPEN_HOUR, parseOpenHour } = require("../utils/accountingDay");
+const {
+  DEFAULT_OPEN_HOUR,
+  getCairoCalendarDayRange,
+  getTodayCairoDateString,
+} = require("../utils/accountingDay");
 
 // قراءة اليوم والساعة بتوقيت مصر دائماً
 const CAIRO_TZ = "Africa/Cairo";
@@ -300,35 +304,30 @@ exports.getAllCustomers = catchAsync(async (req, res, next) => {
 });
 
 // ============================================================================
-// +++ دالة تقفيل اليومية الشاملة (تفصيل الكاش، الحجوزات، العمولات، وسجل العمليات لكل نادي) +++
+// +++ دالة تقفيل اليومية الشاملة (موحدة على اليوم التقويمي بتوقيت القاهرة 12:00 ص -> 11:59 م) +++
 // ============================================================================
 exports.getDailyClosing = catchAsync(async (req, res, next) => {
   const { date, venue } = req.query;
 
-  const targetDate = date ? new Date(date) : new Date();
-  if (Number.isNaN(targetDate.getTime())) {
-    return next(new AppError("صيغة التاريخ غير صحيحة", 400));
+  let targetDateStr = getTodayCairoDateString();
+  if (date) {
+    const parsed = new Date(date);
+    if (Number.isNaN(parsed.getTime())) {
+      return next(new AppError("صيغة التاريخ غير صحيحة", 400));
+    }
+    targetDateStr = String(date).slice(0, 10);
   }
 
-  let openHour = DEFAULT_OPEN_HOUR;
   let venueMatch = {};
 
   if (venue && venue !== "all") {
     if (!mongoose.isValidObjectId(venue))
       return next(new AppError("معرف النادي غير صالح", 400));
     venueMatch = { "bookingDetails.venue": new mongoose.Types.ObjectId(venue) };
-
-    const venueDoc = await Venue.findById(venue).select("openTime");
-    if (venueDoc) openHour = parseOpenHour(venueDoc.openTime);
   }
 
-  // اليوم المحاسبي: من ميعاد الفتح لحد قبله بملي ثانية في اليوم التالي
-  const startOfDay = new Date(targetDate);
-  startOfDay.setHours(openHour, 0, 0, 0);
-
-  const endOfDay = new Date(startOfDay);
-  endOfDay.setDate(endOfDay.getDate() + 1);
-  endOfDay.setTime(endOfDay.getTime() - 1);
+  // اليوم المالي: من 12:00 ص إلى 11:59:59.999 م بتوقيت القاهرة
+  const { startOfDay, endOfDay } = getCairoCalendarDayRange(targetDateStr);
 
   const pipeline = [
     {
@@ -717,7 +716,6 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
 
   const dailyClosing = await mongoose.model("Payment").aggregate(pipeline);
 
-  const targetDateStr = targetDate.toISOString().split("T")[0];
   const settlements = await DailySettlement.find({ dateString: targetDateStr });
 
   const settlementMap = {};
@@ -810,7 +808,7 @@ exports.toggleDailySettlement = catchAsync(async (req, res, next) => {
     return next(new AppError("صيغة التاريخ غير صحيحة", 400));
   }
 
-  const targetDateStr = parsedDate.toISOString().split("T")[0];
+  const targetDateStr = String(date).slice(0, 10);
 
   const settlement = await DailySettlement.findOneAndUpdate(
     { venue, dateString: targetDateStr },

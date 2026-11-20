@@ -50,9 +50,29 @@ interface Payment {
 
 type TabKey = "all" | "verified" | "manual" | "expired";
 
+const CAIRO_TZ = "Africa/Cairo";
+
+const getCairoDateString = (dateInput: Date | string = new Date()) => {
+  const d = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  if (Number.isNaN(d.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: CAIRO_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(d);
+
+  const map: Record<string, string> = {};
+  for (const p of parts) {
+    map[p.type] = p.value;
+  }
+  return `${map["year"]}-${map["month"]}-${map["day"]}`;
+};
+
 const formatDateTime = (dateString: string | undefined) => {
   if (!dateString) return "---";
   return new Date(dateString).toLocaleString("ar-EG", {
+    timeZone: CAIRO_TZ,
     month: "short",
     day: "numeric",
     hour: "2-digit",
@@ -69,22 +89,14 @@ export function PaymentsView({ venueId }: { venueId: string }) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [selectedDate, setSelectedDate] = useState<string>(() => getCairoDateString());
   const [paymentNotesInput, setPaymentNotesInput] = useState<Record<string, string>>({});
   const { confirm, ConfirmDialog } = useConfirm();
-
-  const formatDateForInput = (d: Date) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  };
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const dateStr = formatDateForInput(selectedDate);
-      const data = await fetchAllPayments({ date: dateStr }, venueId);
+      const data = await fetchAllPayments({ date: selectedDate }, venueId);
 
       const filteredDataForOwner = (data || []).filter((p: Payment) => {
         if (p.method !== "cash" && (p.status === "pending" || p.status === "pending_verification"))
@@ -112,17 +124,14 @@ export function PaymentsView({ venueId }: { venueId: string }) {
   };
 
   const summary = useMemo(() => {
-    const selectedDateString = formatDateForInput(selectedDate);
-
-    // الفلترة بـ verifiedAt ثم createdAt مع استبعاد الحجوزات الملغية والدفعات المنتهية
+    // الفلترة بـ verifiedAt ثم createdAt بتوقيت القاهرة مع استبعاد الحجوزات الملغية والدفعات المنتهية
     const paymentsForSelectedDate = payments.filter((p) => {
       if (p.status !== "verified") return false;
       if (p.booking?.status === "cancelled" || p.booking?.status === "expired") return false;
 
       const effectiveDate = p.verifiedAt || p.createdAt;
       if (!effectiveDate) return false;
-      const paymentDateString = formatDateForInput(new Date(effectiveDate));
-      return paymentDateString === selectedDateString;
+      return getCairoDateString(effectiveDate) === selectedDate;
     });
 
     const totalConfirmed = paymentsForSelectedDate
@@ -194,13 +203,15 @@ export function PaymentsView({ venueId }: { venueId: string }) {
     if (activeTab === "manual" && p.method !== "cash") return false;
     if (activeTab === "expired" && p.status !== "expired") return false;
 
-    const term = search.toLowerCase();
+    const term = search.trim().toLowerCase();
+    if (!term) return true;
     const displayAmt = getDisplayAmount(p).toString();
     return (
       displayAmt.includes(term) ||
       p.booking?.user?.name?.toLowerCase().includes(term) ||
       p.booking?.user?.phone?.includes(term) ||
-      p.booking?.guestData?.name?.toLowerCase().includes(term)
+      p.booking?.guestData?.name?.toLowerCase().includes(term) ||
+      p.booking?.guestData?.phone?.includes(term)
     );
   });
 
@@ -239,9 +250,9 @@ export function PaymentsView({ venueId }: { venueId: string }) {
           <CalendarDays className="size-5 text-muted-foreground ml-2" />
           <input
             type="date"
-            value={formatDateForInput(selectedDate)}
+            value={selectedDate}
             onChange={(e) => {
-              if (e.target.value) setSelectedDate(new Date(e.target.value));
+              if (e.target.value) setSelectedDate(e.target.value);
             }}
             className="bg-transparent text-sm font-bold outline-none cursor-pointer text-foreground"
           />

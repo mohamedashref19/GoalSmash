@@ -5,7 +5,12 @@ const Court = require("../models/courtModel");
 const Venue = require("../models/venueModel");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
-const { parseOpenHour } = require("../utils/accountingDay");
+const {
+  parseOpenHour,
+  cairoWallTimeToUtcDate,
+  getTodayCairoDateString,
+  getCairoCalendarDayRange,
+} = require("../utils/accountingDay");
 
 const DASHBOARD_ROLES = ["owner", "admin", "employee"];
 
@@ -13,7 +18,7 @@ const employeeNotAllowed = (user, venueId) =>
   user.role === "employee" &&
   (!user.venue || user.venue.toString() !== venueId.toString());
 
-// قراءة اليوم والساعة بتوقيت مصر دائماً
+// قراءة الساعة الحالية بتوقيت مصر دائماً
 const CAIRO_TZ = "Africa/Cairo";
 const cairoPartsFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: CAIRO_TZ,
@@ -27,6 +32,13 @@ const getCairoHour = (dateObj) => {
     parts[p.type] = p.value;
   }
   return Number(parts.hour) % 24;
+};
+
+// إزاحة تاريخ YYYY-MM-DD بعدد أيام محدد بدقة بدون الاعتماد على توقيت السيرفر
+const shiftDateStr = (dateStr, deltaDays) => {
+  const [y, m, d] = String(dateStr).slice(0, 10).split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + deltaDays));
+  return dt.toISOString().slice(0, 10);
 };
 
 exports.getTodayStats = catchAsync(async (req, res, next) => {
@@ -51,30 +63,39 @@ exports.getTodayStats = catchAsync(async (req, res, next) => {
     return next(new AppError("غير مصرح لك بالوصول لإحصائيات هذا الملعب!", 403));
   }
 
-  // +++ حساب اليوم المنطقي للملعب +++
   const now = new Date();
   const openHour = parseOpenHour(venueDoc.openTime);
   const currentCairoHour = getCairoHour(now);
+  const cairoTodayStr = getTodayCairoDateString(now);
 
-  const logicalToday = new Date(now);
-  if (currentCairoHour < openHour) {
-    // لو إحنا دلوقتي الفجر قبل ميعاد الفتح، يبقى إحنا لسه في حسابات "امبارح"
-    logicalToday.setDate(logicalToday.getDate() - 1);
-  }
+  // +++ 1. نطاق اليوم التشغيلي للجدول والحجوزات (مرتبط بساعة فتح الملعب openTime بتوقيت القاهرة) +++
+  const logicalDateStr =
+    currentCairoHour < openHour
+      ? shiftDateStr(cairoTodayStr, -1)
+      : cairoTodayStr;
+  const nextLogicalDateStr = shiftDateStr(logicalDateStr, 1);
 
-  const startOfDay = new Date(logicalToday);
-  startOfDay.setHours(openHour, 0, 0, 0);
+  const scheduleStart = cairoWallTimeToUtcDate(
+    logicalDateStr,
+    openHour,
+    0,
+    0,
+    0,
+  );
+  const scheduleEnd = cairoWallTimeToUtcDate(
+    nextLogicalDateStr,
+    openHour,
+    0,
+    0,
+    0,
+  );
 
-  const endOfDay = new Date(logicalToday);
-  endOfDay.setDate(endOfDay.getDate() + 1);
-  endOfDay.setHours(openHour, 0, 0, 0);
-
-  // 1. حساب عدد حجوزات النهاردة وساعات الإشغال (بناءً على مواعيد لعب اليوم)
+  // حساب عدد حجوزات النهاردة وساعات الإشغال (بناءً على مواعيد لعب اليوم التشغيلي)
   const todayStats = await Booking.aggregate([
     {
       $match: {
         venue: new mongoose.Types.ObjectId(venueId),
-        startTime: { $gte: startOfDay, $lt: endOfDay },
+        startTime: { $gte: scheduleStart, $lt: scheduleEnd },
         status: "confirmed",
       },
     },
@@ -99,8 +120,11 @@ exports.getTodayStats = catchAsync(async (req, res, next) => {
     totalBookedHours: 0,
   };
 
-  // 2. حساب "إيراد اليوم الفعلي" من المدفوعات المؤكدة اليوم (verifiedAt ثم createdAt)
-  // 2. حساب "إيراد اليوم الفعلي" مقسماً لـ 3 خانات: أونلاين، كاش حجز يدوي، وكاش باقي الحجز
+  // +++ 2. نطاق اليوم المالي (موحد على اليوم التقويمي بتوقيت القاهرة: 12:00 ص -> 11:59:59.999 م) +++
+  const { startOfDay: financeStart, endOfDay: financeEnd } =
+    getCairoCalendarDayRange(cairoTodayStr);
+
+  // حساب "إيراد اليوم الفعلي" مقسماً لـ 3 خانات: أونلاين، كاش حجز يدوي، وكاش باقي الحجز
   const todayPaymentsAgg = await Payment.aggregate([
     {
       $addFields: {
@@ -110,7 +134,7 @@ exports.getTodayStats = catchAsync(async (req, res, next) => {
     {
       $match: {
         status: "verified",
-        effectiveDate: { $gte: startOfDay, $lt: endOfDay },
+        effectiveDate: { $gte: financeStart, $lte: financeEnd },
       },
     },
     {
@@ -125,7 +149,7 @@ exports.getTodayStats = catchAsync(async (req, res, next) => {
     {
       $match: {
         "bookingDetails.venue": new mongoose.Types.ObjectId(venueId),
-        "bookingDetails.status": { $nin: ["cancelled", "expired"] },
+        "bookingDetails.status": { $nin: ["cancelled", "expired", "blocked"] },
       },
     },
     {
