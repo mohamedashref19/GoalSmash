@@ -6,37 +6,13 @@ const DailySettlement = require("../models/dailySettlementModel");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
 const {
-  DEFAULT_OPEN_HOUR,
   getCairoCalendarDayRange,
   getTodayCairoDateString,
 } = require("../utils/accountingDay");
 
-// قراءة اليوم والساعة بتوقيت مصر دائماً
-const CAIRO_TZ = "Africa/Cairo";
-const cairoPartsFormatter = new Intl.DateTimeFormat("en-US", {
-  timeZone: CAIRO_TZ,
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-});
-const getCairoHour = (dateObj) => {
-  const parts = {};
-  for (const p of cairoPartsFormatter.formatToParts(dateObj)) {
-    parts[p.type] = p.value;
-  }
-  return Number(parts.hour) % 24;
-};
-
 exports.getPlatformOverview = catchAsync(async (req, res, next) => {
-  const now = new Date();
-  const currentCairoHour = getCairoHour(now);
-
-  const logicalToday = new Date(now);
-  if (currentCairoHour < DEFAULT_OPEN_HOUR) {
-    logicalToday.setDate(logicalToday.getDate() - 1);
-  }
-  const startOfDay = new Date(logicalToday);
-  startOfDay.setHours(DEFAULT_OPEN_HOUR, 0, 0, 0);
+  // توحيد إحصائيات اليوم على اليوم التقويمي بتوقيت القاهرة (12:00 ص -> 11:59:59.999 م)
+  const { startOfDay, endOfDay } = getCairoCalendarDayRange();
 
   const platformStats = await Booking.aggregate([
     { $match: { status: { $in: ["confirmed", "completed"] } } },
@@ -45,12 +21,18 @@ exports.getPlatformOverview = catchAsync(async (req, res, next) => {
         totalPrice: 1,
         bookingType: 1,
         startTime: 1,
+        savedCommission: "$commission",
         durationInHours: {
           $divide: [{ $subtract: ["$endTime", "$startTime"] }, 1000 * 60 * 60],
         },
         isAppBooking: { $cond: [{ $eq: ["$bookingType", "app"] }, 1, 0] },
         isManualBooking: { $cond: [{ $eq: ["$bookingType", "manual"] }, 1, 0] },
-        isToday: { $gte: ["$startTime", startOfDay] },
+        isToday: {
+          $and: [
+            { $gte: ["$startTime", startOfDay] },
+            { $lte: ["$startTime", endOfDay] },
+          ],
+        },
       },
     },
     {
@@ -62,9 +44,14 @@ exports.getPlatformOverview = catchAsync(async (req, res, next) => {
         isManualBooking: 1,
         isToday: 1,
         commission: {
-          $multiply: [
-            "$totalPrice",
-            { $cond: [{ $gte: ["$durationInHours", 2] }, 0.1, 0.05] },
+          $ifNull: [
+            "$savedCommission",
+            {
+              $multiply: [
+                "$totalPrice",
+                { $cond: [{ $gte: ["$durationInHours", 2] }, 0.1, 0.05] },
+              ],
+            },
           ],
         },
       },
@@ -101,9 +88,13 @@ exports.getPlatformOverview = catchAsync(async (req, res, next) => {
     status: "success",
     data: {
       financials: {
-        totalPlatformRevenue: stats.totalPlatformRevenue,
-        totalCommissionEarned: stats.totalCommissionEarned,
-        todayCommission: stats.todayCommission,
+        totalPlatformRevenue: Number(
+          (stats.totalPlatformRevenue || 0).toFixed(2),
+        ),
+        totalCommissionEarned: Number(
+          (stats.totalCommissionEarned || 0).toFixed(2),
+        ),
+        todayCommission: Number((stats.todayCommission || 0).toFixed(2)),
       },
       bookings: {
         total: stats.totalBookings,
@@ -129,6 +120,7 @@ exports.getVenuesPerformance = catchAsync(async (req, res, next) => {
         court: 1,
         totalPrice: 1,
         bookingType: 1,
+        savedCommission: "$commission",
         durationInHours: {
           $divide: [{ $subtract: ["$endTime", "$startTime"] }, 1000 * 60 * 60],
         },
@@ -141,9 +133,14 @@ exports.getVenuesPerformance = catchAsync(async (req, res, next) => {
         totalPrice: 1,
         bookingType: 1,
         calculatedCommission: {
-          $multiply: [
-            "$totalPrice",
-            { $cond: [{ $gte: ["$durationInHours", 2] }, 0.1, 0.05] },
+          $ifNull: [
+            "$savedCommission",
+            {
+              $multiply: [
+                "$totalPrice",
+                { $cond: [{ $gte: ["$durationInHours", 2] }, 0.1, 0.05] },
+              ],
+            },
           ],
         },
       },
@@ -187,8 +184,8 @@ exports.getVenuesPerformance = catchAsync(async (req, res, next) => {
             bookingsCount: "$courtTotalBookings",
             appBookingsCount: "$courtAppBookings",
             manualBookingsCount: "$courtManualBookings",
-            revenue: "$courtTotalRevenue",
-            commissionGenerated: "$courtCommission",
+            revenue: { $round: ["$courtTotalRevenue", 2] },
+            commissionGenerated: { $round: ["$courtCommission", 2] },
           },
         },
       },
@@ -207,10 +204,10 @@ exports.getVenuesPerformance = catchAsync(async (req, res, next) => {
         venueName: "$venueDetails.name",
         city: "$venueDetails.address.city",
         totalBookings: 1,
-        totalRevenue: 1,
+        totalRevenue: { $round: ["$totalRevenue", 2] },
         appBookingsCount: 1,
         manualBookingsCount: 1,
-        commissionOwedToPlatform: 1,
+        commissionOwedToPlatform: { $round: ["$commissionOwedToPlatform", 2] },
         courtsBreakdown: 1,
       },
     },
@@ -315,7 +312,9 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
     if (Number.isNaN(parsed.getTime())) {
       return next(new AppError("صيغة التاريخ غير صحيحة", 400));
     }
-    targetDateStr = String(date).slice(0, 10);
+    targetDateStr = /^\d{4}-\d{2}-\d{2}/.test(String(date))
+      ? String(date).slice(0, 10)
+      : getTodayCairoDateString(parsed);
   }
 
   let venueMatch = {};
@@ -725,7 +724,6 @@ exports.getDailyClosing = catchAsync(async (req, res, next) => {
 
   dailyClosing.forEach((v) => {
     v.isSettled = settlementMap[v._id.toString()] || false;
-    // فرد مصفوفة الحجوزات التفصيلية وترتيبها بالأحدث لكل نادي
     const flatBookings = (v.allCourtBookingsNested || []).flat();
     flatBookings.sort(
       (a, b) =>
@@ -808,7 +806,9 @@ exports.toggleDailySettlement = catchAsync(async (req, res, next) => {
     return next(new AppError("صيغة التاريخ غير صحيحة", 400));
   }
 
-  const targetDateStr = String(date).slice(0, 10);
+  const targetDateStr = /^\d{4}-\d{2}-\d{2}/.test(String(date))
+    ? String(date).slice(0, 10)
+    : getTodayCairoDateString(parsedDate);
 
   const settlement = await DailySettlement.findOneAndUpdate(
     { venue, dateString: targetDateStr },

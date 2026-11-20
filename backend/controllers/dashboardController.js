@@ -5,41 +5,13 @@ const Court = require("../models/courtModel");
 const Venue = require("../models/venueModel");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
-const {
-  parseOpenHour,
-  cairoWallTimeToUtcDate,
-  getTodayCairoDateString,
-  getCairoCalendarDayRange,
-} = require("../utils/accountingDay");
+const { getCairoCalendarDayRange } = require("../utils/accountingDay");
 
 const DASHBOARD_ROLES = ["owner", "admin", "employee"];
 
 const employeeNotAllowed = (user, venueId) =>
   user.role === "employee" &&
   (!user.venue || user.venue.toString() !== venueId.toString());
-
-// قراءة الساعة الحالية بتوقيت مصر دائماً
-const CAIRO_TZ = "Africa/Cairo";
-const cairoPartsFormatter = new Intl.DateTimeFormat("en-US", {
-  timeZone: CAIRO_TZ,
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-});
-const getCairoHour = (dateObj) => {
-  const parts = {};
-  for (const p of cairoPartsFormatter.formatToParts(dateObj)) {
-    parts[p.type] = p.value;
-  }
-  return Number(parts.hour) % 24;
-};
-
-// إزاحة تاريخ YYYY-MM-DD بعدد أيام محدد بدقة بدون الاعتماد على توقيت السيرفر
-const shiftDateStr = (dateStr, deltaDays) => {
-  const [y, m, d] = String(dateStr).slice(0, 10).split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d + deltaDays));
-  return dt.toISOString().slice(0, 10);
-};
 
 exports.getTodayStats = catchAsync(async (req, res, next) => {
   const venueId = req.query.venue;
@@ -63,39 +35,15 @@ exports.getTodayStats = catchAsync(async (req, res, next) => {
     return next(new AppError("غير مصرح لك بالوصول لإحصائيات هذا الملعب!", 403));
   }
 
-  const now = new Date();
-  const openHour = parseOpenHour(venueDoc.openTime);
-  const currentCairoHour = getCairoHour(now);
-  const cairoTodayStr = getTodayCairoDateString(now);
+  // توحيد إحصائيات اليوم (حجوزات اليوم + إيراد اليوم) على اليوم التقويمي بتوقيت القاهرة (12:00 ص -> 11:59:59.999 م)
+  const { startOfDay, endOfDay } = getCairoCalendarDayRange();
 
-  // +++ 1. نطاق اليوم التشغيلي للجدول والحجوزات (مرتبط بساعة فتح الملعب openTime بتوقيت القاهرة) +++
-  const logicalDateStr =
-    currentCairoHour < openHour
-      ? shiftDateStr(cairoTodayStr, -1)
-      : cairoTodayStr;
-  const nextLogicalDateStr = shiftDateStr(logicalDateStr, 1);
-
-  const scheduleStart = cairoWallTimeToUtcDate(
-    logicalDateStr,
-    openHour,
-    0,
-    0,
-    0,
-  );
-  const scheduleEnd = cairoWallTimeToUtcDate(
-    nextLogicalDateStr,
-    openHour,
-    0,
-    0,
-    0,
-  );
-
-  // حساب عدد حجوزات النهاردة وساعات الإشغال (بناءً على مواعيد لعب اليوم التشغيلي)
+  // 1. حساب عدد حجوزات النهاردة وساعات الإشغال (بناءً على مواعيد اللعب اليوم بتوقيت القاهرة)
   const todayStats = await Booking.aggregate([
     {
       $match: {
         venue: new mongoose.Types.ObjectId(venueId),
-        startTime: { $gte: scheduleStart, $lt: scheduleEnd },
+        startTime: { $gte: startOfDay, $lte: endOfDay },
         status: "confirmed",
       },
     },
@@ -120,11 +68,7 @@ exports.getTodayStats = catchAsync(async (req, res, next) => {
     totalBookedHours: 0,
   };
 
-  // +++ 2. نطاق اليوم المالي (موحد على اليوم التقويمي بتوقيت القاهرة: 12:00 ص -> 11:59:59.999 م) +++
-  const { startOfDay: financeStart, endOfDay: financeEnd } =
-    getCairoCalendarDayRange(cairoTodayStr);
-
-  // حساب "إيراد اليوم الفعلي" مقسماً لـ 3 خانات: أونلاين، كاش حجز يدوي، وكاش باقي الحجز
+  // 2. حساب "إيراد اليوم الفعلي" مقسماً لـ 3 خانات: أونلاين، كاش حجز يدوي، وكاش باقي الحجز
   const todayPaymentsAgg = await Payment.aggregate([
     {
       $addFields: {
@@ -134,7 +78,7 @@ exports.getTodayStats = catchAsync(async (req, res, next) => {
     {
       $match: {
         status: "verified",
-        effectiveDate: { $gte: financeStart, $lte: financeEnd },
+        effectiveDate: { $gte: startOfDay, $lte: endOfDay },
       },
     },
     {
